@@ -1,0 +1,59 @@
+[package]
+name = "codelens"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Token-efficient code intelligence CLI powered by tree-sitter"
+license = "MIT"
+
+[[bin]]
+name = "codelens"
+path = "src/main.rs"
+
+[dependencies]
+# CLI framework
+clap = { version = "4", features = ["derive", "env"] }
+
+# tree-sitter core + languages
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-swift = "0.7"
+tree-sitter-go = "0.25"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+# Full-text search
+tantivy = "0.22"
+
+# Call graph
+petgraph = "0.7"
+
+# File system
+ignore = "0.4"
+notify = "7"
+
+# Async (for watch command)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+
+# Hash
+blake3 = "1"
+
+# Output
+colored = "2"
+
+# Parallel
+rayon = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
