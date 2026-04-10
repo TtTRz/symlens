@@ -116,7 +116,10 @@ fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf) -> anyhow::Result<(
     } else {
         println!("Module dependencies:");
         for (file, deps) in &deps_graph.edges {
-            let from = file.with_extension("").to_string_lossy().replace("src/", "");
+            let from = file
+                .with_extension("")
+                .to_string_lossy()
+                .replace("src/", "");
             for dep in deps {
                 let to = dep.with_extension("").to_string_lossy().replace("src/", "");
                 println!("  {} -> {}", from, to);

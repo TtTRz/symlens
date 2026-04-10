@@ -1,5 +1,7 @@
 # 🌲 CodeLens
 
+English | **[中文](./README_CN.md)**
+
 **Token-efficient code intelligence CLI powered by tree-sitter.**
 
 CodeLens indexes your codebase with tree-sitter and lets you fetch exactly the symbols you need — signatures, outlines, call graphs, and impact analysis — instead of reading entire files. Designed for AI agents (Claude Code) and humans alike.
@@ -62,6 +64,7 @@ codelens --root /path/to/project search "handler"
 | `codelens lines <file> <start> <end>` | Get source by line range | varies |
 | `codelens blame <name>` | Git blame for a symbol's line range | ~100 |
 | `codelens diff --from <ref> --to <ref>` | Changed symbols between git refs | ~50/change |
+| `codelens setup <agent>` | Install CodeLens into AI agent | — |
 | `codelens watch` | Auto-update index on file changes | — |
 | `codelens stats` | Index statistics | ~50 |
 
@@ -123,29 +126,37 @@ MCP config (for Claude Code / Cursor):
 }
 ```
 
-## Claude Code Integration
+## Agent Integration
 
-Add this to your project's `CLAUDE.md`:
+One command to install CodeLens into your AI agent:
 
-```markdown
-## Code Navigation
+```bash
+# Install into Claude Code (writes CLAUDE.md)
+codelens setup claude-code
 
-This project has `codelens` installed for token-efficient code search.
+# Install into OpenClaw (writes ~/.openclaw/skills/codelens/SKILL.md)
+codelens setup openclaw
 
-**IMPORTANT: Prefer `codelens` over reading entire files:**
+# Install into Cursor (writes .cursor/rules/codelens.mdc)
+codelens setup cursor
 
-1. `codelens search "<query>"` instead of `grep -r`
-2. `codelens outline <file>` instead of `cat <file>`
-3. `codelens symbol "<id>"` instead of reading the whole file
-4. `codelens symbol "<id>" --source` only when you need the implementation
-5. `codelens outline --project` instead of `find` + `cat`
-6. `codelens refs "<name>"` instead of `grep -r "<name>"`
-7. `codelens blame "<name>"` to check who last modified a symbol
-8. **Before refactoring**: ALWAYS run `codelens graph impact "<symbol>"` first
-9. **Before reviewing a PR**: run `codelens diff --from main --to HEAD`
+# Install into all agents at once
+codelens setup --all
 
-Run `codelens index` if you get "index not found" errors.
+# Overwrite existing config
+codelens setup --all --force
+
+# List supported agents
+codelens setup --list
 ```
+
+| Agent | What `setup` writes | Location |
+|-------|-------------------|----------|
+| **Claude Code** | `CLAUDE.md` (appends if exists) | Project root |
+| **OpenClaw** | `SKILL.md` skill package | `~/.openclaw/skills/codelens/` |
+| **Cursor** | `.mdc` rule file | `.cursor/rules/codelens.mdc` |
+
+If a `CLAUDE.md` already exists, `setup claude-code` intelligently appends the CodeLens section instead of overwriting.
 
 ## Architecture
 
@@ -203,9 +214,13 @@ GitHub Actions workflows included:
 - **Rust 2024 edition**, minimum rustc 1.85
 - **~6000 lines** of Rust across 41 source files + 680 lines of tests
 - **43 tests** (6 unit + 37 integration), zero warnings
-- **16 commands** (15 default + 1 MCP feature-gated)
+- **17 commands** (16 default + 1 MCP feature-gated)
 - **5 languages** with full symbol/call/refs/import support
 
 ## License
 
 MIT — [TtTRz](mailto:romc1224@gmail.com)
+
+---
+
+**[🇨🇳 中文文档](./README_CN.md)**

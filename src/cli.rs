@@ -46,6 +46,8 @@ pub enum Commands {
     Blame(BlameArgs),
     /// Show changed symbols between git refs
     Diff(DiffArgs),
+    /// Install CodeLens integration into AI agents (Claude Code, OpenClaw, Cursor)
+    Setup(SetupArgs),
     /// Start MCP (Model Context Protocol) server (requires --features mcp)
     #[cfg(feature = "mcp")]
     Mcp,
@@ -231,4 +233,26 @@ pub struct DiffArgs {
     /// Only show symbols of this kind
     #[arg(long)]
     pub kind: Option<String>,
+}
+
+#[derive(clap::Args)]
+pub struct SetupArgs {
+    /// Target agent: claude-code, openclaw, cursor
+    pub agent: Option<String>,
+
+    /// Install to all supported agents
+    #[arg(long)]
+    pub all: bool,
+
+    /// Install globally (user-level) instead of project-level
+    #[arg(short, long)]
+    pub global: bool,
+
+    /// Overwrite existing files
+    #[arg(long)]
+    pub force: bool,
+
+    /// List supported agents
+    #[arg(long)]
+    pub list: bool,
 }

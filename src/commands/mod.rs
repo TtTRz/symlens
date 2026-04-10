@@ -9,6 +9,7 @@ pub mod mcp;
 pub mod outline;
 pub mod refs;
 pub mod search;
+pub mod setup;
 pub mod stats;
 pub mod symbol;
 pub mod watch;

@@ -124,9 +124,18 @@ pub fn run(args: DiffArgs, root_override: Option<&str>) -> anyhow::Result<()> {
 
     let total_files = files.len();
     let total_symbols = changed_symbols.len();
-    let added_count = changed_symbols.iter().filter(|s| matches!(s.change_kind, ChangeKind::Added)).count();
-    let modified_count = changed_symbols.iter().filter(|s| matches!(s.change_kind, ChangeKind::Modified)).count();
-    let deleted_count = changed_symbols.iter().filter(|s| matches!(s.change_kind, ChangeKind::Deleted)).count();
+    let added_count = changed_symbols
+        .iter()
+        .filter(|s| matches!(s.change_kind, ChangeKind::Added))
+        .count();
+    let modified_count = changed_symbols
+        .iter()
+        .filter(|s| matches!(s.change_kind, ChangeKind::Modified))
+        .count();
+    let deleted_count = changed_symbols
+        .iter()
+        .filter(|s| matches!(s.change_kind, ChangeKind::Deleted))
+        .count();
 
     println!(
         "Changed symbols: {} → {} ({} symbols in {} files — +{} ~{} -{})",
@@ -191,13 +200,21 @@ enum ChangeKind {
 }
 
 /// Get file names from git diff with a specific filter (A/M/D/etc).
-fn git_diff_names(root: &PathBuf, from: &str, to: &str, filter: &str) -> anyhow::Result<Vec<String>> {
+fn git_diff_names(
+    root: &PathBuf,
+    from: &str,
+    to: &str,
+    filter: &str,
+) -> anyhow::Result<Vec<String>> {
     let output = Command::new("git")
         .args([
-            "-C", &root.to_string_lossy(),
-            "diff", "--name-only",
+            "-C",
+            &root.to_string_lossy(),
+            "diff",
+            "--name-only",
             &format!("--diff-filter={}", filter),
-            from, to,
+            from,
+            to,
         ])
         .output()?;
 
@@ -213,11 +230,22 @@ fn git_diff_names(root: &PathBuf, from: &str, to: &str, filter: &str) -> anyhow:
 }
 
 /// Get changed line ranges for a specific file from git diff.
-fn git_diff_ranges(root: &PathBuf, from: &str, to: &str, file: &str) -> anyhow::Result<Vec<(u32, u32)>> {
+fn git_diff_ranges(
+    root: &PathBuf,
+    from: &str,
+    to: &str,
+    file: &str,
+) -> anyhow::Result<Vec<(u32, u32)>> {
     let output = Command::new("git")
         .args([
-            "-C", &root.to_string_lossy(),
-            "diff", "-U0", from, to, "--", file,
+            "-C",
+            &root.to_string_lossy(),
+            "diff",
+            "-U0",
+            from,
+            to,
+            "--",
+            file,
         ])
         .output()?;
 

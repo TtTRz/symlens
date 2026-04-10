@@ -81,8 +81,7 @@ impl CallGraph {
             return self.callers_partial(name);
         };
 
-        let node_indices: Vec<NodeIndex> =
-            (0..self.nodes.len()).map(NodeIndex::new).collect();
+        let node_indices: Vec<NodeIndex> = (0..self.nodes.len()).map(NodeIndex::new).collect();
 
         graph
             .neighbors_directed(node_indices[idx], Direction::Incoming)
@@ -97,8 +96,7 @@ impl CallGraph {
             return self.callees_partial(name);
         };
 
-        let node_indices: Vec<NodeIndex> =
-            (0..self.nodes.len()).map(NodeIndex::new).collect();
+        let node_indices: Vec<NodeIndex> = (0..self.nodes.len()).map(NodeIndex::new).collect();
 
         graph
             .neighbors_directed(node_indices[idx], Direction::Outgoing)

@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Stats(args) => codelens::commands::stats::run(args, root),
         Commands::Blame(args) => codelens::commands::blame::run(args, root),
         Commands::Diff(args) => codelens::commands::diff::run(args, root),
+        Commands::Setup(args) => codelens::commands::setup::run(args, root),
         #[cfg(feature = "mcp")]
         Commands::Mcp => {
             let rt = tokio::runtime::Runtime::new()?;

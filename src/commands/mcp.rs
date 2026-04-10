@@ -207,10 +207,18 @@ pub mod server {
                     syms.truncate(limit);
                     syms
                 }
-                Err(_) => index.search(query, limit).into_iter().map(|s| (s, 0.0f32)).collect(),
+                Err(_) => index
+                    .search(query, limit)
+                    .into_iter()
+                    .map(|s| (s, 0.0f32))
+                    .collect(),
             }
         } else {
-            index.search(query, limit).into_iter().map(|s| (s, 0.0f32)).collect()
+            index
+                .search(query, limit)
+                .into_iter()
+                .map(|s| (s, 0.0f32))
+                .collect()
         };
 
         let items: Vec<Value> = results
@@ -279,14 +287,21 @@ pub mod server {
         if let Some(file_path) = file {
             let fp = PathBuf::from(file_path);
             let symbols = index.symbols_in_file(&fp);
-            let items: Vec<Value> = symbols.iter().map(|s| json!({
-                "id": s.id.0, "name": s.name, "kind": s.kind.as_str(),
-                "lines": [s.span.start_line, s.span.end_line], "signature": s.signature,
-            })).collect();
+            let items: Vec<Value> = symbols
+                .iter()
+                .map(|s| {
+                    json!({
+                        "id": s.id.0, "name": s.name, "kind": s.kind.as_str(),
+                        "lines": [s.span.start_line, s.span.end_line], "signature": s.signature,
+                    })
+                })
+                .collect();
             json!({ "file": file_path, "symbols": items, "count": items.len() })
         } else {
             let stats = index.stats();
-            let files: Vec<Value> = index.file_symbols.iter()
+            let files: Vec<Value> = index
+                .file_symbols
+                .iter()
                 .map(|(file, ids)| json!({ "file": file.to_string_lossy(), "symbols": ids.len() }))
                 .collect();
             json!({
@@ -307,20 +322,26 @@ pub mod server {
         };
 
         let registry = crate::parser::registry::LanguageRegistry::new();
-        let candidate_files: Vec<PathBuf> = if let Some(importing_files) = index.import_names.get(name) {
-            let mut files: std::collections::HashSet<PathBuf> = importing_files.iter().cloned().collect();
-            for sym in index.symbols.values() {
-                if sym.name == name { files.insert(sym.file_path.clone()); }
-            }
-            files.into_iter().collect()
-        } else {
-            index.file_symbols.keys().cloned().collect()
-        };
+        let candidate_files: Vec<PathBuf> =
+            if let Some(importing_files) = index.import_names.get(name) {
+                let mut files: std::collections::HashSet<PathBuf> =
+                    importing_files.iter().cloned().collect();
+                for sym in index.symbols.values() {
+                    if sym.name == name {
+                        files.insert(sym.file_path.clone());
+                    }
+                }
+                files.into_iter().collect()
+            } else {
+                index.file_symbols.keys().cloned().collect()
+            };
 
         let mut all_refs = Vec::new();
         for file_path in &candidate_files {
             let full_path = root.join(file_path);
-            if !full_path.exists() { continue; }
+            if !full_path.exists() {
+                continue;
+            }
             if let Some(parser) = registry.parser_for(&full_path) {
                 if let Ok(source) = std::fs::read(&full_path) {
                     if let Ok(refs) = parser.find_identifiers(&source, name) {
