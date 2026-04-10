@@ -39,9 +39,7 @@ pub struct IndexStats {
 
 impl ProjectIndex {
     pub fn new(root: PathBuf) -> Self {
-        let root_hash = blake3::hash(root.to_string_lossy().as_bytes())
-            .to_hex()[..16]
-            .to_string();
+        let root_hash = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
 
         Self {
             root,
@@ -68,6 +66,7 @@ impl ProjectIndex {
     }
 
     /// Remove all symbols from a file (for incremental updates).
+    #[allow(dead_code)]
     pub fn remove_file(&mut self, file: &PathBuf) {
         if let Some(ids) = self.file_symbols.remove(file) {
             for id in ids {

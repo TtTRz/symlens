@@ -13,10 +13,6 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// Output format
-    #[arg(long, global = true, default_value = "compact")]
-    pub format: OutputFormat,
-
     /// Project root path (default: auto-detect via .git)
     #[arg(long = "root", global = true)]
     pub project_root: Option<String>,
@@ -46,6 +42,13 @@ pub enum Commands {
     Watch(WatchCmdArgs),
     /// Show index statistics
     Stats(StatsArgs),
+    /// Show git blame info for a symbol
+    Blame(BlameArgs),
+    /// Show changed symbols between git refs
+    Diff(DiffArgs),
+    /// Start MCP (Model Context Protocol) server (requires --features mcp)
+    #[cfg(feature = "mcp")]
+    Mcp,
 }
 
 #[derive(clap::Args)]
@@ -211,12 +214,21 @@ pub struct WatchCmdArgs {
 #[derive(clap::Args)]
 pub struct StatsArgs;
 
-#[derive(Clone, Debug, clap::ValueEnum)]
-pub enum OutputFormat {
-    /// AI-optimized compact output (default)
-    Compact,
-    /// Human-readable output
-    Human,
-    /// Machine-parseable JSON
-    Json,
+#[derive(clap::Args)]
+pub struct BlameArgs {
+    /// Symbol name or file::symbol ID
+    pub name: String,
+}
+
+#[derive(clap::Args)]
+pub struct DiffArgs {
+    /// Git ref to compare from (default: HEAD~1)
+    #[arg(long, default_value = "HEAD~1")]
+    pub from: String,
+    /// Git ref to compare to (default: HEAD)
+    #[arg(long, default_value = "HEAD")]
+    pub to: String,
+    /// Only show symbols of this kind
+    #[arg(long)]
+    pub kind: Option<String>,
 }

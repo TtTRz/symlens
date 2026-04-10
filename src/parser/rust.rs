@@ -9,10 +9,6 @@ impl LanguageParser for RustParser {
         &["rs"]
     }
 
-    fn language_name(&self) -> &str {
-        "rust"
-    }
-
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
@@ -23,7 +19,14 @@ impl LanguageParser for RustParser {
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
-        extract_from_node(tree.root_node(), source, &file_str, file_path, None, &mut symbols);
+        extract_from_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            None,
+            &mut symbols,
+        );
         Ok(symbols)
     }
 
@@ -39,7 +42,11 @@ impl LanguageParser for RustParser {
         Ok(edges)
     }
 
-    fn find_identifiers(&self, source: &[u8], target_name: &str) -> anyhow::Result<Vec<IdentifierRef>> {
+    fn find_identifiers(
+        &self,
+        source: &[u8],
+        target_name: &str,
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
         let tree = parser
@@ -55,7 +62,8 @@ impl LanguageParser for RustParser {
     fn extract_imports(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
-        let tree = parser.parse(source, None)
+        let tree = parser
+            .parse(source, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
 
         let mut imports = Vec::new();
@@ -188,7 +196,10 @@ fn extract_struct(
         kind: SymbolKind::Struct,
         file_path: file_path.to_path_buf(),
         span: node_span(node),
-        signature: Some(format!("struct {}", node_text(name_node, source).unwrap_or_default())),
+        signature: Some(format!(
+            "struct {}",
+            node_text(name_node, source).unwrap_or_default()
+        )),
         doc_comment: doc,
         visibility: vis,
         parent: None,
@@ -502,10 +513,7 @@ fn extract_signature(node: tree_sitter::Node, source: &[u8]) -> String {
     let sig = String::from_utf8_lossy(sig_bytes).trim().to_string();
 
     // Clean up: remove trailing whitespace, normalize
-    sig.lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ")
+    sig.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
 }
 
 fn extract_first_line(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
@@ -578,7 +586,8 @@ fn collect_identifiers(
 ) {
     // Skip comments and string literals
     match node.kind() {
-        "line_comment" | "block_comment" | "string_literal" | "raw_string_literal" | "char_literal" => {
+        "line_comment" | "block_comment" | "string_literal" | "raw_string_literal"
+        | "char_literal" => {
             return;
         }
         _ => {}
@@ -597,7 +606,6 @@ fn collect_identifiers(
         let kind = classify_ref_context(node);
 
         refs.push(IdentifierRef {
-            name: target_name.to_string(),
             line,
             context,
             kind,
@@ -669,8 +677,8 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
         "struct_expression" => RefKind::Constructor,
 
         // Definition sites
-        "function_item" | "struct_item" | "enum_item" | "trait_item"
-        | "type_item" | "const_item" | "static_item" | "macro_definition" => {
+        "function_item" | "struct_item" | "enum_item" | "trait_item" | "type_item"
+        | "const_item" | "static_item" | "macro_definition" => {
             // Check if this node is the "name" field of the definition
             if let Some(name_node) = parent.child_by_field_name("name") {
                 if name_node.id() == node.id() {
@@ -697,11 +705,7 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
 // ─── Import extraction ──────────────────────────────────────────────
 
 /// Extract `use` declarations from Rust source.
-fn collect_use_declarations(
-    node: tree_sitter::Node,
-    source: &[u8],
-    imports: &mut Vec<ImportInfo>,
-) {
+fn collect_use_declarations(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
     if node.kind() == "use_declaration" {
         if let Some(text) = node_text(node, source) {
             let cleaned = text
@@ -717,7 +721,14 @@ fn collect_use_declarations(
                 let names_str = names_str.trim_end_matches('}');
                 let names: Vec<String> = names_str
                     .split(',')
-                    .map(|n| n.trim().split(" as ").next().unwrap_or("").trim().to_string())
+                    .map(|n| {
+                        n.trim()
+                            .split(" as ")
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string()
+                    })
                     .filter(|n| !n.is_empty())
                     .collect();
                 imports.push(ImportInfo {

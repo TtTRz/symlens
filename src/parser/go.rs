@@ -9,10 +9,6 @@ impl LanguageParser for GoParser {
         &["go"]
     }
 
-    fn language_name(&self) -> &str {
-        "go"
-    }
-
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
@@ -38,10 +34,16 @@ impl LanguageParser for GoParser {
         Ok(edges)
     }
 
-    fn find_identifiers(&self, source: &[u8], target_name: &str) -> anyhow::Result<Vec<IdentifierRef>> {
+    fn find_identifiers(
+        &self,
+        source: &[u8],
+        target_name: &str,
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
-        let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -52,7 +54,9 @@ impl LanguageParser for GoParser {
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
-        let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
 
         let mut imports = Vec::new();
         collect_go_imports(tree.root_node(), source, &mut imports);
@@ -111,7 +115,12 @@ fn extract_go_func(
 ) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
-    let vis = if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+    let vis = if name
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
+    {
         Visibility::Public
     } else {
         Visibility::Private
@@ -165,7 +174,12 @@ fn extract_go_method(
         None => name.clone(),
     };
 
-    let vis = if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+    let vis = if name
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
+    {
         Visibility::Public
     } else {
         Visibility::Private
@@ -205,7 +219,12 @@ fn extract_go_type_spec(
         _ => SymbolKind::TypeAlias,
     };
 
-    let vis = if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+    let vis = if name
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
+    {
         Visibility::Public
     } else {
         Visibility::Private
@@ -220,7 +239,11 @@ fn extract_go_type_spec(
         kind,
         file_path: file_path.to_path_buf(),
         span: node_span(node),
-        signature: Some(format!("type {} {}", node_text(name_node, source)?, type_node.kind().replace("_type", ""))),
+        signature: Some(format!(
+            "type {} {}",
+            node_text(name_node, source)?,
+            type_node.kind().replace("_type", "")
+        )),
         doc_comment: doc,
         visibility: vis,
         parent: None,
@@ -236,20 +259,31 @@ fn extract_go_vars(
     symbols: &mut Vec<Symbol>,
 ) {
     let is_const = node.kind() == "const_declaration";
-    let kind = if is_const { SymbolKind::Constant } else { SymbolKind::Variable };
+    let kind = if is_const {
+        SymbolKind::Constant
+    } else {
+        SymbolKind::Variable
+    };
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
         if child.kind() == "const_spec" || child.kind() == "var_spec" {
             if let Some(name_node) = child.child_by_field_name("name") {
                 if let Some(name) = node_text(name_node, source) {
-                    let vis = if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    let vis = if name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                    {
                         Visibility::Public
                     } else {
                         Visibility::Private
                     };
 
-                    let first_line = node.utf8_text(source).ok()
+                    let first_line = node
+                        .utf8_text(source)
+                        .ok()
                         .and_then(|t| t.lines().next().map(|l| l.trim().to_string()));
 
                     symbols.push(Symbol {
@@ -282,7 +316,12 @@ fn extract_go_signature(node: tree_sitter::Node, source: &[u8]) -> String {
         }
     }
     let sig = &source[start..end];
-    String::from_utf8_lossy(sig).trim().lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
+    String::from_utf8_lossy(sig)
+        .trim()
+        .lines()
+        .map(|l| l.trim())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn extract_go_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
@@ -298,7 +337,12 @@ fn extract_go_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
         }
         sibling = s.prev_sibling();
     }
-    if comments.is_empty() { None } else { comments.reverse(); Some(comments.join("\n")) }
+    if comments.is_empty() {
+        None
+    } else {
+        comments.reverse();
+        Some(comments.join("\n"))
+    }
 }
 
 // ─── Call extraction ────────────────────────────────────────────────
@@ -349,13 +393,23 @@ fn collect_go_ids(
         _ => {}
     }
 
-    if (node.kind() == "identifier" || node.kind() == "type_identifier" || node.kind() == "field_identifier")
+    if (node.kind() == "identifier"
+        || node.kind() == "type_identifier"
+        || node.kind() == "field_identifier")
         && node_text(node, source).as_deref() == Some(target)
     {
         let line = node.start_position().row as u32 + 1;
-        let context = lines.get(line as usize - 1).unwrap_or(&"").trim().to_string();
+        let context = lines
+            .get(line as usize - 1)
+            .unwrap_or(&"")
+            .trim()
+            .to_string();
         let kind = classify_go_ref(node);
-        refs.push(IdentifierRef { name: target.to_string(), line, context, kind });
+        refs.push(IdentifierRef {
+            line,
+            context,
+            kind,
+        });
     }
 
     let cursor = &mut node.walk();
@@ -372,7 +426,9 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
     match parent.kind() {
         "call_expression" => RefKind::Call,
         "import_spec" | "import_declaration" => RefKind::Import,
-        "type_identifier" | "type_spec" | "parameter_declaration" | "field_declaration" => RefKind::TypeRef,
+        "type_identifier" | "type_spec" | "parameter_declaration" | "field_declaration" => {
+            RefKind::TypeRef
+        }
         "function_declaration" | "method_declaration" => {
             if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
                 RefKind::Definition
@@ -382,7 +438,9 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
         }
         "selector_expression" => {
             if let Some(gp) = parent.parent() {
-                if gp.kind() == "call_expression" { return RefKind::Call; }
+                if gp.kind() == "call_expression" {
+                    return RefKind::Call;
+                }
             }
             RefKind::FieldAccess
         }
@@ -393,11 +451,7 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
 
 // ─── Import extraction ──────────────────────────────────────────────
 
-fn collect_go_imports(
-    node: tree_sitter::Node,
-    source: &[u8],
-    imports: &mut Vec<ImportInfo>,
-) {
+fn collect_go_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
     if node.kind() == "import_spec" {
         if let Some(path_node) = node.child_by_field_name("path") {
             if let Some(path_text) = node_text(path_node, source) {

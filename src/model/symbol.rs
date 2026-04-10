@@ -10,7 +10,12 @@ pub struct SymbolId(pub String);
 
 impl SymbolId {
     pub fn new(file_path: &str, qualified_name: &str, kind: &SymbolKind) -> Self {
-        Self(format!("{}::{}#{}", file_path, qualified_name, kind.as_str()))
+        Self(format!(
+            "{}::{}#{}",
+            file_path,
+            qualified_name,
+            kind.as_str()
+        ))
     }
 }
 

@@ -2,13 +2,10 @@ use crate::cli::IndexArgs;
 use crate::index::{indexer, storage};
 use std::path::PathBuf;
 
-pub fn run(args: IndexArgs) -> anyhow::Result<()> {
+pub fn run(args: IndexArgs, root_override: Option<&str>) -> anyhow::Result<()> {
     let root = match args.path {
         Some(p) => PathBuf::from(p).canonicalize()?,
-        None => {
-            let cwd = std::env::current_dir()?;
-            storage::find_project_root(&cwd).unwrap_or(cwd)
-        }
+        None => crate::commands::resolve_root(root_override)?,
     };
 
     if !args.quiet {
@@ -24,8 +21,9 @@ pub fn run(args: IndexArgs) -> anyhow::Result<()> {
         let stats = result.index.stats();
         println!("✓ Indexed {}", root.display());
         println!(
-            "  Files: {} ({})",
-            stats.total_files,
+            "  Files: {} scanned, {} parsed ({})",
+            result.files_scanned,
+            result.files_parsed,
             format_lang_counts(&stats.by_language)
         );
         println!(

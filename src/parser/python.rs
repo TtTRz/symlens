@@ -1,5 +1,5 @@
 use crate::model::symbol::*;
-use crate::parser::traits::{IdentifierRef, LanguageParser, RefKind};
+use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
 pub struct PythonParser;
@@ -7,10 +7,6 @@ pub struct PythonParser;
 impl LanguageParser for PythonParser {
     fn extensions(&self) -> &[&str] {
         &["py"]
-    }
-
-    fn language_name(&self) -> &str {
-        "python"
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
@@ -23,19 +19,91 @@ impl LanguageParser for PythonParser {
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
-        extract_py_node(tree.root_node(), source, &file_str, file_path, None, &mut symbols);
+        extract_py_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            None,
+            &mut symbols,
+        );
         Ok(symbols)
     }
 
-    fn find_identifiers(&self, source: &[u8], target_name: &str) -> anyhow::Result<Vec<IdentifierRef>> {
+    fn find_identifiers(
+        &self,
+        source: &[u8],
+        target_name: &str,
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_python::LANGUAGE.into())?;
-        let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
         collect_py_identifiers(tree.root_node(), source, target_name, &lines, &mut refs);
         Ok(refs)
+    }
+
+    fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_python::LANGUAGE.into())?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let mut edges = Vec::new();
+        collect_py_calls(tree.root_node(), source, None, &mut edges);
+        Ok(edges)
+    }
+
+    fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
+        let source_str = std::str::from_utf8(source).unwrap_or("");
+        let mut imports = Vec::new();
+        for line in source_str.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("from ") {
+                // from foo.bar import Baz, Qux
+                if let Some(import_pos) = trimmed.find(" import ") {
+                    let module = trimmed[5..import_pos].trim();
+                    let names: Vec<String> = trimmed[import_pos + 8..]
+                        .split(',')
+                        .map(|n| {
+                            n.trim()
+                                .split(" as ")
+                                .next()
+                                .unwrap_or("")
+                                .trim()
+                                .to_string()
+                        })
+                        .filter(|n| !n.is_empty() && n != "*")
+                        .collect();
+                    if !names.is_empty() {
+                        imports.push(ImportInfo {
+                            module_path: module.to_string(),
+                            names,
+                        });
+                    }
+                }
+            } else if trimmed.starts_with("import ") {
+                // import foo.bar
+                let module = trimmed[7..]
+                    .trim()
+                    .split(" as ")
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                let name = module.rsplit('.').next().unwrap_or(module).to_string();
+                if !name.is_empty() {
+                    imports.push(ImportInfo {
+                        module_path: module.to_string(),
+                        names: vec![name],
+                    });
+                }
+            }
+        }
+        Ok(imports)
     }
 }
 
@@ -75,7 +143,14 @@ fn extract_py_node(
                     if let Some(body) = node.child_by_field_name("body") {
                         let cursor = &mut body.walk();
                         for child in body.children(cursor) {
-                            extract_py_node(child, source, file_str, file_path, Some(&name), symbols);
+                            extract_py_node(
+                                child,
+                                source,
+                                file_str,
+                                file_path,
+                                Some(&name),
+                                symbols,
+                            );
                         }
                     }
                     return; // Already handled children
@@ -123,7 +198,8 @@ fn extract_py_function(
     // Extract signature (def line)
     let sig = {
         let start = node.start_byte();
-        let end = node.child_by_field_name("body")
+        let end = node
+            .child_by_field_name("body")
             .map(|b| b.start_byte())
             .unwrap_or(node.end_byte());
         let sig_bytes = &source[start..end];
@@ -158,11 +234,7 @@ fn extract_py_docstring(node: tree_sitter::Node, source: &[u8]) -> Option<String
         let expr = first_child.child(0)?;
         if expr.kind() == "string" || expr.kind() == "concatenated_string" {
             let text = node_text(expr, source)?;
-            let cleaned = text
-                .trim_matches('"')
-                .trim_matches('\'')
-                .trim()
-                .to_string();
+            let cleaned = text.trim_matches('"').trim_matches('\'').trim().to_string();
             if !cleaned.is_empty() {
                 return Some(cleaned);
             }
@@ -185,7 +257,11 @@ fn collect_py_identifiers(
 
     if node.kind() == "identifier" && node_text(node, source).as_deref() == Some(target_name) {
         let line = node.start_position().row as u32 + 1;
-        let context = lines.get(line as usize - 1).unwrap_or(&"").trim().to_string();
+        let context = lines
+            .get(line as usize - 1)
+            .unwrap_or(&"")
+            .trim()
+            .to_string();
 
         let kind = if let Some(parent) = node.parent() {
             match parent.kind() {
@@ -206,7 +282,11 @@ fn collect_py_identifiers(
             RefKind::Unknown
         };
 
-        refs.push(IdentifierRef { name: target_name.to_string(), line, context, kind });
+        refs.push(IdentifierRef {
+            line,
+            context,
+            kind,
+        });
     }
 
     let cursor = &mut node.walk();
@@ -227,5 +307,39 @@ fn node_span(node: tree_sitter::Node) -> Span {
         end_line: end.row as u32 + 1,
         start_col: start.column as u32,
         end_col: end.column as u32,
+    }
+}
+
+// ─── Call extraction ────────────────────────────────────────────────
+
+fn collect_py_calls(
+    node: tree_sitter::Node,
+    source: &[u8],
+    current_fn: Option<&str>,
+    edges: &mut Vec<CallEdge>,
+) {
+    let mut fn_name = current_fn;
+    if node.kind() == "function_definition" {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Some(name) = node_text(name_node, source) {
+                fn_name = Some(Box::leak(name.into_boxed_str()));
+            }
+        }
+    }
+
+    if node.kind() == "call" {
+        if let Some(caller) = fn_name {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Some(callee) = node_text(func_node, source) {
+                    let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
+                    edges.push((caller.to_string(), clean));
+                }
+            }
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_py_calls(child, source, fn_name, edges);
     }
 }

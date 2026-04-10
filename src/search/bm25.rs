@@ -4,12 +4,11 @@ use std::path::Path;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
+use tantivy::{Index, IndexWriter, ReloadPolicy, doc};
 
 /// BM25 search engine backed by tantivy.
 pub struct SearchEngine {
     index: Index,
-    schema: Schema,
     // Field handles
     f_symbol_id: Field,
     f_name: Field,
@@ -43,7 +42,8 @@ impl SearchEngine {
 
         let f_symbol_id = schema_builder.add_text_field("symbol_id", STORED);
         let f_name = schema_builder.add_text_field("name", code_options.clone());
-        let f_qualified_name = schema_builder.add_text_field("qualified_name", code_options.clone());
+        let f_qualified_name =
+            schema_builder.add_text_field("qualified_name", code_options.clone());
         let f_signature = schema_builder.add_text_field("signature", code_options.clone());
         let f_doc = schema_builder.add_text_field("doc", code_options);
         let f_kind = schema_builder.add_text_field("kind", stored_only.clone());
@@ -55,13 +55,10 @@ impl SearchEngine {
         let index = Index::create_in_dir(index_dir, schema.clone())?;
 
         // Register custom tokenizer
-        index
-            .tokenizers()
-            .register("code", CodeTokenizer);
+        index.tokenizers().register("code", CodeTokenizer);
 
         Ok(Self {
             index,
-            schema,
             f_symbol_id,
             f_name,
             f_qualified_name,
@@ -76,9 +73,7 @@ impl SearchEngine {
     pub fn open(index_dir: &Path) -> anyhow::Result<Self> {
         let index = Index::open_in_dir(index_dir)?;
 
-        index
-            .tokenizers()
-            .register("code", CodeTokenizer);
+        index.tokenizers().register("code", CodeTokenizer);
 
         let schema = index.schema();
         let f_symbol_id = schema.get_field("symbol_id")?;
@@ -91,7 +86,6 @@ impl SearchEngine {
 
         Ok(Self {
             index,
-            schema,
             f_symbol_id,
             f_name,
             f_qualified_name,

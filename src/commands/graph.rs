@@ -4,17 +4,17 @@ use crate::index::storage;
 use crate::parser::registry::LanguageRegistry;
 use std::path::PathBuf;
 
-pub fn run(args: GraphArgs) -> anyhow::Result<()> {
+pub fn run(args: GraphArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
     match args.command {
-        GraphCommand::Impact(a) => run_impact(a),
-        GraphCommand::Deps(a) => run_deps(a),
-        GraphCommand::Path(a) => run_path(a),
+        GraphCommand::Impact(a) => run_impact(a, &root),
+        GraphCommand::Deps(a) => run_deps(a, &root),
+        GraphCommand::Path(a) => run_path(a, &root),
     }
 }
 
-fn run_impact(args: crate::cli::GraphImpactArgs) -> anyhow::Result<()> {
-    let root = resolve_root()?;
-    let index = load_index(&root)?;
+fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf) -> anyhow::Result<()> {
+    let index = load_index(root)?;
     let graph = index
         .call_graph
         .as_ref()
@@ -59,7 +59,7 @@ fn run_impact(args: crate::cli::GraphImpactArgs) -> anyhow::Result<()> {
 
     let total = result.direct_callers.len() + result.transitive_callers.len();
     println!(
-        "⚠️  {} direct callers, {} total dependents.",
+        "Warning: {} direct callers, {} total dependents.",
         result.direct_callers.len(),
         total,
     );
@@ -67,17 +67,14 @@ fn run_impact(args: crate::cli::GraphImpactArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_deps(args: crate::cli::GraphDepsArgs) -> anyhow::Result<()> {
-    let root = resolve_root()?;
-    let index = load_index(&root)?;
+fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf) -> anyhow::Result<()> {
+    let index = load_index(root)?;
     let registry = LanguageRegistry::new();
 
-    // Collect use/import statements from all files
     let mut imports: Vec<(PathBuf, String)> = Vec::new();
     let known_files: Vec<PathBuf> = index.file_symbols.keys().cloned().collect();
 
     for file_path in &known_files {
-        // Apply path filter
         if let Some(ref scope) = args.path {
             if !file_path.to_string_lossy().starts_with(scope.as_str()) {
                 continue;
@@ -87,12 +84,10 @@ fn run_deps(args: crate::cli::GraphDepsArgs) -> anyhow::Result<()> {
         let full_path = root.join(file_path);
         if let Some(parser) = registry.parser_for(&full_path) {
             if let Ok(source) = std::fs::read(&full_path) {
-                // Extract use/import statements by scanning for "use " patterns
                 if let Ok(source_str) = std::str::from_utf8(&source) {
                     for line in source_str.lines() {
                         let trimmed = line.trim();
                         if trimmed.starts_with("use ") {
-                            // Parse: "use crate::audio::engine::AudioEngine;"
                             let module = trimmed
                                 .trim_start_matches("use ")
                                 .split('{')
@@ -107,7 +102,7 @@ fn run_deps(args: crate::cli::GraphDepsArgs) -> anyhow::Result<()> {
                         }
                     }
                 }
-                let _ = parser; // suppress unused
+                let _ = parser;
             }
         }
     }
@@ -117,7 +112,6 @@ fn run_deps(args: crate::cli::GraphDepsArgs) -> anyhow::Result<()> {
     if args.fmt == "mermaid" {
         println!("{}", deps_graph.to_mermaid());
     } else {
-        // Text format
         if deps_graph.edges.is_empty() {
             println!("No module dependencies found.");
         } else {
@@ -126,7 +120,7 @@ fn run_deps(args: crate::cli::GraphDepsArgs) -> anyhow::Result<()> {
                 let from = file.with_extension("").to_string_lossy().replace("src/", "");
                 for dep in deps {
                     let to = dep.with_extension("").to_string_lossy().replace("src/", "");
-                    println!("  {} → {}", from, to);
+                    println!("  {} -> {}", from, to);
                 }
             }
         }
@@ -135,9 +129,8 @@ fn run_deps(args: crate::cli::GraphDepsArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_path(args: crate::cli::GraphPathArgs) -> anyhow::Result<()> {
-    let root = resolve_root()?;
-    let index = load_index(&root)?;
+fn run_path(args: crate::cli::GraphPathArgs, root: &PathBuf) -> anyhow::Result<()> {
+    let index = load_index(root)?;
     let graph = index
         .call_graph
         .as_ref()
@@ -146,7 +139,7 @@ fn run_path(args: crate::cli::GraphPathArgs) -> anyhow::Result<()> {
     match graph_path::find_path(graph, &args.from, &args.to) {
         Some(path) => {
             println!(
-                "Path: {} → {} ({} hops)",
+                "Path: {} -> {} ({} hops)",
                 args.from,
                 args.to,
                 path.len() - 1,
@@ -154,21 +147,19 @@ fn run_path(args: crate::cli::GraphPathArgs) -> anyhow::Result<()> {
             println!();
             for (i, node) in path.iter().enumerate() {
                 let indent = "  ".repeat(i);
-                let arrow = if i > 0 { "└→ " } else { "" };
+                let arrow = if i > 0 { "-> " } else { "" };
                 println!("{}{}{}", indent, arrow, node);
             }
         }
         None => {
-            println!("No path found between \"{}\" and \"{}\"", args.from, args.to);
+            println!(
+                "No path found between \"{}\" and \"{}\"",
+                args.from, args.to
+            );
         }
     }
 
     Ok(())
-}
-
-fn resolve_root() -> anyhow::Result<PathBuf> {
-    let cwd = std::env::current_dir()?;
-    Ok(storage::find_project_root(&cwd).unwrap_or(cwd))
 }
 
 fn load_index(root: &PathBuf) -> anyhow::Result<crate::model::project::ProjectIndex> {

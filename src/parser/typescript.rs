@@ -1,5 +1,5 @@
 use crate::model::symbol::*;
-use crate::parser::traits::LanguageParser;
+use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
 pub struct TypeScriptParser;
@@ -7,10 +7,6 @@ pub struct TypeScriptParser;
 impl LanguageParser for TypeScriptParser {
     fn extensions(&self) -> &[&str] {
         &["ts", "tsx"]
-    }
-
-    fn language_name(&self) -> &str {
-        "typescript"
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
@@ -23,8 +19,80 @@ impl LanguageParser for TypeScriptParser {
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
-        extract_ts_node(tree.root_node(), source, &file_str, file_path, None, &mut symbols);
+        extract_ts_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            None,
+            &mut symbols,
+        );
         Ok(symbols)
+    }
+
+    fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let mut edges = Vec::new();
+        collect_ts_calls(tree.root_node(), source, None, &mut edges);
+        Ok(edges)
+    }
+
+    fn find_identifiers(
+        &self,
+        source: &[u8],
+        target_name: &str,
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_ts_identifiers(tree.root_node(), source, target_name, &lines, &mut refs);
+        Ok(refs)
+    }
+
+    fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
+        let source_str = std::str::from_utf8(source).unwrap_or("");
+        let mut imports = Vec::new();
+        for line in source_str.lines() {
+            let trimmed = line.trim();
+            // import { Foo, Bar } from './module'
+            if trimmed.starts_with("import ") {
+                if let Some(from_pos) = trimmed.find(" from ") {
+                    let names_part = &trimmed[7..from_pos]; // between "import " and " from "
+                    let module = trimmed[from_pos + 6..]
+                        .trim()
+                        .trim_matches(|c| c == '\'' || c == '"' || c == ';');
+                    let names: Vec<String> = names_part
+                        .replace('{', "")
+                        .replace('}', "")
+                        .split(',')
+                        .map(|n| {
+                            n.trim()
+                                .split(" as ")
+                                .next()
+                                .unwrap_or("")
+                                .trim()
+                                .to_string()
+                        })
+                        .filter(|n| !n.is_empty() && n != "*")
+                        .collect();
+                    if !names.is_empty() {
+                        imports.push(ImportInfo {
+                            module_path: module.to_string(),
+                            names,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(imports)
     }
 }
 
@@ -135,7 +203,11 @@ fn extract_ts_class(
 ) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
-    let vis = if has_export(node) { Visibility::Public } else { Visibility::Private };
+    let vis = if has_export(node) {
+        Visibility::Public
+    } else {
+        Visibility::Private
+    };
 
     Some(Symbol {
         id: SymbolId::new(file_str, &name, &SymbolKind::Class),
@@ -226,7 +298,11 @@ fn extract_ts_interface(
         span: node_span(node),
         signature: None,
         doc_comment: extract_ts_doc(node, source),
-        visibility: if has_export(node) { Visibility::Public } else { Visibility::Private },
+        visibility: if has_export(node) {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        },
         parent: None,
         children: vec![],
     })
@@ -250,7 +326,11 @@ fn extract_ts_type_alias(
         span: node_span(node),
         signature: Some(extract_first_line(node, source)),
         doc_comment: extract_ts_doc(node, source),
-        visibility: if has_export(node) { Visibility::Public } else { Visibility::Private },
+        visibility: if has_export(node) {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        },
         parent: None,
         children: vec![],
     })
@@ -274,7 +354,11 @@ fn extract_ts_enum(
         span: node_span(node),
         signature: None,
         doc_comment: extract_ts_doc(node, source),
-        visibility: if has_export(node) { Visibility::Public } else { Visibility::Private },
+        visibility: if has_export(node) {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        },
         parent: None,
         children: vec![],
     })
@@ -414,4 +498,102 @@ fn extract_first_line(node: tree_sitter::Node, source: &[u8]) -> String {
         .unwrap_or("")
         .trim()
         .to_string()
+}
+
+// ─── Call extraction ────────────────────────────────────────────────
+
+fn collect_ts_calls(
+    node: tree_sitter::Node,
+    source: &[u8],
+    current_fn: Option<&str>,
+    edges: &mut Vec<CallEdge>,
+) {
+    let mut fn_name = current_fn;
+    if node.kind() == "function_declaration" || node.kind() == "method_definition" {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Some(name) = node_text(name_node, source) {
+                fn_name = Some(Box::leak(name.into_boxed_str()));
+            }
+        }
+    }
+
+    if node.kind() == "call_expression" {
+        if let Some(caller) = fn_name {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Some(callee) = node_text(func_node, source) {
+                    // Clean up: "obj.method" → "method"
+                    let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
+                    edges.push((caller.to_string(), clean));
+                }
+            }
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_ts_calls(child, source, fn_name, edges);
+    }
+}
+
+// ─── Identifier references ──────────────────────────────────────────
+
+fn collect_ts_identifiers(
+    node: tree_sitter::Node,
+    source: &[u8],
+    target: &str,
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "comment" | "string" | "template_string" | "template_substitution" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier" && node_text(node, source).as_deref() == Some(target) {
+        let line = node.start_position().row as u32 + 1;
+        let context = lines
+            .get(line as usize - 1)
+            .unwrap_or(&"")
+            .trim()
+            .to_string();
+        let kind = if let Some(parent) = node.parent() {
+            match parent.kind() {
+                "call_expression" => RefKind::Call,
+                "import_specifier" | "import_clause" | "import_statement" => RefKind::Import,
+                "type_annotation" | "type_identifier" | "generic_type" => RefKind::TypeRef,
+                "function_declaration" | "class_declaration" | "method_definition" => {
+                    if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                        RefKind::Definition
+                    } else {
+                        RefKind::Unknown
+                    }
+                }
+                "member_expression" => {
+                    if let Some(gp) = parent.parent() {
+                        if gp.kind() == "call_expression" {
+                            RefKind::Call
+                        } else {
+                            RefKind::FieldAccess
+                        }
+                    } else {
+                        RefKind::FieldAccess
+                    }
+                }
+                "new_expression" => RefKind::Constructor,
+                _ => RefKind::Unknown,
+            }
+        } else {
+            RefKind::Unknown
+        };
+        refs.push(IdentifierRef {
+            line,
+            context,
+            kind,
+        });
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_ts_identifiers(child, source, target, lines, refs);
+    }
 }

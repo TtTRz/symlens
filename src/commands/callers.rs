@@ -1,11 +1,8 @@
 use crate::cli::CallersArgs;
 use crate::index::storage;
 
-pub fn run_callers(args: CallersArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run_callers(args: CallersArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
@@ -29,11 +26,8 @@ pub fn run_callers(args: CallersArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn run_callees(args: CallersArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run_callees(args: CallersArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;

@@ -104,7 +104,8 @@ pub fn index_project(root: &Path, max_files: usize) -> anyhow::Result<IndexResul
     let import_data = all_imports.into_inner().unwrap();
     for (file, imp) in &import_data {
         for name in &imp.names {
-            index.import_names
+            index
+                .import_names
                 .entry(name.clone())
                 .or_default()
                 .push(file.clone());

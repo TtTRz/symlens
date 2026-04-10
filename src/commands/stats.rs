@@ -1,11 +1,8 @@
 use crate::cli::StatsArgs;
 use crate::index::storage;
 
-pub fn run(_args: StatsArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run(_args: StatsArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;

@@ -38,6 +38,9 @@ codelens outline --project
 
 # Impact analysis before refactoring
 codelens graph impact "Engine::run"
+
+# Use --root to target a different project
+codelens --root /path/to/project search "handler"
 ```
 
 ## Commands
@@ -57,18 +60,68 @@ codelens graph impact "Engine::run"
 | `codelens graph deps` | Module dependency graph | ~150 |
 | `codelens graph path <A> <B>` | Call path between two symbols | ~50 |
 | `codelens lines <file> <start> <end>` | Get source by line range | varies |
+| `codelens blame <name>` | Git blame for a symbol's line range | ~100 |
+| `codelens diff --from <ref> --to <ref>` | Changed symbols between git refs | ~50/change |
 | `codelens watch` | Auto-update index on file changes | — |
 | `codelens stats` | Index statistics | ~50 |
 
+**Global flags:** `--root <path>` to specify project root (default: auto-detect via `.git`).
+
 ## Language Support
+
+All 5 languages have full support for symbols, call extraction, reference finding, and import tracking:
 
 | Language | Symbols | Calls | Refs | Imports |
 |----------|---------|-------|------|---------|
 | **Rust** | ✅ fn, struct, enum, trait, impl, const, type, macro | ✅ | ✅ v3 | ✅ |
-| **TypeScript** | ✅ function, class, interface, type, enum, const | — | — | — |
-| **Python** | ✅ function, class, method, docstring | — | ✅ | — |
-| **Swift** | ✅ func, class, struct, enum, protocol | — | ✅ | — |
+| **TypeScript** | ✅ function, class, interface, type, enum, const | ✅ | ✅ | ✅ |
+| **Python** | ✅ function, class, method, docstring | ✅ | ✅ | ✅ |
+| **Swift** | ✅ func, class, struct, enum, protocol | ✅ | ✅ | ✅ |
 | **Go** | ✅ func, method, struct, interface, type, const, var | ✅ | ✅ | ✅ |
+
+## Git Integration
+
+```bash
+# Who last modified a symbol?
+codelens blame "AudioEngine::process_block"
+
+# What symbols changed between commits?
+codelens diff --from HEAD~3 --to HEAD
+
+# What symbols changed (filter by kind)?
+codelens diff --from main --to feature-branch --kind function
+```
+
+`diff` detects added (+), modified (~), and deleted (-) symbols with per-file breakdown.
+
+## MCP Server
+
+CodeLens can run as an [MCP](https://modelcontextprotocol.io/) server for direct integration with AI editors:
+
+```bash
+# Install with MCP support
+cargo install --path . --features mcp
+
+# Start MCP server (stdio transport)
+codelens mcp
+```
+
+**MCP tools:** `codelens_index`, `codelens_search`, `codelens_symbol`, `codelens_outline`, `codelens_refs`, `codelens_impact`
+
+The server registers `tools/list` and `tools/call` JSON-RPC methods following the MCP protocol.
+
+MCP config (for Claude Code / Cursor):
+
+```json
+{
+  "mcpServers": {
+    "codelens": {
+      "command": "codelens",
+      "args": ["mcp"]
+    }
+  }
+}
+```
 
 ## Claude Code Integration
 
@@ -87,7 +140,9 @@ This project has `codelens` installed for token-efficient code search.
 4. `codelens symbol "<id>" --source` only when you need the implementation
 5. `codelens outline --project` instead of `find` + `cat`
 6. `codelens refs "<name>"` instead of `grep -r "<name>"`
-7. **Before refactoring**: ALWAYS run `codelens graph impact "<symbol>"` first
+7. `codelens blame "<name>"` to check who last modified a symbol
+8. **Before refactoring**: ALWAYS run `codelens graph impact "<symbol>"` first
+9. **Before reviewing a PR**: run `codelens diff --from main --to HEAD`
 
 Run `codelens index` if you get "index not found" errors.
 ```
@@ -95,18 +150,21 @@ Run `codelens index` if you get "index not found" errors.
 ## Architecture
 
 ```
-tree-sitter AST → symbol extraction → tantivy BM25 index
-                                    → petgraph call graph
-                                    → bincode persistence
-                                    → import tracking (refs v3)
+Source Files → tree-sitter AST → Symbol Extraction ─┬→ tantivy BM25 Index
+                                                     ├→ petgraph Call Graph
+                                                     ├→ Import Tracking (refs v3)
+                                                     └→ bincode Persistence
 ```
 
-- **tree-sitter**: Parse 5 languages into ASTs, extract symbols
-- **tantivy**: Full-text BM25 search with custom camelCase tokenizer
-- **petgraph**: Directed call graph for callers/callees/impact analysis
-- **bincode**: Fast binary serialization for index persistence
-- **rayon**: Parallel file parsing
-- **notify**: File system watching for auto-update
+| Component | Role |
+|-----------|------|
+| **tree-sitter** | Parse 5 languages into ASTs, extract symbols |
+| **tantivy** | Full-text BM25 search with custom camelCase/snake_case tokenizer |
+| **petgraph** | Directed call graph for callers/callees/impact analysis |
+| **bincode** | Fast binary serialization for index persistence |
+| **rayon** | Parallel file parsing |
+| **notify** | File system watching for auto-update |
+| **tower-lsp** | MCP server transport (optional, `--features mcp`) |
 
 ## Performance
 
@@ -116,6 +174,7 @@ tree-sitter AST → symbol extraction → tantivy BM25 index
 | Search (BM25) | < 1ms |
 | Symbol lookup | < 0.1ms |
 | Index load from disk | < 50ms |
+| Release binary size | 12 MB |
 
 ## vs Other Tools
 
@@ -124,12 +183,29 @@ tree-sitter AST → symbol extraction → tantivy BM25 index
 | Speed | ⚡ 50ms cold start | 🐢 3-10s | ⚡ Fast | 🐢 Rebuilds each time |
 | Dependencies | None (single binary) | Python + LSP servers | None | Python |
 | Call graph | ✅ | ❌ | ✅ | ❌ |
+| Impact analysis | ✅ | ❌ | ❌ | ❌ |
 | Import tracking | ✅ | N/A (LSP) | ❌ | ❌ |
 | BM25 search | ✅ | ❌ | ✅ | ❌ |
-| Impact analysis | ✅ | ❌ | ❌ | ❌ |
+| Git blame/diff | ✅ | ❌ | ❌ | ❌ |
+| MCP server | ✅ | ✅ | ✅ | ❌ |
 | Refactoring | ❌ (read-only) | ✅ rename/move | ❌ | ❌ |
 | Precision | ~90% (syntax) | ~99% (semantic) | ~70% | N/A |
 
+## CI/CD
+
+GitHub Actions workflows included:
+
+- **CI** (`ci.yml`): check, test (Linux + macOS), clippy, rustfmt — runs on every push/PR to `main`
+- **Release** (`release.yml`): cross-platform builds (Linux x86/ARM, macOS x86/ARM) + GitHub Release with checksums — triggered by `v*` tags
+
+## Project Stats
+
+- **Rust 2024 edition**, minimum rustc 1.85
+- **~6000 lines** of Rust across 41 source files + 680 lines of tests
+- **43 tests** (6 unit + 37 integration), zero warnings
+- **16 commands** (15 default + 1 MCP feature-gated)
+- **5 languages** with full symbol/call/refs/import support
+
 ## License
 
-MIT
+MIT — [TtTRz](mailto:romc1224@gmail.com)

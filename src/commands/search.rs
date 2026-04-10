@@ -2,11 +2,8 @@ use crate::cli::SearchArgs;
 use crate::index::storage;
 use crate::model::symbol::{SymbolId, SymbolKind};
 
-pub fn run(args: SearchArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run(args: SearchArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;

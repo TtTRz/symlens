@@ -18,11 +18,7 @@ impl DepsGraph {
             // Try to resolve module_path to a known file
             if let Some(target) = resolve_module(module_path, known_files) {
                 if &target != file {
-                    graph
-                        .edges
-                        .entry(file.clone())
-                        .or_default()
-                        .insert(target);
+                    graph.edges.entry(file.clone()).or_default().insert(target);
                 }
             }
         }
@@ -31,6 +27,7 @@ impl DepsGraph {
     }
 
     /// Get files that depend on the given file (reverse deps).
+    #[allow(dead_code)]
     pub fn dependents(&self, file: &PathBuf) -> Vec<&PathBuf> {
         self.edges
             .iter()
@@ -40,6 +37,7 @@ impl DepsGraph {
     }
 
     /// Get files that the given file depends on.
+    #[allow(dead_code)]
     pub fn dependencies(&self, file: &PathBuf) -> Vec<&PathBuf> {
         self.edges
             .get(file)
@@ -66,15 +64,10 @@ impl DepsGraph {
 /// or "super::engine" is skipped for now.
 fn resolve_module(module_path: &str, known_files: &[PathBuf]) -> Option<PathBuf> {
     // Strip common prefixes
-    let cleaned = module_path
-        .replace("crate::", "src/")
-        .replace("::", "/");
+    let cleaned = module_path.replace("crate::", "src/").replace("::", "/");
 
     // Try direct match: src/audio/engine → src/audio/engine.rs
-    let candidates = [
-        format!("{}.rs", cleaned),
-        format!("{}/mod.rs", cleaned),
-    ];
+    let candidates = [format!("{}.rs", cleaned), format!("{}/mod.rs", cleaned)];
 
     for candidate in &candidates {
         let p = PathBuf::from(candidate);

@@ -1,9 +1,9 @@
-use crate::parser::traits::LanguageParser;
-use crate::parser::rust::RustParser;
-use crate::parser::typescript::TypeScriptParser;
-use crate::parser::python::PythonParser;
-use crate::parser::swift::SwiftParser;
 use crate::parser::go::GoParser;
+use crate::parser::python::PythonParser;
+use crate::parser::rust::RustParser;
+use crate::parser::swift::SwiftParser;
+use crate::parser::traits::LanguageParser;
+use crate::parser::typescript::TypeScriptParser;
 use std::collections::HashMap;
 use std::path::Path;
 

@@ -1,5 +1,5 @@
 use crate::model::symbol::*;
-use crate::parser::traits::{IdentifierRef, LanguageParser, RefKind};
+use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
 pub struct SwiftParser;
@@ -7,10 +7,6 @@ pub struct SwiftParser;
 impl LanguageParser for SwiftParser {
     fn extensions(&self) -> &[&str] {
         &["swift"]
-    }
-
-    fn language_name(&self) -> &str {
-        "swift"
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
@@ -23,19 +19,62 @@ impl LanguageParser for SwiftParser {
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
-        extract_swift_node(tree.root_node(), source, &file_str, file_path, None, &mut symbols);
+        extract_swift_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            None,
+            &mut symbols,
+        );
         Ok(symbols)
     }
 
-    fn find_identifiers(&self, source: &[u8], target_name: &str) -> anyhow::Result<Vec<IdentifierRef>> {
+    fn find_identifiers(
+        &self,
+        source: &[u8],
+        target_name: &str,
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_swift::LANGUAGE.into())?;
-        let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
         collect_swift_ids(tree.root_node(), source, target_name, &lines, &mut refs);
         Ok(refs)
+    }
+
+    fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_swift::LANGUAGE.into())?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let mut edges = Vec::new();
+        collect_swift_calls(tree.root_node(), source, None, &mut edges);
+        Ok(edges)
+    }
+
+    fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
+        let source_str = std::str::from_utf8(source).unwrap_or("");
+        let mut imports = Vec::new();
+        for line in source_str.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("import ") {
+                let module = trimmed[7..].trim();
+                if !module.is_empty() {
+                    let name = module.rsplit('.').next().unwrap_or(module).to_string();
+                    imports.push(ImportInfo {
+                        module_path: module.to_string(),
+                        names: vec![name],
+                    });
+                }
+            }
+        }
+        Ok(imports)
     }
 }
 
@@ -54,24 +93,50 @@ fn extract_swift_node(
             }
         }
         "class_declaration" => {
-            extract_swift_type(node, source, file_str, file_path, SymbolKind::Class, symbols);
+            extract_swift_type(
+                node,
+                source,
+                file_str,
+                file_path,
+                SymbolKind::Class,
+                symbols,
+            );
         }
         "struct_declaration" => {
-            extract_swift_type(node, source, file_str, file_path, SymbolKind::Struct, symbols);
+            extract_swift_type(
+                node,
+                source,
+                file_str,
+                file_path,
+                SymbolKind::Struct,
+                symbols,
+            );
         }
         "enum_declaration" => {
             extract_swift_type(node, source, file_str, file_path, SymbolKind::Enum, symbols);
         }
         "protocol_declaration" => {
-            extract_swift_type(node, source, file_str, file_path, SymbolKind::Interface, symbols);
+            extract_swift_type(
+                node,
+                source,
+                file_str,
+                file_path,
+                SymbolKind::Interface,
+                symbols,
+            );
         }
         _ => {}
     }
 
     // Recurse
     let recurse_kinds = [
-        "source_file", "statements", "class_body", "struct_body",
-        "enum_body", "protocol_body", "extension_body",
+        "source_file",
+        "statements",
+        "class_body",
+        "struct_body",
+        "enum_body",
+        "protocol_body",
+        "extension_body",
     ];
     if recurse_kinds.contains(&node.kind()) || node.kind() == "source_file" {
         let cursor = &mut node.walk();
@@ -187,7 +252,12 @@ fn extract_swift_signature(node: tree_sitter::Node, source: &[u8]) -> String {
         }
     }
     let sig_bytes = &source[start..end];
-    String::from_utf8_lossy(sig_bytes).trim().lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
+    String::from_utf8_lossy(sig_bytes)
+        .trim()
+        .lines()
+        .map(|l| l.trim())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn extract_swift_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
@@ -206,7 +276,12 @@ fn extract_swift_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
         }
         sibling = s.prev_sibling();
     }
-    if comments.is_empty() { None } else { comments.reverse(); Some(comments.join("\n")) }
+    if comments.is_empty() {
+        None
+    } else {
+        comments.reverse();
+        Some(comments.join("\n"))
+    }
 }
 
 fn collect_swift_ids(
@@ -223,20 +298,38 @@ fn collect_swift_ids(
 
     if node.kind() == "simple_identifier" && node_text(node, source).as_deref() == Some(target) {
         let line = node.start_position().row as u32 + 1;
-        let context = lines.get(line as usize - 1).unwrap_or(&"").trim().to_string();
+        let context = lines
+            .get(line as usize - 1)
+            .unwrap_or(&"")
+            .trim()
+            .to_string();
         let kind = if let Some(p) = node.parent() {
             match p.kind() {
                 "call_expression" => RefKind::Call,
                 "import_declaration" => RefKind::Import,
                 "type_identifier" | "type_annotation" => RefKind::TypeRef,
-                "function_declaration" | "class_declaration" | "struct_declaration" | "enum_declaration" | "protocol_declaration" => {
-                    if p.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) { RefKind::Definition } else { RefKind::Unknown }
+                "function_declaration"
+                | "class_declaration"
+                | "struct_declaration"
+                | "enum_declaration"
+                | "protocol_declaration" => {
+                    if p.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                        RefKind::Definition
+                    } else {
+                        RefKind::Unknown
+                    }
                 }
                 _ => RefKind::Unknown,
             }
-        } else { RefKind::Unknown };
+        } else {
+            RefKind::Unknown
+        };
 
-        refs.push(IdentifierRef { name: target.to_string(), line, context, kind });
+        refs.push(IdentifierRef {
+            line,
+            context,
+            kind,
+        });
     }
 
     let cursor = &mut node.walk();
@@ -257,5 +350,39 @@ fn node_span(node: tree_sitter::Node) -> Span {
         end_line: end.row as u32 + 1,
         start_col: start.column as u32,
         end_col: end.column as u32,
+    }
+}
+
+// ─── Call extraction ────────────────────────────────────────────────
+
+fn collect_swift_calls(
+    node: tree_sitter::Node,
+    source: &[u8],
+    current_fn: Option<&str>,
+    edges: &mut Vec<CallEdge>,
+) {
+    let mut fn_name = current_fn;
+    if node.kind() == "function_declaration" {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Some(name) = node_text(name_node, source) {
+                fn_name = Some(Box::leak(name.into_boxed_str()));
+            }
+        }
+    }
+
+    if node.kind() == "call_expression" {
+        if let Some(caller) = fn_name {
+            if let Some(func_node) = node.child(0) {
+                if let Some(callee) = node_text(func_node, source) {
+                    let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
+                    edges.push((caller.to_string(), clean));
+                }
+            }
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_swift_calls(child, source, fn_name, edges);
     }
 }

@@ -130,7 +130,10 @@ mod tests {
     use super::*;
 
     fn tok(input: &str) -> Vec<String> {
-        tokenize_code(input).into_iter().map(|(t, _, _)| t).collect()
+        tokenize_code(input)
+            .into_iter()
+            .map(|(t, _, _)| t)
+            .collect()
     }
 
     #[test]
@@ -145,7 +148,10 @@ mod tests {
 
     #[test]
     fn test_snake_case() {
-        assert_eq!(tok("process_audio_block"), vec!["process", "audio", "block"]);
+        assert_eq!(
+            tok("process_audio_block"),
+            vec!["process", "audio", "block"]
+        );
     }
 
     #[test]

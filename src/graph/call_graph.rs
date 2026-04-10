@@ -1,5 +1,5 @@
-use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
+use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -81,9 +81,8 @@ impl CallGraph {
             return self.callers_partial(name);
         };
 
-        let node_indices: Vec<NodeIndex> = (0..self.nodes.len())
-            .map(|i| NodeIndex::new(i))
-            .collect();
+        let node_indices: Vec<NodeIndex> =
+            (0..self.nodes.len()).map(|i| NodeIndex::new(i)).collect();
 
         graph
             .neighbors_directed(node_indices[idx], Direction::Incoming)
@@ -98,9 +97,8 @@ impl CallGraph {
             return self.callees_partial(name);
         };
 
-        let node_indices: Vec<NodeIndex> = (0..self.nodes.len())
-            .map(|i| NodeIndex::new(i))
-            .collect();
+        let node_indices: Vec<NodeIndex> =
+            (0..self.nodes.len()).map(|i| NodeIndex::new(i)).collect();
 
         graph
             .neighbors_directed(node_indices[idx], Direction::Outgoing)

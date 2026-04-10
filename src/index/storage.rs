@@ -47,9 +47,7 @@ pub fn save(index: &ProjectIndex) -> anyhow::Result<PathBuf> {
 
 /// Load a project index from disk.
 pub fn load(root: &Path) -> anyhow::Result<Option<ProjectIndex>> {
-    let root_hash = blake3::hash(root.to_string_lossy().as_bytes())
-        .to_hex()[..16]
-        .to_string();
+    let root_hash = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
 
     let index_path = cache_dir(&root_hash).join(INDEX_FILE);
 
@@ -58,15 +56,19 @@ pub fn load(root: &Path) -> anyhow::Result<Option<ProjectIndex>> {
     }
 
     let data = fs::read(&index_path)?;
-    let index: ProjectIndex = bincode::deserialize(&data)?;
+    let mut index: ProjectIndex = bincode::deserialize(&data)?;
+
+    // Rebuild call graph name_to_idx (skipped by serde)
+    if let Some(ref mut cg) = index.call_graph {
+        cg.rebuild_index();
+    }
+
     Ok(Some(index))
 }
 
 /// Open the tantivy search engine for a project.
 pub fn open_search(root: &Path) -> anyhow::Result<Option<SearchEngine>> {
-    let root_hash = blake3::hash(root.to_string_lossy().as_bytes())
-        .to_hex()[..16]
-        .to_string();
+    let root_hash = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
 
     let search_dir = cache_dir(&root_hash).join(SEARCH_DIR);
     if !search_dir.exists() {

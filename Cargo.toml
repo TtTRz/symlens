@@ -1,10 +1,15 @@
 [package]
 name = "codelens"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 description = "Token-efficient code intelligence CLI powered by tree-sitter"
+authors = ["TtTRz <romc1224@gmail.com>"]
 license = "MIT"
+
+[lib]
+name = "codelens"
+path = "src/lib.rs"
 
 [[bin]]
 name = "codelens"
@@ -37,21 +42,27 @@ petgraph = "0.7"
 ignore = "0.4"
 notify = "7"
 
-# Async (for watch command)
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
-
 # Hash
 blake3 = "1"
-
-# Output
-colored = "2"
 
 # Parallel
 rayon = "1"
 
 # Error handling
 anyhow = "1"
-thiserror = "2"
+
+[features]
+default = []
+mcp = ["tokio", "tower-lsp"]
+
+[dependencies.tokio]
+version = "1"
+features = ["rt-multi-thread", "macros", "io-std"]
+optional = true
+
+[dependencies.tower-lsp]
+version = "0.20"
+optional = true
 
 [profile.release]
 lto = true

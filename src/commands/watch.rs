@@ -1,21 +1,10 @@
 use crate::index::{indexer, storage};
 use notify::{Event, RecursiveMode, Watcher};
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-pub struct WatchArgs {
-    pub path: Option<String>,
-}
-
-pub fn run(path: Option<String>) -> anyhow::Result<()> {
-    let root = match path {
-        Some(p) => PathBuf::from(p).canonicalize()?,
-        None => {
-            let cwd = std::env::current_dir()?;
-            storage::find_project_root(&cwd).unwrap_or(cwd)
-        }
-    };
+pub fn run(path: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(path)?;
 
     eprintln!("👁  Watching {} for changes...", root.display());
     eprintln!("   Press Ctrl+C to stop.");
@@ -23,7 +12,11 @@ pub fn run(path: Option<String>) -> anyhow::Result<()> {
     // Initial index
     let result = indexer::index_project(&root, 100_000)?;
     storage::save(&result.index)?;
-    eprintln!("   Indexed {} symbols in {}ms", result.index.symbols.len(), result.duration_ms);
+    eprintln!(
+        "   Indexed {} symbols in {}ms",
+        result.index.symbols.len(),
+        result.duration_ms
+    );
 
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
     let mut watcher = notify::recommended_watcher(tx)?;
@@ -39,7 +32,12 @@ pub fn run(path: Option<String>) -> anyhow::Result<()> {
                 let has_source_change = event.paths.iter().any(|p| {
                     matches!(
                         p.extension().and_then(|e| e.to_str()),
-                        Some("rs") | Some("ts") | Some("tsx") | Some("py") | Some("swift") | Some("go")
+                        Some("rs")
+                            | Some("ts")
+                            | Some("tsx")
+                            | Some("py")
+                            | Some("swift")
+                            | Some("go")
                     )
                 });
 

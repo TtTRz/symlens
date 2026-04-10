@@ -1,11 +1,7 @@
 use crate::cli::LinesArgs;
-use crate::index::storage;
 
-pub fn run(args: LinesArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run(args: LinesArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let full_path = root.join(&args.file);
     if !full_path.exists() {
@@ -19,7 +15,11 @@ pub fn run(args: LinesArgs) -> anyhow::Result<()> {
     let end = (args.end as usize).min(lines.len());
 
     if start >= lines.len() {
-        anyhow::bail!("Start line {} exceeds file length {}", args.start, lines.len());
+        anyhow::bail!(
+            "Start line {} exceeds file length {}",
+            args.start,
+            lines.len()
+        );
     }
 
     // Cap at 500 lines

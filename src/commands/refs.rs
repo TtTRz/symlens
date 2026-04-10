@@ -5,11 +5,8 @@ use crate::parser::traits::RefKind;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-pub fn run(args: RefsArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run(args: RefsArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
@@ -18,20 +15,21 @@ pub fn run(args: RefsArgs) -> anyhow::Result<()> {
 
     // Refs v3: narrow search scope using import_names
     // If we know which files import the target name, only search those + the defining file
-    let candidate_files: Vec<PathBuf> = if let Some(importing_files) = index.import_names.get(&args.name) {
-        // Files that import this name + files where it's defined
-        let mut files: HashSet<PathBuf> = importing_files.iter().cloned().collect();
-        // Also include files that define a symbol with this name
-        for sym in index.symbols.values() {
-            if sym.name == args.name {
-                files.insert(sym.file_path.clone());
+    let candidate_files: Vec<PathBuf> =
+        if let Some(importing_files) = index.import_names.get(&args.name) {
+            // Files that import this name + files where it's defined
+            let mut files: HashSet<PathBuf> = importing_files.iter().cloned().collect();
+            // Also include files that define a symbol with this name
+            for sym in index.symbols.values() {
+                if sym.name == args.name {
+                    files.insert(sym.file_path.clone());
+                }
             }
-        }
-        files.into_iter().collect()
-    } else {
-        // No import info — fall back to scanning all indexed files
-        index.file_symbols.keys().cloned().collect()
-    };
+            files.into_iter().collect()
+        } else {
+            // No import info — fall back to scanning all indexed files
+            index.file_symbols.keys().cloned().collect()
+        };
 
     let mut all_refs = Vec::new();
 
@@ -143,9 +141,17 @@ pub fn run(args: RefsArgs) -> anyhow::Result<()> {
 
 fn format_breakdown(calls: usize, types: usize, imports: usize, other: usize) -> String {
     let mut parts = Vec::new();
-    if calls > 0 { parts.push(format!("{} calls", calls)); }
-    if types > 0 { parts.push(format!("{} types", types)); }
-    if imports > 0 { parts.push(format!("{} imports", imports)); }
-    if other > 0 { parts.push(format!("{} other", other)); }
+    if calls > 0 {
+        parts.push(format!("{} calls", calls));
+    }
+    if types > 0 {
+        parts.push(format!("{} types", types));
+    }
+    if imports > 0 {
+        parts.push(format!("{} imports", imports));
+    }
+    if other > 0 {
+        parts.push(format!("{} other", other));
+    }
     parts.join(", ")
 }

@@ -4,11 +4,8 @@ use crate::model::symbol::{Symbol, SymbolKind};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub fn run(args: OutlineArgs) -> anyhow::Result<()> {
-    let root = {
-        let cwd = std::env::current_dir()?;
-        storage::find_project_root(&cwd).unwrap_or(cwd)
-    };
+pub fn run(args: OutlineArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
@@ -60,7 +57,11 @@ fn print_file_outline(
 
         for (j, child) in children.iter().enumerate() {
             let is_child_last = j == children.len() - 1;
-            let cp = if is_child_last { "└──" } else { "├──" };
+            let cp = if is_child_last {
+                "└──"
+            } else {
+                "├──"
+            };
             print!("{}", child_prefix);
             print_symbol_line(cp, child);
         }
@@ -110,7 +111,16 @@ fn print_project_outline(
                 let top_names: Vec<String> = symbols
                     .iter()
                     .filter(|s| s.parent.is_none())
-                    .filter(|s| matches!(s.kind, SymbolKind::Function | SymbolKind::Struct | SymbolKind::Class | SymbolKind::Interface | SymbolKind::Enum))
+                    .filter(|s| {
+                        matches!(
+                            s.kind,
+                            SymbolKind::Function
+                                | SymbolKind::Struct
+                                | SymbolKind::Class
+                                | SymbolKind::Interface
+                                | SymbolKind::Enum
+                        )
+                    })
                     .take(5)
                     .map(|s| s.name.clone())
                     .collect();
@@ -121,10 +131,7 @@ fn print_project_outline(
                     format!(" — {}", top_names.join(", "))
                 };
 
-                let file_name = file
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
+                let file_name = file.file_name().unwrap_or_default().to_string_lossy();
 
                 println!(
                     "│   ├── {}{} [{} symbols]",
@@ -140,10 +147,7 @@ fn print_project_outline(
 }
 
 fn print_symbol_line(prefix: &str, sym: &Symbol) {
-    let sig_or_name = sym
-        .signature
-        .as_deref()
-        .unwrap_or(&sym.name);
+    let sig_or_name = sym.signature.as_deref().unwrap_or(&sym.name);
 
     // Truncate long signatures
     let display = if sig_or_name.len() > 80 {
@@ -154,9 +158,6 @@ fn print_symbol_line(prefix: &str, sym: &Symbol) {
 
     println!(
         "{} {} ({}) [L{}]",
-        prefix,
-        display,
-        sym.kind,
-        sym.span.start_line,
+        prefix, display, sym.kind, sym.span.start_line,
     );
 }
