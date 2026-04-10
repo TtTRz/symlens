@@ -86,7 +86,7 @@ fn print_project_outline(
     // Group files by directory
     let mut dir_tree: BTreeMap<PathBuf, Vec<(&PathBuf, Vec<&Symbol>)>> = BTreeMap::new();
 
-    for (file, _ids) in &index.file_symbols {
+    for file in index.file_symbols.keys() {
         let dir = file.parent().unwrap_or(file).to_path_buf();
         let symbols = index.symbols_in_file(file);
         dir_tree.entry(dir).or_default().push((file, symbols));

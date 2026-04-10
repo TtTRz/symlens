@@ -13,6 +13,12 @@ pub struct LanguageRegistry {
     extension_map: HashMap<String, usize>,
 }
 
+impl Default for LanguageRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LanguageRegistry {
     pub fn new() -> Self {
         let mut reg = Self {

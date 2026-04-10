@@ -46,46 +46,40 @@ pub fn index_project(root: &Path, max_files: usize) -> anyhow::Result<IndexResul
         let rel_path = file_path.strip_prefix(root).unwrap_or(file_path);
 
         if let Some(parser) = registry.parser_for(file_path) {
-            match std::fs::read(file_path) {
-                Ok(source) => {
-                    // Extract symbols
-                    match parser.extract_symbols(&source, rel_path) {
-                        Ok(symbols) => {
-                            let mtime = std::fs::metadata(file_path)
-                                .and_then(|m| m.modified())
-                                .ok()
-                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                .map(|d| d.as_secs())
-                                .unwrap_or(0);
+            if let Ok(source) = std::fs::read(file_path) {
+                // Extract symbols
+                if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
+                    let mtime = std::fs::metadata(file_path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
 
-                            let mut idx = index.lock().unwrap();
-                            for symbol in symbols {
-                                idx.insert(symbol);
-                            }
-                            idx.file_mtimes.insert(rel_path.to_path_buf(), mtime);
-                            *files_parsed.lock().unwrap() += 1;
-                        }
-                        Err(_) => {}
+                    let mut idx = index.lock().unwrap();
+                    for symbol in symbols {
+                        idx.insert(symbol);
                     }
+                    idx.file_mtimes.insert(rel_path.to_path_buf(), mtime);
+                    *files_parsed.lock().unwrap() += 1;
+                }
 
-                    // Extract call edges
-                    if let Ok(edges) = parser.extract_calls(&source, rel_path) {
-                        if !edges.is_empty() {
-                            all_call_edges.lock().unwrap().extend(edges);
-                        }
+                // Extract call edges
+                if let Ok(edges) = parser.extract_calls(&source, rel_path) {
+                    if !edges.is_empty() {
+                        all_call_edges.lock().unwrap().extend(edges);
                     }
+                }
 
-                    // Extract imports
-                    if let Ok(imps) = parser.extract_imports(&source, rel_path) {
-                        if !imps.is_empty() {
-                            let mut all = all_imports.lock().unwrap();
-                            for imp in imps {
-                                all.push((rel_path.to_path_buf(), imp));
-                            }
+                // Extract imports
+                if let Ok(imps) = parser.extract_imports(&source, rel_path) {
+                    if !imps.is_empty() {
+                        let mut all = all_imports.lock().unwrap();
+                        for imp in imps {
+                            all.push((rel_path.to_path_buf(), imp));
                         }
                     }
                 }
-                Err(_) => {}
             }
         }
     });

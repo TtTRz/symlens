@@ -70,8 +70,7 @@ impl LanguageParser for TypeScriptParser {
                         .trim()
                         .trim_matches(|c| c == '\'' || c == '"' || c == ';');
                     let names: Vec<String> = names_part
-                        .replace('{', "")
-                        .replace('}', "")
+                        .replace(['{', '}'], "")
                         .split(',')
                         .map(|n| {
                             n.trim()
