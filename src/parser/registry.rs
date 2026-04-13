@@ -1,3 +1,4 @@
+use crate::parser::dart::DartParser;
 use crate::parser::go::GoParser;
 use crate::parser::python::PythonParser;
 use crate::parser::rust::RustParser;
@@ -31,6 +32,7 @@ impl LanguageRegistry {
         reg.register(Box::new(PythonParser));
         reg.register(Box::new(SwiftParser));
         reg.register(Box::new(GoParser));
+        reg.register(Box::new(DartParser));
 
         reg
     }

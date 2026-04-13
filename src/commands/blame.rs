@@ -2,7 +2,7 @@ use crate::cli::BlameArgs;
 use crate::index::storage;
 use std::process::Command;
 
-pub fn run(args: BlameArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(args: BlameArgs, root_override: Option<&str>, json: bool) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
@@ -42,6 +42,29 @@ pub fn run(args: BlameArgs, root_override: Option<&str>) -> anyhow::Result<()> {
 
     let blame_output = String::from_utf8_lossy(&output.stdout);
     let blame_info = parse_porcelain_blame(&blame_output);
+
+    if json {
+        let commits: Vec<serde_json::Value> = blame_info
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "commit": b.commit, "author": b.author, "date": b.date,
+                    "summary": b.summary, "line": b.line, "content": b.content,
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::json!({
+                "symbol": symbol.qualified_name,
+                "kind": symbol.kind.as_str(),
+                "file": symbol.file_path.to_string_lossy(),
+                "lines": [start, end],
+                "blame": commits,
+            })
+        );
+        return Ok(());
+    }
 
     // Print header
     println!(

@@ -1,11 +1,17 @@
 use crate::cli::DiffArgs;
 use crate::model::symbol::SymbolKind;
+use crate::output::color;
 use crate::parser::registry::LanguageRegistry;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub fn run(args: DiffArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(
+    args: DiffArgs,
+    root_override: Option<&str>,
+    json: bool,
+    color_on: bool,
+) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
     let registry = LanguageRegistry::new();
     let mut changed_symbols: Vec<ChangedSymbol> = Vec::new();
@@ -109,7 +115,14 @@ pub fn run(args: DiffArgs, root_override: Option<&str>) -> anyhow::Result<()> {
     });
 
     if changed_symbols.is_empty() {
-        println!("No symbol changes between {} and {}", args.from, args.to);
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({ "changes": [], "from": args.from, "to": args.to })
+            );
+        } else {
+            println!("No symbol changes between {} and {}", args.from, args.to);
+        }
         return Ok(());
     }
 
@@ -137,20 +150,48 @@ pub fn run(args: DiffArgs, root_override: Option<&str>) -> anyhow::Result<()> {
         .filter(|s| matches!(s.change_kind, ChangeKind::Deleted))
         .count();
 
+    if json {
+        let items: Vec<serde_json::Value> = changed_symbols.iter().map(|s| {
+            serde_json::json!({
+                "file": s.file, "name": s.name, "kind": s.kind.as_str(),
+                "change": match s.change_kind { ChangeKind::Added => "added", ChangeKind::Modified => "modified", ChangeKind::Deleted => "deleted" },
+                "lines": [s.span_start, s.span_end], "signature": s.signature,
+            })
+        }).collect();
+        println!(
+            "{}",
+            serde_json::json!({
+                "from": args.from, "to": args.to,
+                "changes": items, "total": total_symbols,
+                "added": added_count, "modified": modified_count, "deleted": deleted_count,
+            })
+        );
+        return Ok(());
+    }
+
     println!(
-        "Changed symbols: {} → {} ({} symbols in {} files — +{} ~{} -{})",
-        args.from, args.to, total_symbols, total_files, added_count, modified_count, deleted_count,
+        "Changed symbols: {} → {} ({} symbols in {} files — {}+{} {}~{} {}-{})",
+        args.from,
+        args.to,
+        total_symbols,
+        total_files,
+        color::green(&format!("{}", added_count), color_on),
+        "",
+        color::yellow(&format!("{}", modified_count), color_on),
+        "",
+        color::red(&format!("{}", deleted_count), color_on),
+        "",
     );
     println!();
 
     for file in &files {
         let syms = by_file.get(file).unwrap();
-        println!("{} ({} changes)", file, syms.len());
+        println!("{} ({} changes)", color::bold(file, color_on), syms.len());
         for sym in syms {
-            let change_marker = match sym.change_kind {
-                ChangeKind::Added => "+",
-                ChangeKind::Modified => "~",
-                ChangeKind::Deleted => "-",
+            let (marker, marker_fn): (&str, fn(&str, bool) -> String) = match sym.change_kind {
+                ChangeKind::Added => ("+", color::green),
+                ChangeKind::Modified => ("~", color::yellow),
+                ChangeKind::Deleted => ("-", color::red),
             };
 
             let sig = sym.signature.as_deref().unwrap_or(&sym.name);
@@ -162,11 +203,14 @@ pub fn run(args: DiffArgs, root_override: Option<&str>) -> anyhow::Result<()> {
 
             if sym.span_start > 0 {
                 println!(
-                    "  {} {} ({}) [L{}-{}]",
-                    change_marker, sig_display, sym.kind, sym.span_start, sym.span_end,
+                    "  {} {} {} {}",
+                    marker_fn(marker, color_on),
+                    sig_display,
+                    color::cyan(&format!("({})", sym.kind), color_on),
+                    color::dim(&format!("[L{}-{}]", sym.span_start, sym.span_end), color_on),
                 );
             } else {
-                println!("  {} {}", change_marker, sig_display);
+                println!("  {} {}", marker_fn(marker, color_on), sig_display);
             }
         }
         println!();
@@ -174,7 +218,11 @@ pub fn run(args: DiffArgs, root_override: Option<&str>) -> anyhow::Result<()> {
 
     if total_symbols > 0 {
         println!(
-            "Tip: run `codelens graph impact \"<symbol>\"` to check blast radius of modified symbols."
+            "{}",
+            color::dim(
+                "Tip: run `codelens graph impact \"<symbol>\"` to check blast radius of modified symbols.",
+                color_on
+            ),
         );
     }
 

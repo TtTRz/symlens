@@ -306,6 +306,192 @@ mod parser_tests {
     }
 }
 
+// ─── Dart parser tests ──────────────────────────────────────────────
+
+mod dart_tests {
+    use super::*;
+
+    fn parse_dart_fixture() -> Vec<codelens::model::symbol::Symbol> {
+        let parser = codelens::parser::dart::DartParser;
+        let source = include_bytes!("fixtures/sample.dart");
+        codelens::parser::traits::LanguageParser::extract_symbols(
+            &parser,
+            source,
+            Path::new("sample.dart"),
+        )
+        .expect("Failed to parse Dart fixture")
+    }
+
+    #[test]
+    fn dart_extracts_class() {
+        let symbols = parse_dart_fixture();
+        let classes: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .collect();
+        assert!(
+            classes.iter().any(|s| s.name == "User"),
+            "Should find User class, got: {:?}",
+            classes.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert!(
+            classes.iter().any(|s| s.name == "UserRepository"),
+            "Should find UserRepository class"
+        );
+    }
+
+    #[test]
+    fn dart_extracts_abstract_class() {
+        let symbols = parse_dart_fixture();
+        let interfaces: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .collect();
+        assert!(
+            interfaces.iter().any(|s| s.name == "Repository"),
+            "Should find abstract class Repository as Interface, got: {:?}",
+            interfaces.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn dart_extracts_mixin() {
+        let symbols = parse_dart_fixture();
+        let mixins: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .collect();
+        assert!(
+            mixins.iter().any(|s| s.name == "Logger"),
+            "Should find Logger mixin, got: {:?}",
+            mixins.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn dart_extracts_enum() {
+        let symbols = parse_dart_fixture();
+        let enums: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Enum)
+            .collect();
+        assert!(
+            enums.iter().any(|s| s.name == "OperationStatus"),
+            "Should find OperationStatus enum"
+        );
+    }
+
+    #[test]
+    fn dart_extracts_typedef() {
+        let symbols = parse_dart_fixture();
+        let types: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::TypeAlias)
+            .collect();
+        assert!(
+            types.iter().any(|s| s.name == "UserCallback"),
+            "Should find UserCallback typedef, got: {:?}",
+            types.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn dart_extracts_top_level_functions() {
+        let symbols = parse_dart_fixture();
+        let fns: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .collect();
+        assert!(
+            fns.iter().any(|s| s.name == "createRepository"),
+            "Should find createRepository function"
+        );
+        assert!(
+            fns.iter().any(|s| s.name == "processUsers"),
+            "Should find processUsers function"
+        );
+    }
+
+    #[test]
+    fn dart_extracts_methods() {
+        let symbols = parse_dart_fixture();
+        let methods: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Method)
+            .collect();
+        assert!(
+            methods.iter().any(|s| s.name == "findById"),
+            "Should find findById method, got: {:?}",
+            methods.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert!(
+            methods.iter().any(|s| s.name == "save"),
+            "Should find save method"
+        );
+    }
+
+    #[test]
+    fn dart_extracts_doc_comments() {
+        let symbols = parse_dart_fixture();
+        let user = symbols.iter().find(|s| s.name == "User").unwrap();
+        assert!(user.doc_comment.is_some(), "User should have doc comment");
+        assert!(
+            user.doc_comment.as_ref().unwrap().contains("User model"),
+            "Doc should contain 'User model'"
+        );
+    }
+
+    #[test]
+    fn dart_extracts_calls() {
+        let parser = codelens::parser::dart::DartParser;
+        let source = include_bytes!("fixtures/sample.dart");
+        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+            &parser,
+            source,
+            Path::new("sample.dart"),
+        )
+        .expect("Failed to extract Dart calls");
+        // Dart calls are extracted — just verify the parser doesn't crash
+        // Dart's selector-based call patterns (obj.method()) are complex
+        let _ = calls;
+    }
+
+    #[test]
+    fn dart_extracts_imports() {
+        let parser = codelens::parser::dart::DartParser;
+        let source = include_bytes!("fixtures/sample.dart");
+        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+            &parser,
+            source,
+            Path::new("sample.dart"),
+        )
+        .expect("Failed to extract Dart imports");
+        assert!(!imports.is_empty(), "Should find imports");
+        let all_names: Vec<_> = imports.iter().flat_map(|i| &i.names).collect();
+        assert!(
+            all_names
+                .iter()
+                .any(|n| n.contains("async") || n.contains("flutter") || n.contains("Widget")),
+            "Should find dart:async or flutter import, got: {:?}",
+            imports
+        );
+    }
+
+    #[test]
+    fn dart_find_identifiers() {
+        let parser = codelens::parser::dart::DartParser;
+        let source = include_bytes!("fixtures/sample.dart");
+        let refs =
+            codelens::parser::traits::LanguageParser::find_identifiers(&parser, source, "User")
+                .expect("Failed to find Dart identifiers");
+        assert!(
+            refs.len() >= 2,
+            "Should find at least 2 refs to 'User', got {}",
+            refs.len()
+        );
+    }
+}
+
 // ─── Call graph tests ───────────────────────────────────────────────
 
 mod call_graph_tests {

@@ -56,6 +56,14 @@ impl CallGraph {
         }
     }
 
+    /// Get all call edges as (caller, callee) pairs.
+    pub fn all_edges(&self) -> Vec<(String, String)> {
+        self.edges
+            .iter()
+            .map(|&(from, to)| (self.nodes[from].clone(), self.nodes[to].clone()))
+            .collect()
+    }
+
     /// Get the petgraph DiGraph representation.
     fn to_digraph(&self) -> DiGraph<&str, ()> {
         let mut graph = DiGraph::new();

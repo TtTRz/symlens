@@ -72,7 +72,7 @@ codelens --root /path/to/project search "handler"
 
 ## Language Support
 
-All 5 languages have full support for symbols, call extraction, reference finding, and import tracking:
+All 6 languages have full support for symbols, call extraction, reference finding, and import tracking:
 
 | Language | Symbols | Calls | Refs | Imports |
 |----------|---------|-------|------|---------|
@@ -81,6 +81,7 @@ All 5 languages have full support for symbols, call extraction, reference findin
 | **Python** | ✅ function, class, method, docstring | ✅ | ✅ | ✅ |
 | **Swift** | ✅ func, class, struct, enum, protocol | ✅ | ✅ | ✅ |
 | **Go** | ✅ func, method, struct, interface, type, const, var | ✅ | ✅ | ✅ |
+| **Dart** | ✅ class, mixin, enum, extension, typedef, function, method | ✅ | ✅ | ✅ |
 
 ## Git Integration
 
@@ -169,7 +170,7 @@ Source Files → tree-sitter AST → Symbol Extraction ─┬→ tantivy BM25 In
 
 | Component | Role |
 |-----------|------|
-| **tree-sitter** | Parse 5 languages into ASTs, extract symbols |
+| **tree-sitter** | Parse 6 languages into ASTs, extract symbols |
 | **tantivy** | Full-text BM25 search with custom camelCase/snake_case tokenizer |
 | **petgraph** | Directed call graph for callers/callees/impact analysis |
 | **bincode** | Fast binary serialization for index persistence |
@@ -215,7 +216,7 @@ GitHub Actions workflows included:
 - **~6000 lines** of Rust across 41 source files + 680 lines of tests
 - **43 tests** (6 unit + 37 integration), zero warnings
 - **17 commands** (16 default + 1 MCP feature-gated)
-- **5 languages** with full symbol/call/refs/import support
+- **6 languages** with full symbol/call/refs/import support
 
 ## License
 

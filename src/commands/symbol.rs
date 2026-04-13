@@ -1,8 +1,14 @@
 use crate::cli::SymbolArgs;
 use crate::index::storage;
 use crate::model::symbol::SymbolId;
+use crate::output::color;
 
-pub fn run(args: SymbolArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(
+    args: SymbolArgs,
+    root_override: Option<&str>,
+    json: bool,
+    color_on: bool,
+) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
@@ -13,7 +19,6 @@ pub fn run(args: SymbolArgs, root_override: Option<&str>) -> anyhow::Result<()> 
         .get(&id)
         .ok_or_else(|| anyhow::anyhow!("Symbol not found: {}", args.symbol_id))?;
 
-    // Get source if requested
     let source_text = if args.source {
         let source_file = root.join(&symbol.file_path);
         if source_file.exists() {
@@ -29,7 +34,7 @@ pub fn run(args: SymbolArgs, root_override: Option<&str>) -> anyhow::Result<()> 
         None
     };
 
-    if args.json {
+    if json {
         println!(
             "{}",
             crate::output::json::format_symbol(symbol, source_text.as_deref())
@@ -37,13 +42,14 @@ pub fn run(args: SymbolArgs, root_override: Option<&str>) -> anyhow::Result<()> 
         return Ok(());
     }
 
-    // Compact output
     println!(
-        "{} ({}) [{}: {}]",
-        symbol.qualified_name,
-        symbol.kind,
-        symbol.file_path.display(),
-        symbol.span,
+        "{} {} {}",
+        color::bold(&symbol.qualified_name, color_on),
+        color::cyan(&format!("({})", symbol.kind), color_on),
+        color::dim(
+            &format!("[{}: {}]", symbol.file_path.display(), symbol.span),
+            color_on
+        ),
     );
 
     if let Some(ref sig) = symbol.signature {
@@ -52,7 +58,7 @@ pub fn run(args: SymbolArgs, root_override: Option<&str>) -> anyhow::Result<()> 
 
     if let Some(ref doc) = symbol.doc_comment {
         for line in doc.lines() {
-            println!("  /// {}", line);
+            println!("  {}", color::dim(&format!("/// {}", line), color_on));
         }
     }
 
@@ -61,10 +67,17 @@ pub fn run(args: SymbolArgs, root_override: Option<&str>) -> anyhow::Result<()> 
     }
 
     if let Some(ref src) = source_text {
-        println!("───────────────────────────────────────");
+        println!(
+            "{}",
+            color::dim("───────────────────────────────────────", color_on)
+        );
         let start = symbol.span.start_line as usize;
         for (i, line) in src.lines().enumerate() {
-            println!("{:>4} {}", start + i, line);
+            println!(
+                "{} {}",
+                color::dim(&format!("{:>4}", start + i), color_on),
+                line
+            );
         }
     }
 

@@ -4,16 +4,16 @@ use crate::index::storage;
 use crate::parser::registry::LanguageRegistry;
 use std::path::PathBuf;
 
-pub fn run(args: GraphArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(args: GraphArgs, root_override: Option<&str>, json: bool) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
     match args.command {
-        GraphCommand::Impact(a) => run_impact(a, &root),
-        GraphCommand::Deps(a) => run_deps(a, &root),
-        GraphCommand::Path(a) => run_path(a, &root),
+        GraphCommand::Impact(a) => run_impact(a, &root, json),
+        GraphCommand::Deps(a) => run_deps(a, &root, json),
+        GraphCommand::Path(a) => run_path(a, &root, json),
     }
 }
 
-fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf) -> anyhow::Result<()> {
+fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf, json: bool) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let graph = index
         .call_graph
@@ -21,6 +21,22 @@ fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf) -> anyhow::Resu
         .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `codelens index`."))?;
 
     let result = impact::analyze_impact(graph, &args.name, args.depth);
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "target": result.target,
+                "direct_callers": result.direct_callers,
+                "direct_callees": result.direct_callees,
+                "transitive_callers": result.transitive_callers.iter()
+                    .map(|(n, d)| serde_json::json!({"name": n, "depth": d}))
+                    .collect::<Vec<_>>(),
+                "total_dependents": result.direct_callers.len() + result.transitive_callers.len(),
+            })
+        );
+        return Ok(());
+    }
 
     println!("Impact: {}", result.target);
     println!();
@@ -67,7 +83,7 @@ fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf) -> anyhow::Resu
     Ok(())
 }
 
-fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf) -> anyhow::Result<()> {
+fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf, _json: bool) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let registry = LanguageRegistry::new();
 
@@ -130,7 +146,7 @@ fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf) -> anyhow::Result<(
     Ok(())
 }
 
-fn run_path(args: crate::cli::GraphPathArgs, root: &PathBuf) -> anyhow::Result<()> {
+fn run_path(args: crate::cli::GraphPathArgs, root: &PathBuf, json: bool) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let graph = index
         .call_graph
@@ -139,6 +155,13 @@ fn run_path(args: crate::cli::GraphPathArgs, root: &PathBuf) -> anyhow::Result<(
 
     match graph_path::find_path(graph, &args.from, &args.to) {
         Some(path) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "from": args.from, "to": args.to, "path": path, "hops": path.len() - 1 })
+                );
+                return Ok(());
+            }
             println!(
                 "Path: {} -> {} ({} hops)",
                 args.from,

@@ -1,3 +1,4 @@
+pub mod dart;
 pub mod go;
 pub mod python;
 pub mod registry;

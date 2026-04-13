@@ -16,6 +16,14 @@ pub struct Cli {
     /// Project root path (default: auto-detect via .git)
     #[arg(long = "root", global = true)]
     pub project_root: Option<String>,
+
+    /// Output as JSON (applies to all commands)
+    #[arg(long, global = true)]
+    pub json: bool,
+
+    /// Disable colored output
+    #[arg(long, global = true)]
+    pub no_color: bool,
 }
 
 #[derive(Subcommand)]
@@ -46,6 +54,8 @@ pub enum Commands {
     Blame(BlameArgs),
     /// Show changed symbols between git refs
     Diff(DiffArgs),
+    /// Export index as JSON
+    Export(ExportArgs),
     /// Install CodeLens integration into AI agents (Claude Code, OpenClaw, Cursor)
     Setup(SetupArgs),
     /// Start MCP (Model Context Protocol) server (requires --features mcp)
@@ -69,6 +79,10 @@ pub struct IndexArgs {
     /// Quiet mode (minimal output)
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(clap::Args)]
@@ -87,10 +101,6 @@ pub struct SearchArgs {
     /// Maximum number of results
     #[arg(short, long, default_value = "20")]
     pub limit: usize,
-
-    /// Output as JSON
-    #[arg(long)]
-    pub json: bool,
 }
 
 #[derive(clap::Args)]
@@ -101,10 +111,6 @@ pub struct SymbolArgs {
     /// Include full source code
     #[arg(long)]
     pub source: bool,
-
-    /// Output as JSON
-    #[arg(long)]
-    pub json: bool,
 }
 
 #[derive(clap::Args)]
@@ -233,6 +239,17 @@ pub struct DiffArgs {
     /// Only show symbols of this kind
     #[arg(long)]
     pub kind: Option<String>,
+}
+
+#[derive(clap::Args)]
+pub struct ExportArgs {
+    /// Export format: json (default), sqlite
+    #[arg(long, default_value = "json")]
+    pub format: String,
+
+    /// Output file path (default: stdout for json, codelens.db for sqlite)
+    #[arg(short, long)]
+    pub output: Option<String>,
 }
 
 #[derive(clap::Args)]

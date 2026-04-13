@@ -1,11 +1,17 @@
 use crate::cli::RefsArgs;
 use crate::index::storage;
+use crate::output::color;
 use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::RefKind;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-pub fn run(args: RefsArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(
+    args: RefsArgs,
+    root_override: Option<&str>,
+    json: bool,
+    color_on: bool,
+) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
@@ -108,24 +114,52 @@ pub fn run(args: RefsArgs, root_override: Option<&str>) -> anyhow::Result<()> {
     // Truncate
     all_refs.truncate(args.limit);
 
+    if json {
+        let items: Vec<serde_json::Value> = all_refs
+            .iter()
+            .map(|(file, r)| {
+                serde_json::json!({
+                    "file": file.to_string_lossy(),
+                    "line": r.line,
+                    "context": r.context,
+                    "kind": format!("{:?}", r.kind),
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::json!({ "name": args.name, "refs": items, "count": total })
+        );
+        return Ok(());
+    }
+
     if narrowed {
         println!(
             "{} — {} refs ({}) [scanned {}/{} files via import tracking]",
-            args.name, total, breakdown, scanned, all_files,
+            color::bold(&args.name, color_on),
+            total,
+            breakdown,
+            scanned,
+            all_files,
         );
     } else {
-        println!("{} — {} refs ({})", args.name, total, breakdown);
+        println!(
+            "{} — {} refs ({})",
+            color::bold(&args.name, color_on),
+            total,
+            breakdown
+        );
     }
 
     for (file, r) in &all_refs {
         let kind_tag = match r.kind {
-            RefKind::Call => "[call]",
-            RefKind::TypeRef => "[type]",
-            RefKind::Import => "[import]",
-            RefKind::FieldAccess => "[field]",
-            RefKind::Constructor => "[ctor]",
-            RefKind::Definition => "[def]",
-            RefKind::Unknown => "",
+            RefKind::Call => color::yellow("[call]", color_on),
+            RefKind::TypeRef => color::cyan("[type]", color_on),
+            RefKind::Import => color::green("[import]", color_on),
+            RefKind::FieldAccess => "[field]".to_string(),
+            RefKind::Constructor => color::yellow("[ctor]", color_on),
+            RefKind::Definition => "[def]".to_string(),
+            RefKind::Unknown => String::new(),
         };
         println!(
             "  {}:{:<6} {:<50} {}",

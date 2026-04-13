@@ -12,20 +12,54 @@ pub fn run(args: IndexArgs, root_override: Option<&str>) -> anyhow::Result<()> {
         eprintln!("Indexing {}...", root.display());
     }
 
-    let result = indexer::index_project(&root, args.max_files)?;
+    // Load previous index for incremental mode (unless --force)
+    let prev_index = if args.force {
+        None
+    } else {
+        storage::load(&root).ok().flatten()
+    };
+
+    let result = indexer::index_project_incremental(&root, args.max_files, prev_index.as_ref())?;
     let cache_path = storage::save(&result.index)?;
 
-    if args.quiet {
+    if args.json {
+        let stats = result.index.stats();
+        println!(
+            "{}",
+            serde_json::json!({
+                "root": root.to_string_lossy(),
+                "files_scanned": result.files_scanned,
+                "files_parsed": result.files_parsed,
+                "files_skipped": result.files_skipped,
+                "symbols": stats.total_symbols,
+                "duration_ms": result.duration_ms,
+                "cache": cache_path.to_string_lossy(),
+                "incremental": result.files_skipped > 0,
+                "by_language": stats.by_language,
+                "by_kind": stats.by_kind,
+            })
+        );
+    } else if args.quiet {
         println!("{}", result.index.symbols.len());
     } else {
         let stats = result.index.stats();
         println!("✓ Indexed {}", root.display());
-        println!(
-            "  Files: {} scanned, {} parsed ({})",
-            result.files_scanned,
-            result.files_parsed,
-            format_lang_counts(&stats.by_language)
-        );
+        if result.files_skipped > 0 {
+            println!(
+                "  Files: {} scanned, {} parsed, \x1b[32m{} unchanged\x1b[0m ({})",
+                result.files_scanned,
+                result.files_parsed,
+                result.files_skipped,
+                format_lang_counts(&stats.by_language)
+            );
+        } else {
+            println!(
+                "  Files: {} scanned, {} parsed ({})",
+                result.files_scanned,
+                result.files_parsed,
+                format_lang_counts(&stats.by_language)
+            );
+        }
         println!(
             "  Symbols: {} ({})",
             stats.total_symbols,

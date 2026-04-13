@@ -1,20 +1,63 @@
 use crate::cli::OutlineArgs;
 use crate::index::storage;
 use crate::model::symbol::{Symbol, SymbolKind};
+use crate::output::color;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub fn run(args: OutlineArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(
+    args: OutlineArgs,
+    root_override: Option<&str>,
+    json: bool,
+    color_on: bool,
+) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
 
+    if json {
+        if args.project || args.file.is_none() {
+            let stats = index.stats();
+            let files: Vec<serde_json::Value> = index
+                .file_symbols
+                .iter()
+                .map(|(file, ids)| serde_json::json!({ "file": file.to_string_lossy(), "symbols": ids.len() }))
+                .collect();
+            println!(
+                "{}",
+                serde_json::json!({
+                    "files": files,
+                    "total_files": stats.total_files,
+                    "total_symbols": stats.total_symbols,
+                    "by_language": stats.by_language,
+                })
+            );
+        } else if let Some(ref file) = args.file {
+            let file_path = PathBuf::from(file);
+            let symbols = index.symbols_in_file(&file_path);
+            let items: Vec<serde_json::Value> = symbols
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "id": s.id.0, "name": s.name, "kind": s.kind.as_str(),
+                        "lines": [s.span.start_line, s.span.end_line], "signature": s.signature,
+                    })
+                })
+                .collect();
+            println!(
+                "{}",
+                serde_json::json!({ "file": file, "symbols": items, "count": items.len() })
+            );
+        }
+        return Ok(());
+    }
+
     if args.project || args.file.is_none() {
-        print_project_outline(&index, args.depth, args.summary)?;
+        print_project_outline(&index, args.depth, args.summary, color_on)?;
     } else if let Some(ref file) = args.file {
         let file_path = PathBuf::from(file);
-        print_file_outline(&index, &file_path)?;
+        print_file_outline(&index, &file_path, color_on)?;
     }
 
     Ok(())
@@ -23,6 +66,7 @@ pub fn run(args: OutlineArgs, root_override: Option<&str>) -> anyhow::Result<()>
 fn print_file_outline(
     index: &crate::model::project::ProjectIndex,
     file: &PathBuf,
+    color_on: bool,
 ) -> anyhow::Result<()> {
     let symbols = index.symbols_in_file(file);
 
@@ -31,9 +75,15 @@ fn print_file_outline(
         return Ok(());
     }
 
-    println!("{} ({} symbols)", file.display(), symbols.len());
+    println!(
+        "{}",
+        color::bold(
+            &format!("{} ({} symbols)", file.display(), symbols.len()),
+            color_on
+        )
+    );
+    println!();
 
-    // Group: top-level first, then children
     let mut top_level: Vec<&Symbol> = symbols
         .iter()
         .filter(|s| s.parent.is_none())
@@ -46,15 +96,13 @@ fn print_file_outline(
         let prefix = if is_last { "└──" } else { "├──" };
         let child_prefix = if is_last { "    " } else { "│   " };
 
-        print_symbol_line(prefix, sym);
+        print_symbol_line(prefix, sym, color_on);
 
-        // Print children
         let children: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.parent.as_ref() == Some(&sym.id))
             .copied()
             .collect();
-
         for (j, child) in children.iter().enumerate() {
             let is_child_last = j == children.len() - 1;
             let cp = if is_child_last {
@@ -63,7 +111,7 @@ fn print_file_outline(
                 "├──"
             };
             print!("{}", child_prefix);
-            print_symbol_line(cp, child);
+            print_symbol_line(cp, child, color_on);
         }
     }
 
@@ -74,18 +122,23 @@ fn print_project_outline(
     index: &crate::model::project::ProjectIndex,
     max_depth: u32,
     summary: bool,
+    color_on: bool,
 ) -> anyhow::Result<()> {
     let stats = index.stats();
     println!(
-        "{} ({} files, {} symbols)",
-        index.root.file_name().unwrap_or_default().to_string_lossy(),
-        stats.total_files,
-        stats.total_symbols,
+        "{}",
+        color::bold(
+            &format!(
+                "{} ({} files, {} symbols)",
+                index.root.file_name().unwrap_or_default().to_string_lossy(),
+                stats.total_files,
+                stats.total_symbols,
+            ),
+            color_on
+        ),
     );
 
-    // Group files by directory
     let mut dir_tree: BTreeMap<PathBuf, Vec<(&PathBuf, Vec<&Symbol>)>> = BTreeMap::new();
-
     for file in index.file_symbols.keys() {
         let dir = file.parent().unwrap_or(file).to_path_buf();
         let symbols = index.symbols_in_file(file);
@@ -100,10 +153,16 @@ fn print_project_outline(
 
         let total_syms: usize = files.iter().map(|(_, s)| s.len()).sum();
         println!(
-            "├── {}/ ({} files, {} symbols)",
-            dir.display(),
-            files.len(),
-            total_syms,
+            "├── {}",
+            color::cyan(
+                &format!(
+                    "{}/ ({} files, {} symbols)",
+                    dir.display(),
+                    files.len(),
+                    total_syms
+                ),
+                color_on
+            ),
         );
 
         if !summary {
@@ -132,12 +191,11 @@ fn print_project_outline(
                 };
 
                 let file_name = file.file_name().unwrap_or_default().to_string_lossy();
-
                 println!(
-                    "│   ├── {}{} [{} symbols]",
+                    "│   ├── {}{} {}",
                     file_name,
                     names_str,
-                    symbols.len(),
+                    color::dim(&format!("[{} symbols]", symbols.len()), color_on),
                 );
             }
         }
@@ -146,10 +204,8 @@ fn print_project_outline(
     Ok(())
 }
 
-fn print_symbol_line(prefix: &str, sym: &Symbol) {
+fn print_symbol_line(prefix: &str, sym: &Symbol, color_on: bool) {
     let sig_or_name = sym.signature.as_deref().unwrap_or(&sym.name);
-
-    // Truncate long signatures
     let display = if sig_or_name.len() > 80 {
         format!("{}...", &sig_or_name[..77])
     } else {
@@ -157,7 +213,10 @@ fn print_symbol_line(prefix: &str, sym: &Symbol) {
     };
 
     println!(
-        "{} {} ({}) [L{}]",
-        prefix, display, sym.kind, sym.span.start_line,
+        "{} {} {} {}",
+        prefix,
+        display,
+        color::cyan(&format!("({})", sym.kind), color_on),
+        color::dim(&format!("[L{}]", sym.span.start_line), color_on),
     );
 }

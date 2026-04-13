@@ -1,6 +1,7 @@
 use crate::cli::LinesArgs;
+use crate::output::color;
 
-pub fn run(args: LinesArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(args: LinesArgs, root_override: Option<&str>, color_on: bool) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
 
     let full_path = root.join(&args.file);
@@ -22,16 +23,25 @@ pub fn run(args: LinesArgs, root_override: Option<&str>) -> anyhow::Result<()> {
         );
     }
 
-    // Cap at 500 lines
     let max_lines = 500;
     let actual_end = end.min(start + max_lines);
 
     for (i, line) in lines[start..actual_end].iter().enumerate() {
-        println!("{:>4} {}", start + i + 1, line);
+        println!(
+            "{} {}",
+            color::dim(&format!("{:>4}", start + i + 1), color_on),
+            line
+        );
     }
 
     if actual_end < end {
-        println!("... truncated ({} more lines)", end - actual_end);
+        println!(
+            "{}",
+            color::dim(
+                &format!("... truncated ({} more lines)", end - actual_end),
+                color_on
+            )
+        );
     }
 
     Ok(())

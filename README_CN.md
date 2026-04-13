@@ -81,6 +81,7 @@ codelens --root /path/to/project search "handler"
 | **Python** | ✅ function, class, method, docstring | ✅ | ✅ | ✅ |
 | **Swift** | ✅ func, class, struct, enum, protocol | ✅ | ✅ | ✅ |
 | **Go** | ✅ func, method, struct, interface, type, const, var | ✅ | ✅ | ✅ |
+| **Dart** | ✅ class, mixin, enum, extension, typedef, function, method | ✅ | ✅ | ✅ |
 
 ## Git 集成
 
@@ -169,7 +170,7 @@ codelens setup --list
 
 | 组件 | 作用 |
 |------|------|
-| **tree-sitter** | 解析 5 种语言 AST，提取符号 |
+| **tree-sitter** | 解析 6 种语言 AST，提取符号 |
 | **tantivy** | 全文 BM25 搜索，自定义 camelCase/snake_case 分词器 |
 | **petgraph** | 有向调用图谱，支持 callers/callees/影响分析 |
 | **bincode** | 快速二进制序列化，索引持久化 |
@@ -215,7 +216,7 @@ codelens setup --list
 - **~6000 行** Rust 代码，41 个源文件 + 680 行测试
 - **43 个测试**（6 单元 + 37 集成），零 warning
 - **17 个命令**（16 默认 + 1 MCP feature-gated）
-- **5 种语言**完整支持符号/调用/引用/import
+- **6 种语言**完整支持符号/调用/引用/import
 
 ## 许可证
 

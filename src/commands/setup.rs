@@ -32,8 +32,12 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
         println!("Supported agents:");
         println!();
         println!("  Agent        Project (default)                   Global (-g/--global)");
-        println!("  ───────────  ─────────────────────────────────   ─────────────────────────────────────────");
-        println!("  claude-code  ./CLAUDE.md                         ~/.claude/skills/codelens/SKILL.md");
+        println!(
+            "  ───────────  ─────────────────────────────────   ─────────────────────────────────────────"
+        );
+        println!(
+            "  claude-code  ./CLAUDE.md                         ~/.claude/skills/codelens/SKILL.md"
+        );
         println!("  openclaw     ~/.openclaw/skills/codelens/         (same — always user-level)");
         println!("  cursor       ./.cursor/rules/codelens.mdc        ~/.cursor/rules/codelens.mdc");
         println!();

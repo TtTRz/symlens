@@ -1,14 +1,19 @@
 use crate::cli::SearchArgs;
 use crate::index::storage;
 use crate::model::symbol::{SymbolId, SymbolKind};
+use crate::output::color;
 
-pub fn run(args: SearchArgs, root_override: Option<&str>) -> anyhow::Result<()> {
+pub fn run(
+    args: SearchArgs,
+    root_override: Option<&str>,
+    json: bool,
+    color_on: bool,
+) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
 
-    // Try tantivy BM25 search first, fall back to simple substring
     let results = if let Ok(Some(engine)) = storage::open_search(&root) {
         let search_results = engine.search(&args.query, args.limit * 2)?;
         let mut syms: Vec<_> = search_results
@@ -19,14 +24,12 @@ pub fn run(args: SearchArgs, root_override: Option<&str>) -> anyhow::Result<()> 
             })
             .collect();
 
-        // Apply kind filter
         if let Some(ref kind_str) = args.kind {
             if let Some(kind) = SymbolKind::from_str(kind_str) {
                 syms.retain(|(s, _)| s.kind == kind);
             }
         }
 
-        // Apply path filter
         if let Some(ref path_prefix) = args.path {
             syms.retain(|(s, _)| {
                 s.file_path
@@ -38,7 +41,6 @@ pub fn run(args: SearchArgs, root_override: Option<&str>) -> anyhow::Result<()> 
         syms.truncate(args.limit);
         syms
     } else {
-        // Fallback: simple substring search
         let mut results = index.search(&args.query, args.limit);
 
         if let Some(ref kind_str) = args.kind {
@@ -60,7 +62,7 @@ pub fn run(args: SearchArgs, root_override: Option<&str>) -> anyhow::Result<()> 
     };
 
     if results.is_empty() {
-        if args.json {
+        if json {
             println!("[]");
         } else {
             println!("No symbols found matching \"{}\"", args.query);
@@ -68,23 +70,32 @@ pub fn run(args: SearchArgs, root_override: Option<&str>) -> anyhow::Result<()> 
         return Ok(());
     }
 
-    if args.json {
+    if json {
         println!("{}", crate::output::json::format_symbols(&results));
     } else {
         for (sym, _score) in &results {
-            println!("{} [{}]", sym.id, sym.span);
+            let kind_str = color::cyan(&format!("({})", sym.kind), color_on);
+            println!(
+                "{} {} {}",
+                color::bold(&sym.id.0, color_on),
+                kind_str,
+                color::dim(&format!("[{}]", sym.span), color_on)
+            );
             if let Some(ref sig) = sym.signature {
                 println!("  {}", sig);
             }
             if let Some(ref doc) = sym.doc_comment {
                 let first_line: &str = doc.lines().next().unwrap_or("");
                 if !first_line.is_empty() {
-                    println!("  /// {}", first_line);
+                    println!("  {}", color::dim(&format!("/// {}", first_line), color_on));
                 }
             }
             println!();
         }
-        println!("{} results", results.len());
+        println!(
+            "{}",
+            color::dim(&format!("{} results", results.len()), color_on)
+        );
     }
     Ok(())
 }

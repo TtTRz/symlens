@@ -1,6 +1,7 @@
 pub mod blame;
 pub mod callers;
 pub mod diff;
+pub mod export;
 pub mod graph;
 pub mod index;
 pub mod lines;
