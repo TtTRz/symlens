@@ -262,11 +262,10 @@ pub mod server {
                             index.get(&id).map(|s| (s, r.score))
                         })
                         .collect();
-                    if let Some(kf) = kind_filter {
-                        if let Some(kind) = SymbolKind::from_str(kf) {
+                    if let Some(kf) = kind_filter
+                        && let Some(kind) = SymbolKind::from_str(kf) {
                             syms.retain(|(s, _)| s.kind == kind);
                         }
-                    }
                     syms.truncate(limit);
                     syms
                 }
@@ -408,9 +407,9 @@ pub mod server {
                     return results;
                 }
                 let registry = crate::parser::registry::LanguageRegistry::new();
-                if let Some(parser) = registry.parser_for(&full_path) {
-                    if let Ok(source) = std::fs::read(&full_path) {
-                        if let Ok(refs) = parser.find_identifiers(&source, &name_owned) {
+                if let Some(parser) = registry.parser_for(&full_path)
+                    && let Ok(source) = std::fs::read(&full_path)
+                        && let Ok(refs) = parser.find_identifiers(&source, &name_owned) {
                             for r in refs {
                                 if r.kind != crate::parser::traits::RefKind::Definition {
                                     results.push(json!({
@@ -420,8 +419,6 @@ pub mod server {
                                 }
                             }
                         }
-                    }
-                }
                 results
             })
             .collect();
@@ -511,7 +508,7 @@ pub mod server {
         let stdin = tokio::io::stdin();
         let stdout = tokio::io::stdout();
 
-        let (service, socket) = LspService::build(|client| SymLensMcp::new(client))
+        let (service, socket) = LspService::build(SymLensMcp::new)
             .custom_method("tools/list", SymLensMcp::handle_tools_list)
             .custom_method("tools/call", SymLensMcp::handle_tools_call)
             .finish();
