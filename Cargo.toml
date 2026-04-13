@@ -3,9 +3,15 @@ name = "symlens"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.92"
-description = "Token-efficient code intelligence CLI powered by tree-sitter"
+description = "Token-efficient code intelligence CLI powered by tree-sitter — search symbols, call graphs, and impact analysis without reading entire files"
 authors = ["TtTRz <romc1224@gmail.com>"]
 license = "MIT"
+repository = "https://github.com/TtTRz/symlens"
+homepage = "https://github.com/TtTRz/symlens"
+readme = "README.md"
+keywords = ["code-intelligence", "tree-sitter", "symbol-search", "call-graph", "mcp"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["graphify-out/", "tests/fixtures/", ".github/"]
 
 [lib]
 name = "symlens"
