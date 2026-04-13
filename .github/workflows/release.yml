@@ -9,9 +9,10 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
@@ -20,8 +21,9 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             name: codelens-linux-aarch64
+            cross: true
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-13
             name: codelens-macos-x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -31,19 +33,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.92"
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install cross-compilation tools (Linux ARM)
+        if: matrix.cross
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
 
       - name: Package
         run: |
@@ -58,7 +65,7 @@ jobs:
           path: ${{ matrix.name }}.tar.gz
 
   release:
-    name: Release
+    name: Create Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -76,7 +83,7 @@ jobs:
             cd ..
           done
 
-      - name: Create release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true

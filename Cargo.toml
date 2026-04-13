@@ -2,7 +2,7 @@
 name = "codelens"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.92"
 description = "Token-efficient code intelligence CLI powered by tree-sitter"
 authors = ["TtTRz <romc1224@gmail.com>"]
 license = "MIT"
