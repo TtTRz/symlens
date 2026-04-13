@@ -46,21 +46,18 @@ pub fn run(
         }
 
         // Apply scope filter
-        if let Some(ref scope) = args.scope {
-            if !file_path.to_string_lossy().starts_with(scope.as_str()) {
+        if let Some(ref scope) = args.scope
+            && !file_path.to_string_lossy().starts_with(scope.as_str()) {
                 continue;
             }
-        }
 
-        if let Some(parser) = registry.parser_for(&full_path) {
-            if let Ok(source) = std::fs::read(&full_path) {
-                if let Ok(refs) = parser.find_identifiers(&source, &args.name) {
+        if let Some(parser) = registry.parser_for(&full_path)
+            && let Ok(source) = std::fs::read(&full_path)
+                && let Ok(refs) = parser.find_identifiers(&source, &args.name) {
                     for r in refs {
                         all_refs.push((file_path.clone(), r));
                     }
                 }
-            }
-        }
     }
 
     // Apply kind filter

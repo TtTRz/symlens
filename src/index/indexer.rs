@@ -65,9 +65,9 @@ pub fn index_project_incremental(
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        if let Some(prev) = prev_index {
-            if let Some(&prev_mtime) = prev.file_mtimes.get(rel_path) {
-                if prev_mtime == current_mtime {
+        if let Some(prev) = prev_index
+            && let Some(&prev_mtime) = prev.file_mtimes.get(rel_path)
+                && prev_mtime == current_mtime {
                     // File unchanged — copy symbols from previous index
                     let mut idx = index.lock().unwrap();
                     if let Some(sym_ids) = prev.file_symbols.get(rel_path) {
@@ -86,11 +86,9 @@ pub fn index_project_incremental(
                     // The call graph will be rebuilt from changed + skipped files.
                     return;
                 }
-            }
-        }
 
-        if let Some(parser) = registry.parser_for(file_path) {
-            if let Ok(source) = std::fs::read(file_path) {
+        if let Some(parser) = registry.parser_for(file_path)
+            && let Ok(source) = std::fs::read(file_path) {
                 if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
                     let mut idx = index.lock().unwrap();
                     for symbol in symbols {
@@ -101,22 +99,19 @@ pub fn index_project_incremental(
                     *files_parsed.lock().unwrap() += 1;
                 }
 
-                if let Ok(edges) = parser.extract_calls(&source, rel_path) {
-                    if !edges.is_empty() {
+                if let Ok(edges) = parser.extract_calls(&source, rel_path)
+                    && !edges.is_empty() {
                         all_call_edges.lock().unwrap().extend(edges);
                     }
-                }
 
-                if let Ok(imps) = parser.extract_imports(&source, rel_path) {
-                    if !imps.is_empty() {
+                if let Ok(imps) = parser.extract_imports(&source, rel_path)
+                    && !imps.is_empty() {
                         let mut all = all_imports.lock().unwrap();
                         for imp in imps {
                             all.push((rel_path.to_path_buf(), imp));
                         }
                     }
-                }
             }
-        }
     });
 
     let duration_ms = start.elapsed().as_millis() as u64;

@@ -16,11 +16,10 @@ impl DepsGraph {
 
         for (file, module_path) in imports {
             // Try to resolve module_path to a known file
-            if let Some(target) = resolve_module(module_path, known_files) {
-                if &target != file {
+            if let Some(target) = resolve_module(module_path, known_files)
+                && &target != file {
                     graph.edges.entry(file.clone()).or_default().insert(target);
                 }
-            }
         }
 
         graph

@@ -91,15 +91,14 @@ fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf, _json: bool) -> any
     let known_files: Vec<PathBuf> = index.file_symbols.keys().cloned().collect();
 
     for file_path in &known_files {
-        if let Some(ref scope) = args.path {
-            if !file_path.to_string_lossy().starts_with(scope.as_str()) {
+        if let Some(ref scope) = args.path
+            && !file_path.to_string_lossy().starts_with(scope.as_str()) {
                 continue;
             }
-        }
 
         let full_path = root.join(file_path);
-        if let Some(parser) = registry.parser_for(&full_path) {
-            if let Ok(source) = std::fs::read(&full_path) {
+        if let Some(parser) = registry.parser_for(&full_path)
+            && let Ok(source) = std::fs::read(&full_path) {
                 if let Ok(source_str) = std::str::from_utf8(&source) {
                     for line in source_str.lines() {
                         let trimmed = line.trim();
@@ -120,7 +119,6 @@ fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf, _json: bool) -> any
                 }
                 let _ = parser;
             }
-        }
     }
 
     let deps_graph = DepsGraph::build(&imports, &known_files);

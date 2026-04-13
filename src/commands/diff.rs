@@ -24,9 +24,9 @@ pub fn run(
         if !registry.is_supported(&full_path) || !full_path.exists() {
             continue;
         }
-        if let Some(parser) = registry.parser_for(&full_path) {
-            if let Ok(source) = std::fs::read(&full_path) {
-                if let Ok(symbols) = parser.extract_symbols(&source, &file_path) {
+        if let Some(parser) = registry.parser_for(&full_path)
+            && let Ok(source) = std::fs::read(&full_path)
+                && let Ok(symbols) = parser.extract_symbols(&source, &file_path) {
                     for sym in &symbols {
                         changed_symbols.push(ChangedSymbol {
                             file: file.clone(),
@@ -39,8 +39,6 @@ pub fn run(
                         });
                     }
                 }
-            }
-        }
     }
 
     // ── Modified files (M): only symbols whose lines overlap the diff ─
@@ -57,9 +55,9 @@ pub fn run(
             continue;
         }
 
-        if let Some(parser) = registry.parser_for(&full_path) {
-            if let Ok(source) = std::fs::read(&full_path) {
-                if let Ok(symbols) = parser.extract_symbols(&source, &file_path) {
+        if let Some(parser) = registry.parser_for(&full_path)
+            && let Ok(source) = std::fs::read(&full_path)
+                && let Ok(symbols) = parser.extract_symbols(&source, &file_path) {
                     for sym in &symbols {
                         for &(start, end) in &changed_ranges {
                             if ranges_overlap(start, end, sym.span.start_line, sym.span.end_line) {
@@ -77,8 +75,6 @@ pub fn run(
                         }
                     }
                 }
-            }
-        }
     }
 
     // ── Deleted files (D): mark entire file ──────────────────────
@@ -101,11 +97,10 @@ pub fn run(
     }
 
     // ── Apply filters ────────────────────────────────────────────
-    if let Some(ref kind_filter) = args.kind {
-        if let Some(kind) = SymbolKind::from_str(kind_filter) {
+    if let Some(ref kind_filter) = args.kind
+        && let Some(kind) = SymbolKind::from_str(kind_filter) {
             changed_symbols.retain(|s| s.kind == kind);
         }
-    }
 
     // Deduplicate
     let mut seen = HashMap::new();
@@ -170,17 +165,14 @@ pub fn run(
     }
 
     println!(
-        "Changed symbols: {} → {} ({} symbols in {} files — {}+{} {}~{} {}-{})",
+        "Changed symbols: {} → {} ({} symbols in {} files — {}+ {}~ {}-)",
         args.from,
         args.to,
         total_symbols,
         total_files,
         color::green(&format!("{}", added_count), color_on),
-        "",
         color::yellow(&format!("{}", modified_count), color_on),
-        "",
         color::red(&format!("{}", deleted_count), color_on),
-        "",
     );
     println!();
 
@@ -307,8 +299,8 @@ fn git_diff_ranges(
 fn parse_diff_ranges(diff: &str) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
     for line in diff.lines() {
-        if line.starts_with("@@") {
-            if let Some(plus_part) = line.split('+').nth(1) {
+        if line.starts_with("@@")
+            && let Some(plus_part) = line.split('+').nth(1) {
                 let nums = plus_part.split_whitespace().next().unwrap_or("");
                 let parts: Vec<&str> = nums.split(',').collect();
                 let start: u32 = parts[0].parse().unwrap_or(0);
@@ -321,7 +313,6 @@ fn parse_diff_ranges(diff: &str) -> Vec<(u32, u32)> {
                     ranges.push((start, start + count.saturating_sub(1)));
                 }
             }
-        }
     }
     ranges
 }

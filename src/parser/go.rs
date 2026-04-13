@@ -85,11 +85,10 @@ fn extract_go_node(
         "type_declaration" => {
             let cursor = &mut node.walk();
             for child in node.children(cursor) {
-                if child.kind() == "type_spec" {
-                    if let Some(sym) = extract_go_type_spec(child, source, file_str, file_path) {
+                if child.kind() == "type_spec"
+                    && let Some(sym) = extract_go_type_spec(child, source, file_str, file_path) {
                         symbols.push(sym);
                     }
-                }
             }
         }
         "const_declaration" | "var_declaration" => {
@@ -159,11 +158,10 @@ fn extract_go_method(
             // parameter_list → parameter_declaration → type
             let cursor = &mut r.walk();
             for child in r.children(cursor) {
-                if child.kind() == "parameter_declaration" {
-                    if let Some(type_node) = child.child_by_field_name("type") {
+                if child.kind() == "parameter_declaration"
+                    && let Some(type_node) = child.child_by_field_name("type") {
                         return node_text(type_node, source);
                     }
-                }
             }
             None
         })
@@ -267,9 +265,9 @@ fn extract_go_vars(
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        if child.kind() == "const_spec" || child.kind() == "var_spec" {
-            if let Some(name_node) = child.child_by_field_name("name") {
-                if let Some(name) = node_text(name_node, source) {
+        if (child.kind() == "const_spec" || child.kind() == "var_spec")
+            && let Some(name_node) = child.child_by_field_name("name")
+                && let Some(name) = node_text(name_node, source) {
                     let vis = if name
                         .chars()
                         .next()
@@ -300,8 +298,6 @@ fn extract_go_vars(
                         children: vec![],
                     });
                 }
-            }
-        }
     }
 }
 
@@ -355,23 +351,18 @@ fn collect_go_calls(
 ) {
     let mut fn_name = current_fn;
 
-    if node.kind() == "function_declaration" || node.kind() == "method_declaration" {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if let Some(name) = node_text(name_node, source) {
+    if (node.kind() == "function_declaration" || node.kind() == "method_declaration")
+        && let Some(name_node) = node.child_by_field_name("name")
+            && let Some(name) = node_text(name_node, source) {
                 fn_name = Some(Box::leak(name.into_boxed_str()));
             }
-        }
-    }
 
-    if node.kind() == "call_expression" {
-        if let Some(caller) = fn_name {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Some(callee) = node_text(func_node, source) {
+    if node.kind() == "call_expression"
+        && let Some(caller) = fn_name
+            && let Some(func_node) = node.child_by_field_name("function")
+                && let Some(callee) = node_text(func_node, source) {
                     edges.push((caller.to_string(), callee));
                 }
-            }
-        }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
@@ -437,11 +428,10 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
             }
         }
         "selector_expression" => {
-            if let Some(gp) = parent.parent() {
-                if gp.kind() == "call_expression" {
+            if let Some(gp) = parent.parent()
+                && gp.kind() == "call_expression" {
                     return RefKind::Call;
                 }
-            }
             RefKind::FieldAccess
         }
         "composite_literal" => RefKind::Constructor,
@@ -452,9 +442,9 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
 // ─── Import extraction ──────────────────────────────────────────────
 
 fn collect_go_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
-    if node.kind() == "import_spec" {
-        if let Some(path_node) = node.child_by_field_name("path") {
-            if let Some(path_text) = node_text(path_node, source) {
+    if node.kind() == "import_spec"
+        && let Some(path_node) = node.child_by_field_name("path")
+            && let Some(path_text) = node_text(path_node, source) {
                 let cleaned = path_text.trim_matches('"');
                 let pkg_name = cleaned.rsplit('/').next().unwrap_or(cleaned).to_string();
                 imports.push(ImportInfo {
@@ -462,8 +452,6 @@ fn collect_go_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<
                     names: vec![pkg_name],
                 });
             }
-        }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

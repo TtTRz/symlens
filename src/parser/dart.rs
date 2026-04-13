@@ -703,11 +703,10 @@ fn collect_dart_calls(
     let mut fn_name = current_fn;
 
     // Track current function/method scope
-    if node.kind() == "function_signature" || node.kind() == "method_signature" {
-        if let Some(name) = find_child_text_by_kind(node, "identifier", source) {
+    if (node.kind() == "function_signature" || node.kind() == "method_signature")
+        && let Some(name) = find_child_text_by_kind(node, "identifier", source) {
             fn_name = Some(Box::leak(name.into_boxed_str()));
         }
-    }
 
     // Detect function/constructor calls:
     // Pattern 1: identifier followed by argument_part → function call
@@ -717,33 +716,23 @@ fn collect_dart_calls(
         && node.parent().map(|p| p.kind()) != Some("method_signature")
         && node.parent().map(|p| p.kind()) != Some("getter_signature")
         && node.parent().map(|p| p.kind()) != Some("setter_signature")
-    {
-        if let Some(next) = node.next_sibling() {
-            if next.kind() == "selector"
+        && let Some(next) = node.next_sibling()
+            && (next.kind() == "selector"
                 || next.kind() == "argument_part"
-                || next.kind() == "arguments"
-            {
-                if let Some(caller) = fn_name {
-                    if let Some(callee) = node_text(node, source) {
+                || next.kind() == "arguments")
+                && let Some(caller) = fn_name
+                    && let Some(callee) = node_text(node, source) {
                         edges.push((caller.to_string(), callee));
                     }
-                }
-            }
-        }
-    }
 
     // Pattern 3: unconditional_assignable_selector(.identifier) followed by argument_part
-    if node.kind() == "unconditional_assignable_selector" {
-        if let Some(id) = find_child_text_by_kind(node, "identifier", source) {
-            if let Some(next) = node.next_sibling() {
-                if next.kind() == "argument_part" || next.kind() == "arguments" {
-                    if let Some(caller) = fn_name {
+    if node.kind() == "unconditional_assignable_selector"
+        && let Some(id) = find_child_text_by_kind(node, "identifier", source)
+            && let Some(next) = node.next_sibling()
+                && (next.kind() == "argument_part" || next.kind() == "arguments")
+                    && let Some(caller) = fn_name {
                         edges.push((caller.to_string(), id));
                     }
-                }
-            }
-        }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
@@ -829,28 +818,25 @@ fn classify_dart_ref(node: tree_sitter::Node) -> RefKind {
         "constructor_invocation" | "const_object_expression" => RefKind::Constructor,
         "unconditional_assignable_selector" | "conditional_assignable_selector" => {
             // method.call() — check grandparent
-            if let Some(gp) = parent.parent() {
-                if gp.kind() == "postfix_expression" || gp.kind() == "argument_part" {
+            if let Some(gp) = parent.parent()
+                && (gp.kind() == "postfix_expression" || gp.kind() == "argument_part") {
                     return RefKind::Call;
                 }
-            }
             RefKind::FieldAccess
         }
         "selector" => {
-            if let Some(next) = node.next_sibling() {
-                if next.kind() == "argument_part" || next.kind() == "arguments" {
+            if let Some(next) = node.next_sibling()
+                && (next.kind() == "argument_part" || next.kind() == "arguments") {
                     return RefKind::Call;
                 }
-            }
             RefKind::FieldAccess
         }
         _ => {
             // Check if next sibling is argument_part (direct call)
-            if let Some(next) = node.next_sibling() {
-                if next.kind() == "argument_part" || next.kind() == "arguments" {
+            if let Some(next) = node.next_sibling()
+                && (next.kind() == "argument_part" || next.kind() == "arguments") {
                     return RefKind::Call;
                 }
-            }
             RefKind::Unknown
         }
     }
@@ -864,17 +850,16 @@ fn collect_dart_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Ve
         if let Some(uri_node) = find_child_by_kind(node, "import_specification")
             .and_then(|spec| find_child_by_kind(spec, "configurable_uri"))
             .and_then(|cu| find_child_by_kind(cu, "uri"))
-        {
-            if let Some(uri_text) = node_text(uri_node, source) {
+            && let Some(uri_text) = node_text(uri_node, source) {
                 let cleaned = uri_text.trim_matches('\'').trim_matches('"');
 
                 // Extract "show" names if present
                 let mut names = Vec::new();
                 let cursor = &mut node.walk();
                 for child in node.children(cursor) {
-                    if child.kind() == "combinator" {
-                        if let Some(text) = child.utf8_text(source).ok() {
-                            if text.starts_with("show") {
+                    if child.kind() == "combinator"
+                        && let Ok(text) = child.utf8_text(source)
+                            && text.starts_with("show") {
                                 // Parse "show Foo, Bar, Baz"
                                 let parts = text.trim_start_matches("show").trim();
                                 for name in parts.split(',') {
@@ -884,8 +869,6 @@ fn collect_dart_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Ve
                                     }
                                 }
                             }
-                        }
-                    }
                 }
 
                 // If no show clause, use the last segment of the import path
@@ -912,7 +895,6 @@ fn collect_dart_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Ve
                     names,
                 });
             }
-        }
     }
 
     let cursor = &mut node.walk();
@@ -943,12 +925,7 @@ fn find_child_by_kind<'a>(
     kind: &str,
 ) -> Option<tree_sitter::Node<'a>> {
     let cursor = &mut node.walk();
-    for child in node.children(cursor) {
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
+    node.children(cursor).find(|&child| child.kind() == kind)
 }
 
 fn find_child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {

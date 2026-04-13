@@ -145,14 +145,13 @@ impl SearchEngine {
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
-            if let Some(id) = doc.get_first(self.f_symbol_id) {
-                if let Some(id_str) = id.as_str() {
+            if let Some(id) = doc.get_first(self.f_symbol_id)
+                && let Some(id_str) = id.as_str() {
                     results.push(SearchResult {
                         symbol_id: id_str.to_string(),
                         score,
                     });
                 }
-            }
         }
 
         Ok(results)

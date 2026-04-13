@@ -63,8 +63,8 @@ impl LanguageParser for TypeScriptParser {
         for line in source_str.lines() {
             let trimmed = line.trim();
             // import { Foo, Bar } from './module'
-            if trimmed.starts_with("import ") {
-                if let Some(from_pos) = trimmed.find(" from ") {
+            if trimmed.starts_with("import ")
+                && let Some(from_pos) = trimmed.find(" from ") {
                     let names_part = &trimmed[7..from_pos]; // between "import " and " from "
                     let module = trimmed[from_pos + 6..]
                         .trim()
@@ -89,7 +89,6 @@ impl LanguageParser for TypeScriptParser {
                         });
                     }
                 }
-            }
         }
         Ok(imports)
     }
@@ -235,8 +234,8 @@ fn extract_ts_class_body(
     for child in body.children(cursor) {
         match child.kind() {
             "method_definition" => {
-                if let Some(name_node) = child.child_by_field_name("name") {
-                    if let Some(name) = node_text(name_node, source) {
+                if let Some(name_node) = child.child_by_field_name("name")
+                    && let Some(name) = node_text(name_node, source) {
                         let qualified = format!("{}::{}", class_name, name);
                         symbols.push(Symbol {
                             id: SymbolId::new(file_str, &qualified, &SymbolKind::Method),
@@ -252,11 +251,10 @@ fn extract_ts_class_body(
                             children: vec![],
                         });
                     }
-                }
             }
             "public_field_definition" | "property_definition" => {
-                if let Some(name_node) = child.child_by_field_name("name") {
-                    if let Some(name) = node_text(name_node, source) {
+                if let Some(name_node) = child.child_by_field_name("name")
+                    && let Some(name) = node_text(name_node, source) {
                         let qualified = format!("{}::{}", class_name, name);
                         symbols.push(Symbol {
                             id: SymbolId::new(file_str, &qualified, &SymbolKind::Field),
@@ -272,7 +270,6 @@ fn extract_ts_class_body(
                             children: vec![],
                         });
                     }
-                }
             }
             _ => {}
         }
@@ -372,9 +369,9 @@ fn extract_ts_variable(
 ) {
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        if child.kind() == "variable_declarator" {
-            if let Some(name_node) = child.child_by_field_name("name") {
-                if let Some(name) = node_text(name_node, source) {
+        if child.kind() == "variable_declarator"
+            && let Some(name_node) = child.child_by_field_name("name")
+                && let Some(name) = node_text(name_node, source) {
                     // Check if value is an arrow function or function
                     let is_function = child
                         .child_by_field_name("value")
@@ -407,8 +404,6 @@ fn extract_ts_variable(
                         children: vec![],
                     });
                 }
-            }
-        }
     }
 }
 
@@ -438,16 +433,14 @@ fn has_export(node: tree_sitter::Node) -> bool {
 fn extract_ts_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
     let mut sibling = node.prev_sibling();
     // Also check parent's prev sibling for exported items
-    if sibling.is_none() {
-        if let Some(parent) = node.parent() {
-            if parent.kind() == "export_statement" {
+    if sibling.is_none()
+        && let Some(parent) = node.parent()
+            && parent.kind() == "export_statement" {
                 sibling = parent.prev_sibling();
             }
-        }
-    }
 
-    if let Some(s) = sibling {
-        if s.kind() == "comment" {
+    if let Some(s) = sibling
+        && s.kind() == "comment" {
             let text = node_text(s, source)?;
             if text.starts_with("/**") {
                 // Parse JSDoc comment
@@ -464,7 +457,6 @@ fn extract_ts_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
                 }
             }
         }
-    }
     None
 }
 
@@ -508,25 +500,20 @@ fn collect_ts_calls(
     edges: &mut Vec<CallEdge>,
 ) {
     let mut fn_name = current_fn;
-    if node.kind() == "function_declaration" || node.kind() == "method_definition" {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if let Some(name) = node_text(name_node, source) {
+    if (node.kind() == "function_declaration" || node.kind() == "method_definition")
+        && let Some(name_node) = node.child_by_field_name("name")
+            && let Some(name) = node_text(name_node, source) {
                 fn_name = Some(Box::leak(name.into_boxed_str()));
             }
-        }
-    }
 
-    if node.kind() == "call_expression" {
-        if let Some(caller) = fn_name {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Some(callee) = node_text(func_node, source) {
+    if node.kind() == "call_expression"
+        && let Some(caller) = fn_name
+            && let Some(func_node) = node.child_by_field_name("function")
+                && let Some(callee) = node_text(func_node, source) {
                     // Clean up: "obj.method" → "method"
                     let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
                     edges.push((caller.to_string(), clean));
                 }
-            }
-        }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

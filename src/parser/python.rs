@@ -122,8 +122,8 @@ fn extract_py_node(
             }
         }
         "class_definition" => {
-            if let Some(name_node) = node.child_by_field_name("name") {
-                if let Some(name) = node_text(name_node, source) {
+            if let Some(name_node) = node.child_by_field_name("name")
+                && let Some(name) = node_text(name_node, source) {
                     let doc = extract_py_docstring(node, source);
                     symbols.push(Symbol {
                         id: SymbolId::new(file_str, &name, &SymbolKind::Class),
@@ -155,7 +155,6 @@ fn extract_py_node(
                     }
                     return; // Already handled children
                 }
-            }
         }
         "decorated_definition" => {
             // Recurse into the decorated item
@@ -319,24 +318,19 @@ fn collect_py_calls(
     edges: &mut Vec<CallEdge>,
 ) {
     let mut fn_name = current_fn;
-    if node.kind() == "function_definition" {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if let Some(name) = node_text(name_node, source) {
+    if node.kind() == "function_definition"
+        && let Some(name_node) = node.child_by_field_name("name")
+            && let Some(name) = node_text(name_node, source) {
                 fn_name = Some(Box::leak(name.into_boxed_str()));
             }
-        }
-    }
 
-    if node.kind() == "call" {
-        if let Some(caller) = fn_name {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Some(callee) = node_text(func_node, source) {
+    if node.kind() == "call"
+        && let Some(caller) = fn_name
+            && let Some(func_node) = node.child_by_field_name("function")
+                && let Some(callee) = node_text(func_node, source) {
                     let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
                     edges.push((caller.to_string(), clean));
                 }
-            }
-        }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

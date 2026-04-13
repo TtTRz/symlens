@@ -243,9 +243,9 @@ fn extract_enum_variants(
 ) {
     let cursor = &mut body.walk();
     for child in body.children(cursor) {
-        if child.kind() == "enum_variant" {
-            if let Some(name_node) = child.child_by_field_name("name") {
-                if let Some(name) = node_text(name_node, source) {
+        if child.kind() == "enum_variant"
+            && let Some(name_node) = child.child_by_field_name("name")
+                && let Some(name) = node_text(name_node, source) {
                     let qualified = format!("{}::{}", enum_name, name);
                     symbols.push(Symbol {
                         id: SymbolId::new(file_str, &qualified, &SymbolKind::EnumVariant),
@@ -261,8 +261,6 @@ fn extract_enum_variants(
                         children: vec![],
                     });
                 }
-            }
-        }
     }
 }
 
@@ -276,9 +274,9 @@ fn extract_fields(
 ) {
     let cursor = &mut body.walk();
     for child in body.children(cursor) {
-        if child.kind() == "field_declaration" {
-            if let Some(name_node) = child.child_by_field_name("name") {
-                if let Some(name) = node_text(name_node, source) {
+        if child.kind() == "field_declaration"
+            && let Some(name_node) = child.child_by_field_name("name")
+                && let Some(name) = node_text(name_node, source) {
                     let qualified = format!("{}::{}", struct_name, name);
                     let vis = extract_visibility(child, source);
                     let type_str = child
@@ -300,8 +298,6 @@ fn extract_fields(
                         children: vec![],
                     });
                 }
-            }
-        }
     }
 }
 
@@ -345,13 +341,12 @@ fn extract_impl(
     if let Some(body) = node.child_by_field_name("body") {
         let cursor = &mut body.walk();
         for child in body.children(cursor) {
-            if child.kind() == "function_item" {
-                if let Some(sym) =
+            if child.kind() == "function_item"
+                && let Some(sym) =
                     extract_function(child, source, file_str, file_path, type_name.as_deref())
                 {
                     symbols.push(sym);
                 }
-            }
         }
     }
 }
@@ -533,24 +528,19 @@ fn collect_calls(
     let mut fn_name = current_fn;
 
     // Track which function we're inside
-    if node.kind() == "function_item" {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if let Some(name) = node_text(name_node, source) {
+    if node.kind() == "function_item"
+        && let Some(name_node) = node.child_by_field_name("name")
+            && let Some(name) = node_text(name_node, source) {
                 fn_name = Some(Box::leak(name.into_boxed_str())); // Intentional leak for simplicity
             }
-        }
-    }
 
     // Detect call expressions
-    if node.kind() == "call_expression" {
-        if let Some(caller) = fn_name {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Some(callee) = extract_callee_name(func_node, source) {
+    if node.kind() == "call_expression"
+        && let Some(caller) = fn_name
+            && let Some(func_node) = node.child_by_field_name("function")
+                && let Some(callee) = extract_callee_name(func_node, source) {
                     edges.push((caller.to_string(), callee));
                 }
-            }
-        }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
@@ -632,11 +622,10 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
         // Field expression: self.foo or obj.foo
         // If grandparent is call_expression, it's a method call
         "field_expression" => {
-            if let Some(gp) = parent.parent() {
-                if gp.kind() == "call_expression" {
+            if let Some(gp) = parent.parent()
+                && gp.kind() == "call_expression" {
                     return RefKind::Call;
                 }
-            }
             RefKind::FieldAccess
         }
 
@@ -680,21 +669,19 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
         "function_item" | "struct_item" | "enum_item" | "trait_item" | "type_item"
         | "const_item" | "static_item" | "macro_definition" => {
             // Check if this node is the "name" field of the definition
-            if let Some(name_node) = parent.child_by_field_name("name") {
-                if name_node.id() == node.id() {
+            if let Some(name_node) = parent.child_by_field_name("name")
+                && name_node.id() == node.id() {
                     return RefKind::Definition;
                 }
-            }
             RefKind::Unknown
         }
 
         // impl block type
         "impl_item" => {
-            if let Some(type_node) = parent.child_by_field_name("type") {
-                if type_node.id() == node.id() {
+            if let Some(type_node) = parent.child_by_field_name("type")
+                && type_node.id() == node.id() {
                     return RefKind::TypeRef;
                 }
-            }
             RefKind::Unknown
         }
 
@@ -706,8 +693,8 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
 
 /// Extract `use` declarations from Rust source.
 fn collect_use_declarations(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
-    if node.kind() == "use_declaration" {
-        if let Some(text) = node_text(node, source) {
+    if node.kind() == "use_declaration"
+        && let Some(text) = node_text(node, source) {
             let cleaned = text
                 .trim_start_matches("use ")
                 .trim_start_matches("pub use ")
@@ -753,7 +740,6 @@ fn collect_use_declarations(node: tree_sitter::Node, source: &[u8], imports: &mu
                 }
             }
         }
-    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
