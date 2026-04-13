@@ -2,10 +2,10 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "codelens",
+    name = "symlens",
     version,
     about = "Token-efficient code intelligence powered by tree-sitter",
-    long_about = "CodeLens indexes your codebase with tree-sitter and lets you fetch exactly \
+    long_about = "SymLens indexes your codebase with tree-sitter and lets you fetch exactly \
                   the symbols you need — signatures, outlines, and call graphs — instead of \
                   reading entire files. Designed for AI agents (Claude Code) and humans alike."
 )]
@@ -56,13 +56,13 @@ pub enum Commands {
     Diff(DiffArgs),
     /// Export index as JSON
     Export(ExportArgs),
-    /// Install CodeLens integration into AI agents (Claude Code, OpenClaw, Cursor)
+    /// Install SymLens integration into AI agents (Claude Code, OpenClaw, Cursor)
     Setup(SetupArgs),
     /// Generate shell completions (bash, zsh, fish)
     Completions(CompletionsArgs),
     /// Diagnose index health, cache status, and project info
     Doctor,
-    /// Generate a default codelens.toml configuration file
+    /// Generate a default symlens.toml configuration file
     Init,
     /// Start MCP (Model Context Protocol) server (requires --features mcp)
     #[cfg(feature = "mcp")]
@@ -253,7 +253,7 @@ pub struct ExportArgs {
     #[arg(long, default_value = "json")]
     pub format: String,
 
-    /// Output file path (default: stdout for json, codelens.db for sqlite)
+    /// Output file path (default: stdout for json, symlens.db for sqlite)
     #[arg(short, long)]
     pub output: Option<String>,
 }
@@ -279,7 +279,7 @@ pub struct SetupArgs {
     #[arg(long)]
     pub list: bool,
 
-    /// Uninstall CodeLens integration (remove generated files)
+    /// Uninstall SymLens integration (remove generated files)
     #[arg(long)]
     pub uninstall: bool,
 }

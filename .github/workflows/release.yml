@@ -17,17 +17,17 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            name: codelens-linux-x86_64
+            name: symlens-linux-x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            name: codelens-linux-aarch64
+            name: symlens-linux-aarch64
             cross: true
           - target: x86_64-apple-darwin
             os: macos-13
-            name: codelens-macos-x86_64
+            name: symlens-macos-x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
-            name: codelens-macos-aarch64
+            name: symlens-macos-aarch64
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.name }}.tar.gz codelens
+          tar czf ../../../${{ matrix.name }}.tar.gz symlens
           cd ../../..
 
       - name: Upload artifact

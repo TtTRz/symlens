@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub fn run(root_override: Option<&str>) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
-    println!("CodeLens Doctor");
+    println!("SymLens Doctor");
     println!("===============");
     println!("Project: {}", root.display());
     println!();
@@ -25,7 +25,7 @@ pub fn run(root_override: Option<&str>) -> anyhow::Result<()> {
     check_search(&root);
 
     println!();
-    println!("Run `codelens index` to rebuild if issues are found.");
+    println!("Run `symlens index` to rebuild if issues are found.");
     Ok(())
 }
 
@@ -64,7 +64,7 @@ fn check_index(root: &Path) {
             }
         }
         Ok(None) => {
-            println!("  \u{2717} Index: not found — run `codelens index`");
+            println!("  \u{2717} Index: not found — run `symlens index`");
         }
         Err(e) => {
             println!("  \u{2717} Index: error loading — {}", e);

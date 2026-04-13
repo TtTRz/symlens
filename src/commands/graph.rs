@@ -22,7 +22,7 @@ fn run_impact(
     let graph = index
         .call_graph
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `codelens index`."))?;
+        .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `symlens index`."))?;
 
     let result = impact::analyze_impact(graph, &args.name, args.depth);
 
@@ -159,7 +159,7 @@ fn run_path(
     let graph = index
         .call_graph
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `codelens index`."))?;
+        .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `symlens index`."))?;
 
     match graph_path::find_path(graph, &args.from, &args.to) {
         Some(path) => {
@@ -196,5 +196,5 @@ fn run_path(
 
 fn load_index(root: &std::path::Path) -> anyhow::Result<crate::model::project::ProjectIndex> {
     storage::load(root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))
 }

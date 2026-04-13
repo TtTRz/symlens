@@ -12,6 +12,6 @@ pub fn run(args: CompletionsArgs) -> anyhow::Result<()> {
     };
 
     let mut cmd = crate::cli::Cli::command();
-    generate(shell, &mut cmd, "codelens", &mut io::stdout());
+    generate(shell, &mut cmd, "symlens", &mut io::stdout());
     Ok(())
 }

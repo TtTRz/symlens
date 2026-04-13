@@ -12,7 +12,7 @@ pub fn run(
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
 
     let id = SymbolId(args.symbol_id.clone());
     let symbol = index

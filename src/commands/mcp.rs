@@ -36,23 +36,23 @@ pub mod server {
         }
     }
 
-    pub struct CodeLensMcp {
+    pub struct SymLensMcp {
         client: Client,
     }
 
-    impl CodeLensMcp {
+    impl SymLensMcp {
         pub fn new(client: Client) -> Self {
             Self { client }
         }
     }
 
     #[tower_lsp::async_trait]
-    impl LanguageServer for CodeLensMcp {
+    impl LanguageServer for SymLensMcp {
         async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
             Ok(InitializeResult {
                 capabilities: ServerCapabilities::default(),
                 server_info: Some(ServerInfo {
-                    name: "codelens-mcp".into(),
+                    name: "symlens-mcp".into(),
                     version: Some(env!("CARGO_PKG_VERSION").into()),
                 }),
             })
@@ -60,7 +60,7 @@ pub mod server {
 
         async fn initialized(&self, _: InitializedParams) {
             self.client
-                .log_message(MessageType::INFO, "CodeLens MCP server initialized")
+                .log_message(MessageType::INFO, "SymLens MCP server initialized")
                 .await;
         }
 
@@ -74,7 +74,7 @@ pub mod server {
     fn tool_definitions() -> Vec<Value> {
         vec![
             json!({
-                "name": "codelens_index",
+                "name": "symlens_index",
                 "description": "Index a project directory with tree-sitter. Returns symbol count and timing.",
                 "inputSchema": {
                     "type": "object",
@@ -85,7 +85,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_search",
+                "name": "symlens_search",
                 "description": "BM25 search symbols by name, signature, or docs.",
                 "inputSchema": {
                     "type": "object",
@@ -99,7 +99,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_symbol",
+                "name": "symlens_symbol",
                 "description": "Get detailed info about a symbol by ID.",
                 "inputSchema": {
                     "type": "object",
@@ -112,7 +112,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_outline",
+                "name": "symlens_outline",
                 "description": "Get file or project outline.",
                 "inputSchema": {
                     "type": "object",
@@ -124,7 +124,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_refs",
+                "name": "symlens_refs",
                 "description": "Find references to a symbol.",
                 "inputSchema": {
                     "type": "object",
@@ -137,7 +137,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_impact",
+                "name": "symlens_impact",
                 "description": "Blast radius analysis: who depends on this symbol?",
                 "inputSchema": {
                     "type": "object",
@@ -150,7 +150,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_callers",
+                "name": "symlens_callers",
                 "description": "Show direct callers of a symbol (who calls this?).",
                 "inputSchema": {
                     "type": "object",
@@ -163,7 +163,7 @@ pub mod server {
                 }
             }),
             json!({
-                "name": "codelens_callees",
+                "name": "symlens_callees",
                 "description": "Show direct callees of a symbol (what does this call?).",
                 "inputSchema": {
                     "type": "object",
@@ -180,21 +180,21 @@ pub mod server {
 
     fn execute_tool(name: &str, args: &Value) -> Value {
         match name {
-            "codelens_index" => tool_index(args),
-            "codelens_search" => tool_search(args),
-            "codelens_symbol" => tool_symbol(args),
-            "codelens_outline" => tool_outline(args),
-            "codelens_refs" => tool_refs(args),
-            "codelens_impact" => tool_impact(args),
-            "codelens_callers" => tool_callers(args),
-            "codelens_callees" => tool_callees(args),
+            "symlens_index" => tool_index(args),
+            "symlens_search" => tool_search(args),
+            "symlens_symbol" => tool_symbol(args),
+            "symlens_outline" => tool_outline(args),
+            "symlens_refs" => tool_refs(args),
+            "symlens_impact" => tool_impact(args),
+            "symlens_callers" => tool_callers(args),
+            "symlens_callees" => tool_callees(args),
             _ => json!({ "error": format!("Unknown tool: {}", name) }),
         }
     }
 
     // ─── Custom JSON-RPC method handlers (MCP protocol) ─────────────
 
-    impl CodeLensMcp {
+    impl SymLensMcp {
         async fn handle_tools_list(&self, _params: Value) -> jsonrpc::Result<Value> {
             Ok(json!({ "tools": tool_definitions() }))
         }
@@ -249,7 +249,7 @@ pub mod server {
 
         let index = match load_or_cache(&root) {
             Some(idx) => idx,
-            _ => return json!({ "error": "No index found. Run codelens_index first." }),
+            _ => return json!({ "error": "No index found. Run symlens_index first." }),
         };
 
         let results = if let Ok(Some(engine)) = storage::open_search(&root) {
@@ -442,7 +442,7 @@ pub mod server {
 
         let graph = match index.call_graph.as_ref() {
             Some(g) => g,
-            None => return json!({ "error": "No call graph. Re-run codelens_index." }),
+            None => return json!({ "error": "No call graph. Re-run symlens_index." }),
         };
 
         let result = crate::graph::impact::analyze_impact(graph, name, depth);
@@ -477,7 +477,7 @@ pub mod server {
 
         let graph = match index.call_graph.as_ref() {
             Some(g) => g,
-            None => return json!({ "error": "No call graph. Re-run codelens_index." }),
+            None => return json!({ "error": "No call graph. Re-run symlens_index." }),
         };
 
         let callers: Vec<&str> = graph.callers(name).into_iter().take(limit).collect();
@@ -497,7 +497,7 @@ pub mod server {
 
         let graph = match index.call_graph.as_ref() {
             Some(g) => g,
-            None => return json!({ "error": "No call graph. Re-run codelens_index." }),
+            None => return json!({ "error": "No call graph. Re-run symlens_index." }),
         };
 
         let callees: Vec<&str> = graph.callees(name).into_iter().take(limit).collect();
@@ -511,9 +511,9 @@ pub mod server {
         let stdin = tokio::io::stdin();
         let stdout = tokio::io::stdout();
 
-        let (service, socket) = LspService::build(|client| CodeLensMcp::new(client))
-            .custom_method("tools/list", CodeLensMcp::handle_tools_list)
-            .custom_method("tools/call", CodeLensMcp::handle_tools_call)
+        let (service, socket) = LspService::build(|client| SymLensMcp::new(client))
+            .custom_method("tools/list", SymLensMcp::handle_tools_list)
+            .custom_method("tools/call", SymLensMcp::handle_tools_call)
             .finish();
 
         Server::new(stdin, stdout, socket).serve(service).await;

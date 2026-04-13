@@ -6,7 +6,7 @@ pub fn run(args: BlameArgs, root_override: Option<&str>, json: bool) -> anyhow::
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
 
     // Find the symbol (try exact match first, then partial)
     let symbol = index

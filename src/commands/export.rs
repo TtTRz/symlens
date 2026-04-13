@@ -5,7 +5,7 @@ pub fn run(args: ExportArgs, root_override: Option<&str>) -> anyhow::Result<()> 
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
 
     match args.format.as_str() {
         "json" => export_json(&index, args.output.as_deref()),

@@ -8,11 +8,11 @@ pub fn run_callers(
 ) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
     let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
     let graph = index
         .call_graph
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No call graph in index. Re-run `codelens index`."))?;
+        .ok_or_else(|| anyhow::anyhow!("No call graph in index. Re-run `symlens index`."))?;
 
     let callers = graph.callers(&args.name);
 
@@ -43,11 +43,11 @@ pub fn run_callees(
 ) -> anyhow::Result<()> {
     let root = crate::commands::resolve_root(root_override)?;
     let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
     let graph = index
         .call_graph
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No call graph in index. Re-run `codelens index`."))?;
+        .ok_or_else(|| anyhow::anyhow!("No call graph in index. Re-run `symlens index`."))?;
 
     let callees = graph.callees(&args.name);
 

@@ -16,7 +16,7 @@ pub fn run(
     let root = crate::commands::resolve_root(root_override)?;
 
     let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
+        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
 
     // Refs v3: narrow search scope using import_names
     // If we know which files import the target name, only search those + the defining file

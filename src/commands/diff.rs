@@ -230,7 +230,7 @@ pub fn run(
         println!(
             "{}",
             color::dim(
-                "Tip: run `codelens graph impact \"<symbol>\"` to check blast radius of modified symbols.",
+                "Tip: run `symlens graph impact \"<symbol>\"` to check blast radius of modified symbols.",
                 color_on
             ),
         );

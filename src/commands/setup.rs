@@ -36,15 +36,15 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
             "  ───────────  ─────────────────────────────────   ─────────────────────────────────────────"
         );
         println!(
-            "  claude-code  ./CLAUDE.md                         ~/.claude/skills/codelens/SKILL.md"
+            "  claude-code  ./CLAUDE.md                         ~/.claude/skills/symlens/SKILL.md"
         );
-        println!("  openclaw     ~/.openclaw/skills/codelens/         (same — always user-level)");
-        println!("  cursor       ./.cursor/rules/codelens.mdc        ~/.cursor/rules/codelens.mdc");
+        println!("  openclaw     ~/.openclaw/skills/symlens/         (same — always user-level)");
+        println!("  cursor       ./.cursor/rules/symlens.mdc        ~/.cursor/rules/symlens.mdc");
         println!();
         println!("Usage:");
-        println!("  codelens setup claude-code           # append to project CLAUDE.md");
-        println!("  codelens setup claude-code --global   # install as skill (/codelens)");
-        println!("  codelens setup --all --global         # all agents, user-level");
+        println!("  symlens setup claude-code           # append to project CLAUDE.md");
+        println!("  symlens setup claude-code --global   # install as skill (/symlens)");
+        println!("  symlens setup --all --global         # all agents, user-level");
         return Ok(());
     }
 
@@ -55,13 +55,13 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
             Some(t) => vec![t],
             None => {
                 anyhow::bail!(
-                    "Unknown agent: '{}'. Use `codelens setup --list` to see supported agents.",
+                    "Unknown agent: '{}'. Use `symlens setup --list` to see supported agents.",
                     name
                 );
             }
         }
     } else {
-        anyhow::bail!("Specify an agent name or use --all. Run `codelens setup --list` for help.");
+        anyhow::bail!("Specify an agent name or use --all. Run `symlens setup --list` for help.");
     };
 
     let global = args.global;
@@ -92,25 +92,25 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
 
 fn setup_claude_code(root: &Path, global: bool, force: bool) -> anyhow::Result<()> {
     if global {
-        // Global: write as a skill → ~/.claude/skills/codelens/SKILL.md
+        // Global: write as a skill → ~/.claude/skills/symlens/SKILL.md
         let home = home_dir()?;
-        let skill_dir = home.join(".claude").join("skills").join("codelens");
+        let skill_dir = home.join(".claude").join("skills").join("symlens");
         fs::create_dir_all(&skill_dir)?;
 
         let target = skill_dir.join("SKILL.md");
         let content = claude_code_skill();
         write_file(&target, &content, force)?;
         println!("  ✓ Claude Code (global skill): wrote {}", target.display());
-        println!("    Use /codelens in Claude Code to activate");
+        println!("    Use /symlens in Claude Code to activate");
     } else {
         // Project: write/append CLAUDE.md
         let target = root.join("CLAUDE.md");
 
         if target.exists() && !force {
             let content = fs::read_to_string(&target)?;
-            if content.contains("codelens") {
+            if content.contains("symlens") {
                 println!(
-                    "  ✓ Claude Code (project): already contains codelens instructions (use --force to overwrite)"
+                    "  ✓ Claude Code (project): already contains symlens instructions (use --force to overwrite)"
                 );
                 return Ok(());
             }
@@ -124,7 +124,7 @@ fn setup_claude_code(root: &Path, global: bool, force: bool) -> anyhow::Result<(
             new_content.push_str(&section);
             fs::write(&target, new_content)?;
             println!(
-                "  ✓ Claude Code (project): appended codelens section to {}",
+                "  ✓ Claude Code (project): appended symlens section to {}",
                 target.display()
             );
             return Ok(());
@@ -138,23 +138,23 @@ fn setup_claude_code(root: &Path, global: bool, force: bool) -> anyhow::Result<(
 }
 
 fn claude_code_section() -> String {
-    r#"## Code Navigation (CodeLens)
+    r#"## Code Navigation (SymLens)
 
-This project has `codelens` installed for token-efficient code intelligence.
+This project has `symlens` installed for token-efficient code intelligence.
 
-**IMPORTANT: Prefer `codelens` over reading entire files:**
+**IMPORTANT: Prefer `symlens` over reading entire files:**
 
-1. `codelens search "<query>"` instead of `grep -r`
-2. `codelens outline <file>` instead of `cat <file>`
-3. `codelens symbol "<id>"` instead of reading the whole file
-4. `codelens symbol "<id>" --source` only when you need the implementation
-5. `codelens outline --project` instead of `find` + `cat`
-6. `codelens refs "<name>"` instead of `grep -r "<name>"`
-7. `codelens blame "<name>"` to check who last modified a symbol
-8. **Before refactoring**: ALWAYS run `codelens graph impact "<symbol>"` first
-9. **Before reviewing a PR**: run `codelens diff --from main --to HEAD`
+1. `symlens search "<query>"` instead of `grep -r`
+2. `symlens outline <file>` instead of `cat <file>`
+3. `symlens symbol "<id>"` instead of reading the whole file
+4. `symlens symbol "<id>" --source` only when you need the implementation
+5. `symlens outline --project` instead of `find` + `cat`
+6. `symlens refs "<name>"` instead of `grep -r "<name>"`
+7. `symlens blame "<name>"` to check who last modified a symbol
+8. **Before refactoring**: ALWAYS run `symlens graph impact "<symbol>"` first
+9. **Before reviewing a PR**: run `symlens diff --from main --to HEAD`
 
-Run `codelens index` if you get "index not found" errors.
+Run `symlens index` if you get "index not found" errors.
 "#
     .to_string()
 }
@@ -164,56 +164,56 @@ fn claude_code_full() -> String {
 }
 
 fn claude_code_skill() -> String {
-    r#"# CodeLens — Token-Efficient Code Intelligence
+    r#"# SymLens — Token-Efficient Code Intelligence
 
-CodeLens indexes codebases with tree-sitter and provides token-efficient access to symbols, call graphs, and impact analysis. **Always prefer CodeLens over reading entire files.**
+SymLens indexes codebases with tree-sitter and provides token-efficient access to symbols, call graphs, and impact analysis. **Always prefer SymLens over reading entire files.**
 
 ## When to Use
 
-- Searching for symbols, functions, or types → `codelens search`
-- Understanding a function's signature → `codelens symbol`
-- Getting a file or project overview → `codelens outline`
-- Finding references → `codelens refs`
-- Analyzing impact before refactoring → `codelens graph impact`
-- Reviewing changes → `codelens diff`
+- Searching for symbols, functions, or types → `symlens search`
+- Understanding a function's signature → `symlens symbol`
+- Getting a file or project overview → `symlens outline`
+- Finding references → `symlens refs`
+- Analyzing impact before refactoring → `symlens graph impact`
+- Reviewing changes → `symlens diff`
 
 ## Commands
 
 | Instead of... | Use this |
 |--------------|----------|
-| `grep -r "query"` | `codelens search "query"` |
-| `cat file.rs` | `codelens outline file.rs` |
-| Reading a whole file for one function | `codelens symbol "file.rs::Foo::bar#method"` |
-| `find . -name "*.rs" \| xargs cat` | `codelens outline --project` |
-| `grep -r "FnName"` | `codelens refs "FnName"` |
+| `grep -r "query"` | `symlens search "query"` |
+| `cat file.rs` | `symlens outline file.rs` |
+| Reading a whole file for one function | `symlens symbol "file.rs::Foo::bar#method"` |
+| `find . -name "*.rs" \| xargs cat` | `symlens outline --project` |
+| `grep -r "FnName"` | `symlens refs "FnName"` |
 
 ## Full Command Reference
 
 ```
-codelens index                              # Index project (run first)
-codelens search "<query>"                   # BM25 symbol search (~40 tokens/result)
-codelens symbol "<id>"                      # Signature + docs (~60 tokens)
-codelens symbol "<id>" --source             # Full source (~500-2000 tokens)
-codelens outline <file>                     # File symbol tree (~50 tokens/file)
-codelens outline --project                  # Project overview (~200 tokens)
-codelens refs "<name>"                      # Find references (~30 tokens/ref)
-codelens callers "<name>"                   # Who calls this
-codelens callees "<name>"                   # What this calls
-codelens graph impact "<name>"              # Blast radius analysis
-codelens graph deps                         # Module dependency graph
-codelens graph path <A> <B>                 # Call path between symbols
-codelens lines <file> <start> <end>         # Source by line range
-codelens blame "<name>"                     # Git blame for a symbol
-codelens diff --from <ref> --to <ref>       # Changed symbols between refs
-codelens watch                              # Auto-update index
-codelens stats                              # Index statistics
+symlens index                              # Index project (run first)
+symlens search "<query>"                   # BM25 symbol search (~40 tokens/result)
+symlens symbol "<id>"                      # Signature + docs (~60 tokens)
+symlens symbol "<id>" --source             # Full source (~500-2000 tokens)
+symlens outline <file>                     # File symbol tree (~50 tokens/file)
+symlens outline --project                  # Project overview (~200 tokens)
+symlens refs "<name>"                      # Find references (~30 tokens/ref)
+symlens callers "<name>"                   # Who calls this
+symlens callees "<name>"                   # What this calls
+symlens graph impact "<name>"              # Blast radius analysis
+symlens graph deps                         # Module dependency graph
+symlens graph path <A> <B>                 # Call path between symbols
+symlens lines <file> <start> <end>         # Source by line range
+symlens blame "<name>"                     # Git blame for a symbol
+symlens diff --from <ref> --to <ref>       # Changed symbols between refs
+symlens watch                              # Auto-update index
+symlens stats                              # Index statistics
 ```
 
 ## Critical Rules
 
-1. **ALWAYS** run `codelens graph impact "<symbol>"` before refactoring
-2. **ALWAYS** run `codelens diff --from main --to HEAD` before reviewing a PR
-3. Run `codelens index` if you get "index not found" errors
+1. **ALWAYS** run `symlens graph impact "<symbol>"` before refactoring
+2. **ALWAYS** run `symlens diff --from main --to HEAD` before reviewing a PR
+3. Run `symlens index` if you get "index not found" errors
 4. Use `--source` flag only when you actually need the implementation, not just the signature
 
 ## Supported Languages
@@ -224,11 +224,11 @@ Rust, TypeScript, Python, Swift, Go — full support for symbols, calls, refs, a
 }
 
 // ─── OpenClaw ────────────────────────────────────────────────────────
-//   always user-level: ~/.openclaw/skills/codelens/SKILL.md
+//   always user-level: ~/.openclaw/skills/symlens/SKILL.md
 
 fn setup_openclaw(force: bool) -> anyhow::Result<()> {
     let home = home_dir()?;
-    let skill_dir = home.join(".openclaw").join("skills").join("codelens");
+    let skill_dir = home.join(".openclaw").join("skills").join("symlens");
     fs::create_dir_all(&skill_dir)?;
 
     let target = skill_dir.join("SKILL.md");
@@ -240,48 +240,48 @@ fn setup_openclaw(force: bool) -> anyhow::Result<()> {
 
 fn openclaw_skill() -> String {
     r#"---
-name: codelens
+name: symlens
 description: Token-efficient code intelligence — search, outline, refs, call graph, impact analysis, git blame/diff
 version: 0.1.0
 tools:
-  - codelens
+  - symlens
 ---
 
-# CodeLens — Code Intelligence Skill
+# SymLens — Code Intelligence Skill
 
-CodeLens indexes codebases with tree-sitter and provides token-efficient access to symbols, call graphs, and impact analysis.
+SymLens indexes codebases with tree-sitter and provides token-efficient access to symbols, call graphs, and impact analysis.
 
 ## Available Commands
 
 | Command | What it does |
 |---------|-------------|
-| `codelens index` | Index the project (run once) |
-| `codelens search "<query>"` | BM25 full-text symbol search |
-| `codelens symbol "<id>"` | Get function signature + docs |
-| `codelens symbol "<id>" --source` | Get full source code |
-| `codelens outline <file>` | File symbol tree |
-| `codelens outline --project` | Project structure overview |
-| `codelens refs "<name>"` | Find all references (AST-level) |
-| `codelens callers "<name>"` | Who calls this symbol |
-| `codelens callees "<name>"` | What this symbol calls |
-| `codelens graph impact "<name>"` | Blast radius / impact analysis |
-| `codelens graph deps` | Module dependency graph |
-| `codelens graph path <A> <B>` | Call path between two symbols |
-| `codelens lines <file> <start> <end>` | Get source by line range |
-| `codelens blame "<name>"` | Git blame for a symbol |
-| `codelens diff --from <ref> --to <ref>` | Changed symbols between commits |
-| `codelens watch` | Auto-update index on file changes |
-| `codelens stats` | Index statistics |
+| `symlens index` | Index the project (run once) |
+| `symlens search "<query>"` | BM25 full-text symbol search |
+| `symlens symbol "<id>"` | Get function signature + docs |
+| `symlens symbol "<id>" --source` | Get full source code |
+| `symlens outline <file>` | File symbol tree |
+| `symlens outline --project` | Project structure overview |
+| `symlens refs "<name>"` | Find all references (AST-level) |
+| `symlens callers "<name>"` | Who calls this symbol |
+| `symlens callees "<name>"` | What this symbol calls |
+| `symlens graph impact "<name>"` | Blast radius / impact analysis |
+| `symlens graph deps` | Module dependency graph |
+| `symlens graph path <A> <B>` | Call path between two symbols |
+| `symlens lines <file> <start> <end>` | Get source by line range |
+| `symlens blame "<name>"` | Git blame for a symbol |
+| `symlens diff --from <ref> --to <ref>` | Changed symbols between commits |
+| `symlens watch` | Auto-update index on file changes |
+| `symlens stats` | Index statistics |
 
 ## Usage Guidelines
 
-1. **Always prefer `codelens` over reading entire files** — it saves tokens.
-2. Run `codelens index` first if the project hasn't been indexed.
-3. Use `codelens search` instead of `grep -r` for symbol search.
-4. Use `codelens outline --project` instead of `find` + `cat` for project overview.
-5. **Before refactoring**: run `codelens graph impact "<symbol>"` to check blast radius.
-6. **Before reviewing changes**: run `codelens diff --from main --to HEAD`.
-7. Use `codelens symbol "<id>"` to get just the signature (~60 tokens) instead of the whole file (~4000 tokens).
+1. **Always prefer `symlens` over reading entire files** — it saves tokens.
+2. Run `symlens index` first if the project hasn't been indexed.
+3. Use `symlens search` instead of `grep -r` for symbol search.
+4. Use `symlens outline --project` instead of `find` + `cat` for project overview.
+5. **Before refactoring**: run `symlens graph impact "<symbol>"` to check blast radius.
+6. **Before reviewing changes**: run `symlens diff --from main --to HEAD`.
+7. Use `symlens symbol "<id>"` to get just the signature (~60 tokens) instead of the whole file (~4000 tokens).
 
 ## Supported Languages
 
@@ -291,8 +291,8 @@ Rust, TypeScript, Python, Swift, Go — full support for symbols, calls, refs, a
 }
 
 // ─── Cursor ──────────────────────────────────────────────────────────
-//   project: ./.cursor/rules/codelens.mdc
-//   global:  ~/.cursor/rules/codelens.mdc
+//   project: ./.cursor/rules/symlens.mdc
+//   global:  ~/.cursor/rules/symlens.mdc
 
 fn setup_cursor(root: &Path, global: bool, force: bool) -> anyhow::Result<()> {
     let rules_dir = if global {
@@ -304,7 +304,7 @@ fn setup_cursor(root: &Path, global: bool, force: bool) -> anyhow::Result<()> {
     fs::create_dir_all(&rules_dir)?;
 
     let scope = if global { "global" } else { "project" };
-    let target = rules_dir.join("codelens.mdc");
+    let target = rules_dir.join("symlens.mdc");
     let content = cursor_rule();
     write_file(&target, &content, force)?;
     println!("  ✓ Cursor ({scope}): wrote {}", target.display());
@@ -313,48 +313,48 @@ fn setup_cursor(root: &Path, global: bool, force: bool) -> anyhow::Result<()> {
 
 fn cursor_rule() -> String {
     r#"---
-description: CodeLens code intelligence — use codelens CLI for token-efficient code search, symbol lookup, refs, and call graph analysis
+description: SymLens code intelligence — use symlens CLI for token-efficient code search, symbol lookup, refs, and call graph analysis
 globs: 
 alwaysApply: true
 ---
 
-# CodeLens Code Intelligence
+# SymLens Code Intelligence
 
-This project has `codelens` installed for token-efficient code navigation.
+This project has `symlens` installed for token-efficient code navigation.
 
 ## Rules
 
-1. **Prefer `codelens` over reading entire files** to save tokens:
-   - `codelens search "<query>"` instead of `grep -r`
-   - `codelens outline <file>` instead of `cat <file>`
-   - `codelens symbol "<id>"` instead of reading the whole file
-   - `codelens symbol "<id>" --source` only when you need full implementation
-   - `codelens outline --project` instead of `find` + `cat`
-   - `codelens refs "<name>"` instead of `grep -r "<name>"`
+1. **Prefer `symlens` over reading entire files** to save tokens:
+   - `symlens search "<query>"` instead of `grep -r`
+   - `symlens outline <file>` instead of `cat <file>`
+   - `symlens symbol "<id>"` instead of reading the whole file
+   - `symlens symbol "<id>" --source` only when you need full implementation
+   - `symlens outline --project` instead of `find` + `cat`
+   - `symlens refs "<name>"` instead of `grep -r "<name>"`
 
-2. **Before refactoring**: ALWAYS run `codelens graph impact "<symbol>"` first to check blast radius.
+2. **Before refactoring**: ALWAYS run `symlens graph impact "<symbol>"` first to check blast radius.
 
-3. **Before reviewing a PR**: run `codelens diff --from main --to HEAD` to see changed symbols.
+3. **Before reviewing a PR**: run `symlens diff --from main --to HEAD` to see changed symbols.
 
-4. **Git history**: use `codelens blame "<name>"` to check who last modified a symbol.
+4. **Git history**: use `symlens blame "<name>"` to check who last modified a symbol.
 
-5. Run `codelens index` if you get "index not found" errors.
+5. Run `symlens index` if you get "index not found" errors.
 
 ## Quick Reference
 
 | Task | Command |
 |------|---------|
-| Search symbols | `codelens search "<query>"` |
-| Function signature | `codelens symbol "<id>"` |
-| Full source | `codelens symbol "<id>" --source` |
-| File outline | `codelens outline <file>` |
-| Project overview | `codelens outline --project` |
-| Find references | `codelens refs "<name>"` |
-| Callers | `codelens callers "<name>"` |
-| Impact analysis | `codelens graph impact "<name>"` |
-| Dependency graph | `codelens graph deps` |
-| Git blame | `codelens blame "<name>"` |
-| Changed symbols | `codelens diff --from <ref> --to <ref>` |
+| Search symbols | `symlens search "<query>"` |
+| Function signature | `symlens symbol "<id>"` |
+| Full source | `symlens symbol "<id>" --source` |
+| File outline | `symlens outline <file>` |
+| Project overview | `symlens outline --project` |
+| Find references | `symlens refs "<name>"` |
+| Callers | `symlens callers "<name>"` |
+| Impact analysis | `symlens graph impact "<name>"` |
+| Dependency graph | `symlens graph deps` |
+| Git blame | `symlens blame "<name>"` |
+| Changed symbols | `symlens diff --from <ref> --to <ref>` |
 "#
     .to_string()
 }
@@ -387,7 +387,7 @@ fn write_file(path: &Path, content: &str, force: bool) -> anyhow::Result<()> {
 fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
     if global {
         let home = home_dir()?;
-        let skill_dir = home.join(".claude").join("skills").join("codelens");
+        let skill_dir = home.join(".claude").join("skills").join("symlens");
         if skill_dir.exists() {
             fs::remove_dir_all(&skill_dir)?;
             println!(
@@ -401,9 +401,9 @@ fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
         let target = root.join("CLAUDE.md");
         if target.exists() {
             let content = fs::read_to_string(&target)?;
-            if content.contains("## Code Navigation (CodeLens)") {
-                // Remove the codelens section
-                let section_start = "## Code Navigation (CodeLens)";
+            if content.contains("## Code Navigation (SymLens)") {
+                // Remove the symlens section
+                let section_start = "## Code Navigation (SymLens)";
                 if let Some(start_idx) = content.find(section_start) {
                     // Find the next ## heading or end of file
                     let after_section = &content[start_idx + section_start.len()..];
@@ -429,13 +429,13 @@ fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
                     } else {
                         fs::write(&target, new_content)?;
                         println!(
-                            "  ✓ Claude Code (project): removed codelens section from {}",
+                            "  ✓ Claude Code (project): removed symlens section from {}",
                             target.display()
                         );
                     }
                 }
             } else {
-                println!("  - Claude Code (project): no codelens section found in CLAUDE.md");
+                println!("  - Claude Code (project): no symlens section found in CLAUDE.md");
             }
         } else {
             println!("  - Claude Code (project): CLAUDE.md not found");
@@ -446,7 +446,7 @@ fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
 
 fn uninstall_openclaw() -> anyhow::Result<()> {
     let home = home_dir()?;
-    let skill_dir = home.join(".openclaw").join("skills").join("codelens");
+    let skill_dir = home.join(".openclaw").join("skills").join("symlens");
     if skill_dir.exists() {
         fs::remove_dir_all(&skill_dir)?;
         println!("  ✓ OpenClaw: removed {}", skill_dir.display());
@@ -459,9 +459,9 @@ fn uninstall_openclaw() -> anyhow::Result<()> {
 fn uninstall_cursor(root: &Path, global: bool) -> anyhow::Result<()> {
     let target = if global {
         let home = home_dir()?;
-        home.join(".cursor").join("rules").join("codelens.mdc")
+        home.join(".cursor").join("rules").join("symlens.mdc")
     } else {
-        root.join(".cursor").join("rules").join("codelens.mdc")
+        root.join(".cursor").join("rules").join("symlens.mdc")
     };
     let scope = if global { "global" } else { "project" };
     if target.exists() {

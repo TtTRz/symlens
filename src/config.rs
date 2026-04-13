@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::path::Path;
 
-/// Project-level configuration loaded from `codelens.toml`.
+/// Project-level configuration loaded from `symlens.toml`.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -25,10 +25,10 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Load config from `codelens.toml` in the given directory.
+    /// Load config from `symlens.toml` in the given directory.
     /// Returns default config if file doesn't exist.
     pub fn load(root: &Path) -> Self {
-        let config_path = root.join("codelens.toml");
+        let config_path = root.join("symlens.toml");
         if !config_path.exists() {
             return Self::default();
         }
@@ -39,10 +39,10 @@ impl Config {
     }
 }
 
-/// Generate a default `codelens.toml` content with comments.
+/// Generate a default `symlens.toml` content with comments.
 pub fn default_toml() -> &'static str {
-    r#"# CodeLens configuration
-# Place this file at your project root as `codelens.toml`
+    r#"# SymLens configuration
+# Place this file at your project root as `symlens.toml`
 
 # Maximum number of files to index (default: 100000)
 # max_files = 100000

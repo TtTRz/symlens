@@ -5,10 +5,10 @@ use std::path::Path;
 mod parser_tests {
     use super::*;
 
-    fn parse_rust_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::rust::RustParser;
+    fn parse_rust_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::rust::RustParser;
         let source = include_bytes!("fixtures/sample.rs");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.rs"),
@@ -21,7 +21,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let structs: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Struct)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Struct)
             .collect();
         assert!(
             structs.iter().any(|s| s.name == "AudioEngine"),
@@ -35,7 +35,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "normalize"),
@@ -48,7 +48,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let methods: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Method)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Method)
             .collect();
         assert!(
             methods.iter().any(|s| s.name == "new"),
@@ -65,7 +65,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let consts: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Constant)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Constant)
             .collect();
         assert!(
             consts.iter().any(|s| s.name == "MAX_CHANNELS"),
@@ -78,7 +78,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let enums: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Enum)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Enum)
             .collect();
         assert!(
             enums.iter().any(|s| s.name == "AudioFormat"),
@@ -91,7 +91,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let traits: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             traits.iter().any(|s| s.name == "Processor"),
@@ -104,7 +104,7 @@ mod parser_tests {
         let symbols = parse_rust_fixture();
         let types: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::TypeAlias)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::TypeAlias)
             .collect();
         assert!(
             types.iter().any(|s| s.name == "SampleRate"),
@@ -147,9 +147,9 @@ mod parser_tests {
 
     #[test]
     fn rust_extracts_calls() {
-        let parser = codelens::parser::rust::RustParser;
+        let parser = symlens::parser::rust::RustParser;
         let source = include_bytes!("fixtures/sample.rs");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.rs"),
@@ -168,9 +168,9 @@ mod parser_tests {
     #[test]
     fn rust_extracts_imports() {
         // Our fixture doesn't have use statements, test the parser doesn't crash
-        let parser = codelens::parser::rust::RustParser;
+        let parser = symlens::parser::rust::RustParser;
         let source = include_bytes!("fixtures/sample.rs");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.rs"),
@@ -182,9 +182,9 @@ mod parser_tests {
 
     #[test]
     fn rust_find_identifiers() {
-        let parser = codelens::parser::rust::RustParser;
+        let parser = symlens::parser::rust::RustParser;
         let source = include_bytes!("fixtures/sample.rs");
-        let refs = codelens::parser::traits::LanguageParser::find_identifiers(
+        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
             &parser,
             source,
             "normalize",
@@ -201,9 +201,9 @@ mod parser_tests {
     // TypeScript parser tests
     #[test]
     fn ts_extracts_class() {
-        let parser = codelens::parser::typescript::TypeScriptParser;
+        let parser = symlens::parser::typescript::TypeScriptParser;
         let source = include_bytes!("fixtures/sample.ts");
-        let symbols = codelens::parser::traits::LanguageParser::extract_symbols(
+        let symbols = symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.ts"),
@@ -211,7 +211,7 @@ mod parser_tests {
         .expect("Failed to parse TS fixture");
         let classes: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Class)
             .collect();
         assert!(
             classes.iter().any(|s| s.name == "Server"),
@@ -222,9 +222,9 @@ mod parser_tests {
 
     #[test]
     fn ts_extracts_interface() {
-        let parser = codelens::parser::typescript::TypeScriptParser;
+        let parser = symlens::parser::typescript::TypeScriptParser;
         let source = include_bytes!("fixtures/sample.ts");
-        let symbols = codelens::parser::traits::LanguageParser::extract_symbols(
+        let symbols = symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.ts"),
@@ -232,7 +232,7 @@ mod parser_tests {
         .expect("Failed to parse TS fixture");
         let interfaces: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             interfaces.iter().any(|s| s.name == "Config"),
@@ -242,9 +242,9 @@ mod parser_tests {
 
     #[test]
     fn ts_extracts_function() {
-        let parser = codelens::parser::typescript::TypeScriptParser;
+        let parser = symlens::parser::typescript::TypeScriptParser;
         let source = include_bytes!("fixtures/sample.ts");
-        let symbols = codelens::parser::traits::LanguageParser::extract_symbols(
+        let symbols = symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.ts"),
@@ -252,7 +252,7 @@ mod parser_tests {
         .expect("Failed to parse TS fixture");
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "createServer"),
@@ -263,9 +263,9 @@ mod parser_tests {
     // Python parser tests
     #[test]
     fn python_extracts_class() {
-        let parser = codelens::parser::python::PythonParser;
+        let parser = symlens::parser::python::PythonParser;
         let source = include_bytes!("fixtures/sample.py");
-        let symbols = codelens::parser::traits::LanguageParser::extract_symbols(
+        let symbols = symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.py"),
@@ -273,7 +273,7 @@ mod parser_tests {
         .expect("Failed to parse Python fixture");
         let classes: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Class)
             .collect();
         assert!(
             classes.iter().any(|s| s.name == "Database"),
@@ -283,9 +283,9 @@ mod parser_tests {
 
     #[test]
     fn python_extracts_functions() {
-        let parser = codelens::parser::python::PythonParser;
+        let parser = symlens::parser::python::PythonParser;
         let source = include_bytes!("fixtures/sample.py");
-        let symbols = codelens::parser::traits::LanguageParser::extract_symbols(
+        let symbols = symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.py"),
@@ -293,7 +293,7 @@ mod parser_tests {
         .expect("Failed to parse Python fixture");
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "create_connection"),
@@ -311,10 +311,10 @@ mod parser_tests {
 mod dart_tests {
     use super::*;
 
-    fn parse_dart_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::dart::DartParser;
+    fn parse_dart_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::dart::DartParser;
         let source = include_bytes!("fixtures/sample.dart");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.dart"),
@@ -327,7 +327,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let classes: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Class)
             .collect();
         assert!(
             classes.iter().any(|s| s.name == "User"),
@@ -345,7 +345,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let interfaces: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             interfaces.iter().any(|s| s.name == "Repository"),
@@ -359,7 +359,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let mixins: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             mixins.iter().any(|s| s.name == "Logger"),
@@ -373,7 +373,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let enums: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Enum)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Enum)
             .collect();
         assert!(
             enums.iter().any(|s| s.name == "OperationStatus"),
@@ -386,7 +386,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let types: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::TypeAlias)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::TypeAlias)
             .collect();
         assert!(
             types.iter().any(|s| s.name == "UserCallback"),
@@ -400,7 +400,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "createRepository"),
@@ -417,7 +417,7 @@ mod dart_tests {
         let symbols = parse_dart_fixture();
         let methods: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Method)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Method)
             .collect();
         assert!(
             methods.iter().any(|s| s.name == "findById"),
@@ -443,9 +443,9 @@ mod dart_tests {
 
     #[test]
     fn dart_extracts_calls() {
-        let parser = codelens::parser::dart::DartParser;
+        let parser = symlens::parser::dart::DartParser;
         let source = include_bytes!("fixtures/sample.dart");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.dart"),
@@ -458,9 +458,9 @@ mod dart_tests {
 
     #[test]
     fn dart_extracts_imports() {
-        let parser = codelens::parser::dart::DartParser;
+        let parser = symlens::parser::dart::DartParser;
         let source = include_bytes!("fixtures/sample.dart");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.dart"),
@@ -479,10 +479,10 @@ mod dart_tests {
 
     #[test]
     fn dart_find_identifiers() {
-        let parser = codelens::parser::dart::DartParser;
+        let parser = symlens::parser::dart::DartParser;
         let source = include_bytes!("fixtures/sample.dart");
         let refs =
-            codelens::parser::traits::LanguageParser::find_identifiers(&parser, source, "User")
+            symlens::parser::traits::LanguageParser::find_identifiers(&parser, source, "User")
                 .expect("Failed to find Dart identifiers");
         assert!(
             refs.len() >= 2,
@@ -495,7 +495,7 @@ mod dart_tests {
 // ─── Call graph tests ───────────────────────────────────────────────
 
 mod call_graph_tests {
-    use codelens::graph::call_graph::CallGraph;
+    use symlens::graph::call_graph::CallGraph;
 
     #[test]
     fn build_and_query_callers() {
@@ -573,8 +573,8 @@ mod call_graph_tests {
 // ─── Project index tests ────────────────────────────────────────────
 
 mod index_tests {
-    use codelens::model::project::ProjectIndex;
-    use codelens::model::symbol::*;
+    use symlens::model::project::ProjectIndex;
+    use symlens::model::symbol::*;
     use std::path::PathBuf;
 
     fn make_symbol(name: &str, kind: SymbolKind, file: &str) -> Symbol {
@@ -704,7 +704,7 @@ mod index_tests {
 // ─── Symbol ID tests ────────────────────────────────────────────────
 
 mod symbol_tests {
-    use codelens::model::symbol::*;
+    use symlens::model::symbol::*;
 
     #[test]
     fn symbol_id_format() {
@@ -752,8 +752,8 @@ mod symbol_tests {
 // ─── Graph path tests ───────────────────────────────────────────────
 
 mod path_tests {
-    use codelens::graph::call_graph::CallGraph;
-    use codelens::graph::path::find_path;
+    use symlens::graph::call_graph::CallGraph;
+    use symlens::graph::path::find_path;
 
     #[test]
     fn find_direct_path() {
@@ -796,7 +796,7 @@ mod path_tests {
 // ─── Deps graph tests ──────────────────────────────────────────────
 
 mod deps_tests {
-    use codelens::graph::deps::DepsGraph;
+    use symlens::graph::deps::DepsGraph;
     use std::path::PathBuf;
 
     #[test]
@@ -832,10 +832,10 @@ mod deps_tests {
 mod go_tests {
     use super::*;
 
-    fn parse_go_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::go::GoParser;
+    fn parse_go_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::go::GoParser;
         let source = include_bytes!("fixtures/sample.go");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.go"),
@@ -848,7 +848,7 @@ mod go_tests {
         let symbols = parse_go_fixture();
         let structs: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Struct)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Struct)
             .collect();
         assert!(
             structs.iter().any(|s| s.name == "AudioEngine"),
@@ -862,7 +862,7 @@ mod go_tests {
         let symbols = parse_go_fixture();
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "Normalize"),
@@ -881,7 +881,7 @@ mod go_tests {
         let symbols = parse_go_fixture();
         let methods: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Method)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Method)
             .collect();
         assert!(
             methods.iter().any(|s| s.name == "ProcessBlock"),
@@ -895,7 +895,7 @@ mod go_tests {
         let symbols = parse_go_fixture();
         let interfaces: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             interfaces.iter().any(|s| s.name == "Processor"),
@@ -909,7 +909,7 @@ mod go_tests {
         let symbols = parse_go_fixture();
         let consts: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Constant)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Constant)
             .collect();
         assert!(
             consts.iter().any(|s| s.name == "MaxChannels"),
@@ -923,7 +923,7 @@ mod go_tests {
         let symbols = parse_go_fixture();
         let vars: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Variable)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Variable)
             .collect();
         assert!(
             vars.iter().any(|s| s.name == "DefaultRate"),
@@ -939,8 +939,8 @@ mod go_tests {
         let type_aliases: Vec<_> = symbols
             .iter()
             .filter(|s| {
-                s.kind == codelens::model::symbol::SymbolKind::TypeAlias
-                    || s.kind == codelens::model::symbol::SymbolKind::Struct
+                s.kind == symlens::model::symbol::SymbolKind::TypeAlias
+                    || s.kind == symlens::model::symbol::SymbolKind::Struct
             })
             .collect();
         assert!(
@@ -975,9 +975,9 @@ mod go_tests {
 
     #[test]
     fn go_extracts_calls() {
-        let parser = codelens::parser::go::GoParser;
+        let parser = symlens::parser::go::GoParser;
         let source = include_bytes!("fixtures/sample.go");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.go"),
@@ -993,9 +993,9 @@ mod go_tests {
 
     #[test]
     fn go_extracts_imports() {
-        let parser = codelens::parser::go::GoParser;
+        let parser = symlens::parser::go::GoParser;
         let source = include_bytes!("fixtures/sample.go");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.go"),
@@ -1014,9 +1014,9 @@ mod go_tests {
 
     #[test]
     fn go_find_identifiers() {
-        let parser = codelens::parser::go::GoParser;
+        let parser = symlens::parser::go::GoParser;
         let source = include_bytes!("fixtures/sample.go");
-        let refs = codelens::parser::traits::LanguageParser::find_identifiers(
+        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
             &parser,
             source,
             "Normalize",
@@ -1035,10 +1035,10 @@ mod go_tests {
 mod swift_tests {
     use super::*;
 
-    fn parse_swift_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::swift::SwiftParser;
+    fn parse_swift_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::swift::SwiftParser;
         let source = include_bytes!("fixtures/sample.swift");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.swift"),
@@ -1051,7 +1051,7 @@ mod swift_tests {
         let symbols = parse_swift_fixture();
         let classes: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Class)
             .collect();
         assert!(
             classes.iter().any(|s| s.name == "AudioEngine"),
@@ -1065,7 +1065,7 @@ mod swift_tests {
         let symbols = parse_swift_fixture();
         let structs: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Struct)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Struct)
             .collect();
         // tree-sitter-swift v0.7 may not produce struct_declaration at top level
         // If not found, verify the parser at least doesn't crash on struct syntax
@@ -1083,7 +1083,7 @@ mod swift_tests {
         let symbols = parse_swift_fixture();
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "normalize"),
@@ -1097,7 +1097,7 @@ mod swift_tests {
         let symbols = parse_swift_fixture();
         let methods: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Method)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Method)
             .collect();
         assert!(
             methods.iter().any(|s| s.name == "processBlock"),
@@ -1111,7 +1111,7 @@ mod swift_tests {
         let symbols = parse_swift_fixture();
         let enums: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Enum)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Enum)
             .collect();
         // tree-sitter-swift v0.7 may not produce enum_declaration at top level
         if !enums.is_empty() {
@@ -1128,7 +1128,7 @@ mod swift_tests {
         let symbols = parse_swift_fixture();
         let protocols: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             protocols.iter().any(|s| s.name == "Processor"),
@@ -1157,9 +1157,9 @@ mod swift_tests {
 
     #[test]
     fn swift_extracts_calls() {
-        let parser = codelens::parser::swift::SwiftParser;
+        let parser = symlens::parser::swift::SwiftParser;
         let source = include_bytes!("fixtures/sample.swift");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.swift"),
@@ -1175,9 +1175,9 @@ mod swift_tests {
 
     #[test]
     fn swift_extracts_imports() {
-        let parser = codelens::parser::swift::SwiftParser;
+        let parser = symlens::parser::swift::SwiftParser;
         let source = include_bytes!("fixtures/sample.swift");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.swift"),
@@ -1194,9 +1194,9 @@ mod swift_tests {
 
     #[test]
     fn swift_find_identifiers() {
-        let parser = codelens::parser::swift::SwiftParser;
+        let parser = symlens::parser::swift::SwiftParser;
         let source = include_bytes!("fixtures/sample.swift");
-        let refs = codelens::parser::traits::LanguageParser::find_identifiers(
+        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
             &parser,
             source,
             "normalize",
@@ -1215,10 +1215,10 @@ mod swift_tests {
 mod c_tests {
     use super::*;
 
-    fn parse_c_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::c::CParser;
+    fn parse_c_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::c::CParser;
         let source = include_bytes!("fixtures/sample.c");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.c"),
@@ -1231,7 +1231,7 @@ mod c_tests {
         let symbols = parse_c_fixture();
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter()
@@ -1247,8 +1247,8 @@ mod c_tests {
         let structs: Vec<_> = symbols
             .iter()
             .filter(|s| {
-                s.kind == codelens::model::symbol::SymbolKind::Struct
-                    || s.kind == codelens::model::symbol::SymbolKind::TypeAlias
+                s.kind == symlens::model::symbol::SymbolKind::Struct
+                    || s.kind == symlens::model::symbol::SymbolKind::TypeAlias
             })
             .collect();
         assert!(
@@ -1268,7 +1268,7 @@ mod c_tests {
         let symbols = parse_c_fixture();
         let macros: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Macro)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Macro)
             .collect();
         assert!(
             macros.iter().any(|s| s.name == "MAX_CHANNELS"),
@@ -1279,9 +1279,9 @@ mod c_tests {
 
     #[test]
     fn c_extracts_calls() {
-        let parser = codelens::parser::c::CParser;
+        let parser = symlens::parser::c::CParser;
         let source = include_bytes!("fixtures/sample.c");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.c"),
@@ -1296,9 +1296,9 @@ mod c_tests {
 
     #[test]
     fn c_extracts_imports() {
-        let parser = codelens::parser::c::CParser;
+        let parser = symlens::parser::c::CParser;
         let source = include_bytes!("fixtures/sample.c");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.c"),
@@ -1313,10 +1313,10 @@ mod c_tests {
 mod cpp_tests {
     use super::*;
 
-    fn parse_cpp_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::cpp::CppParser;
+    fn parse_cpp_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::cpp::CppParser;
         let source = include_bytes!("fixtures/sample.cpp");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.cpp"),
@@ -1329,7 +1329,7 @@ mod cpp_tests {
         let symbols = parse_cpp_fixture();
         let classes: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Class)
             .collect();
         assert!(
             classes.iter().any(|s| s.name == "AudioEngine"),
@@ -1343,7 +1343,7 @@ mod cpp_tests {
         let symbols = parse_cpp_fixture();
         let enums: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Enum)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Enum)
             .collect();
         assert!(
             enums.iter().any(|s| s.name == "AudioFormat"),
@@ -1357,7 +1357,7 @@ mod cpp_tests {
         let symbols = parse_cpp_fixture();
         let methods: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Method)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Method)
             .collect();
         assert!(
             methods
@@ -1370,9 +1370,9 @@ mod cpp_tests {
 
     #[test]
     fn cpp_extracts_calls() {
-        let parser = codelens::parser::cpp::CppParser;
+        let parser = symlens::parser::cpp::CppParser;
         let source = include_bytes!("fixtures/sample.cpp");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.cpp"),
@@ -1387,9 +1387,9 @@ mod cpp_tests {
 
     #[test]
     fn cpp_extracts_imports() {
-        let parser = codelens::parser::cpp::CppParser;
+        let parser = symlens::parser::cpp::CppParser;
         let source = include_bytes!("fixtures/sample.cpp");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.cpp"),
@@ -1404,10 +1404,10 @@ mod cpp_tests {
 mod kotlin_tests {
     use super::*;
 
-    fn parse_kotlin_fixture() -> Vec<codelens::model::symbol::Symbol> {
-        let parser = codelens::parser::kotlin::KotlinParser;
+    fn parse_kotlin_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::kotlin::KotlinParser;
         let source = include_bytes!("fixtures/sample.kt");
-        codelens::parser::traits::LanguageParser::extract_symbols(
+        symlens::parser::traits::LanguageParser::extract_symbols(
             &parser,
             source,
             Path::new("sample.kt"),
@@ -1420,7 +1420,7 @@ mod kotlin_tests {
         let symbols = parse_kotlin_fixture();
         let classes: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Class)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Class)
             .collect();
         assert!(
             classes.iter().any(|s| s.name == "AudioEngine"),
@@ -1434,7 +1434,7 @@ mod kotlin_tests {
         let symbols = parse_kotlin_fixture();
         let interfaces: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Interface)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
             .collect();
         assert!(
             interfaces.iter().any(|s| s.name == "Processor"),
@@ -1448,7 +1448,7 @@ mod kotlin_tests {
         let symbols = parse_kotlin_fixture();
         let fns: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Function)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
             .collect();
         assert!(
             fns.iter().any(|s| s.name == "createEngine"),
@@ -1462,7 +1462,7 @@ mod kotlin_tests {
         let symbols = parse_kotlin_fixture();
         let enums: Vec<_> = symbols
             .iter()
-            .filter(|s| s.kind == codelens::model::symbol::SymbolKind::Enum)
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Enum)
             .collect();
         // tree-sitter-kotlin may parse enum class as Class
         if !enums.is_empty() {
@@ -1476,9 +1476,9 @@ mod kotlin_tests {
 
     #[test]
     fn kotlin_extracts_imports() {
-        let parser = codelens::parser::kotlin::KotlinParser;
+        let parser = symlens::parser::kotlin::KotlinParser;
         let source = include_bytes!("fixtures/sample.kt");
-        let imports = codelens::parser::traits::LanguageParser::extract_imports(
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
             &parser,
             source,
             Path::new("sample.kt"),
@@ -1489,9 +1489,9 @@ mod kotlin_tests {
 
     #[test]
     fn kotlin_extracts_calls() {
-        let parser = codelens::parser::kotlin::KotlinParser;
+        let parser = symlens::parser::kotlin::KotlinParser;
         let source = include_bytes!("fixtures/sample.kt");
-        let calls = codelens::parser::traits::LanguageParser::extract_calls(
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
             &parser,
             source,
             Path::new("sample.kt"),

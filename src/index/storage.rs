@@ -10,7 +10,7 @@ const SEARCH_DIR: &str = "search";
 /// Get the cache directory for a project.
 pub fn cache_dir(root_hash: &str) -> PathBuf {
     let home = dirs_or_default();
-    home.join(".codelens").join("indexes").join(root_hash)
+    home.join(".symlens").join("indexes").join(root_hash)
 }
 
 /// Save a project index to disk, including tantivy search index.

@@ -1,6 +1,6 @@
 [package]
-name = "codelens"
-version = "0.1.0"
+name = "symlens"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.92"
 description = "Token-efficient code intelligence CLI powered by tree-sitter"
@@ -8,11 +8,11 @@ authors = ["TtTRz <romc1224@gmail.com>"]
 license = "MIT"
 
 [lib]
-name = "codelens"
+name = "symlens"
 path = "src/lib.rs"
 
 [[bin]]
-name = "codelens"
+name = "symlens"
 path = "src/main.rs"
 
 [dependencies]
@@ -79,5 +79,5 @@ codegen-units = 1
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
-name = "codelens_bench"
+name = "symlens_bench"
 harness = false

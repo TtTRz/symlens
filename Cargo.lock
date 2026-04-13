@@ -313,38 +313,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
-name = "codelens"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "blake3",
- "clap",
- "clap_complete",
- "criterion",
- "ignore",
- "notify",
- "petgraph",
- "rayon",
- "serde",
- "serde_json",
- "tantivy",
- "tokio",
- "toml",
- "tower-lsp",
- "tree-sitter",
- "tree-sitter-c",
- "tree-sitter-cpp",
- "tree-sitter-dart",
- "tree-sitter-go",
- "tree-sitter-kotlin-ng",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-swift",
- "tree-sitter-typescript",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1705,6 +1673,38 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "symlens"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "blake3",
+ "clap",
+ "clap_complete",
+ "criterion",
+ "ignore",
+ "notify",
+ "petgraph",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tokio",
+ "toml",
+ "tower-lsp",
+ "tree-sitter",
+ "tree-sitter-c",
+ "tree-sitter-cpp",
+ "tree-sitter-dart",
+ "tree-sitter-go",
+ "tree-sitter-kotlin-ng",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-swift",
+ "tree-sitter-typescript",
+]
 
 [[package]]
 name = "syn"
