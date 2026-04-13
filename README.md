@@ -1,6 +1,15 @@
 # SymLens
 
-**Give your AI agent a code search engine instead of `cat`.**
+[![Crates.io](https://img.shields.io/crates/v/symlens)](https://crates.io/crates/symlens)
+[![CI](https://github.com/TtTRz/symlens/actions/workflows/ci.yml/badge.svg)](https://github.com/TtTRz/symlens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/crates/l/symlens)](https://github.com/TtTRz/symlens/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/crates/d/symlens)](https://crates.io/crates/symlens)
+[![Rust](https://img.shields.io/badge/rust-1.92%2B-orange)](https://www.rust-lang.org)
+[![Languages](https://img.shields.io/badge/languages-9-blue)](#what-can-it-do)
+
+[中文](./README_CN.md) | English
+
+**Give your AI agent a code search engine instead of `cat` or `grep`.**
 
 ```
 cat src/engine.rs              → 4000 tokens
@@ -11,9 +20,28 @@ SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) 
 
 Supports **Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin**.
 
+## Why Not Just `cat` and `grep`?
+
+| | `cat` / `grep` | `symlens` |
+|---|---|---|
+| **Granularity** | Lines / files | Symbols (functions, classes, methods) |
+| **Search** | Regex string matching | BM25 semantic search (understands camelCase/snake_case) |
+| **Call graph** | No idea | Knows who calls whom (`callers` / `callees` / `graph path`) |
+| **Impact analysis** | Impossible | `graph impact` tells you how many places break if you change a function |
+| **Token cost** | Entire file (~4000 tokens) | Just the signature (~60 tokens) — **66x savings** |
+| **Reference finding** | `grep "foo"` matches comments, strings, everything | AST-level — only real code references |
+
 ## Install
 
+From crates.io:
 ```bash
+cargo install symlens
+```
+
+From source:
+```bash
+git clone https://github.com/TtTRz/symlens.git
+cd symlens
 cargo install --path .
 ```
 
@@ -78,7 +106,7 @@ The callers query runs in **13 nanoseconds** because the call graph is cached as
 Run as an [MCP](https://modelcontextprotocol.io/) server for Claude Code, Cursor, or any MCP-compatible editor:
 
 ```bash
-cargo install --path . --features mcp
+cargo install symlens --features mcp
 symlens mcp
 ```
 
@@ -127,4 +155,4 @@ MIT
 
 ---
 
-[中文文档](./README_CN.md) | [Full command reference](./docs/commands.md) | [Changelog](./CHANGELOG.md)
+[Full command reference](./docs/commands.md) | [Changelog](./CHANGELOG.md)

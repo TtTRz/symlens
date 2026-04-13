@@ -5,6 +5,13 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-13
+
+### Changed
+
+- **Upgraded all dependencies** to latest versions: tree-sitter 0.26, tantivy 0.26, petgraph 0.8, bincode 2, notify 8, toml 1.1
+- **Install instructions** updated for crates.io (`cargo install symlens`) and source build
+
 ## [0.2.0] - 2026-04-13
 
 ### Changed

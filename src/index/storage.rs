@@ -20,7 +20,7 @@ pub fn save(index: &ProjectIndex) -> anyhow::Result<PathBuf> {
 
     // Save index as bincode
     let index_path = dir.join(INDEX_FILE);
-    let encoded = bincode::serialize(index)?;
+    let encoded = bincode::serde::encode_to_vec(index, bincode::config::standard())?;
     fs::write(&index_path, encoded)?;
 
     // Build tantivy search index
@@ -56,7 +56,8 @@ pub fn load(root: &Path) -> anyhow::Result<Option<ProjectIndex>> {
     }
 
     let data = fs::read(&index_path)?;
-    let mut index: ProjectIndex = bincode::deserialize(&data)?;
+    let (mut index, _): (ProjectIndex, _) =
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
 
     // Rebuild call graph name_to_idx and digraph (skipped by serde)
     if let Some(ref mut cg) = index.call_graph {

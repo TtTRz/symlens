@@ -184,12 +184,9 @@ mod parser_tests {
     fn rust_find_identifiers() {
         let parser = symlens::parser::rust::RustParser;
         let source = include_bytes!("fixtures/sample.rs");
-        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
-            &parser,
-            source,
-            "normalize",
-        )
-        .expect("Failed to find identifiers");
+        let refs =
+            symlens::parser::traits::LanguageParser::find_identifiers(&parser, source, "normalize")
+                .expect("Failed to find identifiers");
         // Should find at least the definition + the call inside process_block
         assert!(
             refs.len() >= 2,
@@ -573,9 +570,9 @@ mod call_graph_tests {
 // ─── Project index tests ────────────────────────────────────────────
 
 mod index_tests {
+    use std::path::PathBuf;
     use symlens::model::project::ProjectIndex;
     use symlens::model::symbol::*;
-    use std::path::PathBuf;
 
     fn make_symbol(name: &str, kind: SymbolKind, file: &str) -> Symbol {
         Symbol {
@@ -796,8 +793,8 @@ mod path_tests {
 // ─── Deps graph tests ──────────────────────────────────────────────
 
 mod deps_tests {
-    use symlens::graph::deps::DepsGraph;
     use std::path::PathBuf;
+    use symlens::graph::deps::DepsGraph;
 
     #[test]
     fn build_deps_graph() {
@@ -1016,12 +1013,9 @@ mod go_tests {
     fn go_find_identifiers() {
         let parser = symlens::parser::go::GoParser;
         let source = include_bytes!("fixtures/sample.go");
-        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
-            &parser,
-            source,
-            "Normalize",
-        )
-        .expect("Failed to find Go identifiers");
+        let refs =
+            symlens::parser::traits::LanguageParser::find_identifiers(&parser, source, "Normalize")
+                .expect("Failed to find Go identifiers");
         assert!(
             refs.len() >= 2,
             "Should find at least 2 refs to 'Normalize' (def + call), got {}",
@@ -1196,12 +1190,9 @@ mod swift_tests {
     fn swift_find_identifiers() {
         let parser = symlens::parser::swift::SwiftParser;
         let source = include_bytes!("fixtures/sample.swift");
-        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
-            &parser,
-            source,
-            "normalize",
-        )
-        .expect("Failed to find Swift identifiers");
+        let refs =
+            symlens::parser::traits::LanguageParser::find_identifiers(&parser, source, "normalize")
+                .expect("Failed to find Swift identifiers");
         assert!(
             refs.len() >= 2,
             "Should find at least 2 refs to 'normalize' (def + call), got {}",

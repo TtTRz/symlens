@@ -143,7 +143,7 @@ impl SearchEngine {
         );
 
         let query = query_parser.parse_query(query_str)?;
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
