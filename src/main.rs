@@ -23,6 +23,9 @@ fn main() -> anyhow::Result<()> {
         Commands::Diff(args) => codelens::commands::diff::run(args, root, json, color),
         Commands::Export(args) => codelens::commands::export::run(args, root),
         Commands::Setup(args) => codelens::commands::setup::run(args, root),
+        Commands::Completions(args) => codelens::commands::completions::run(args),
+        Commands::Doctor => codelens::commands::doctor::run(root),
+        Commands::Init => codelens::commands::init::run(root),
         #[cfg(feature = "mcp")]
         Commands::Mcp => {
             let rt = tokio::runtime::Runtime::new()?;

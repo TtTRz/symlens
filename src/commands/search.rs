@@ -25,9 +25,10 @@ pub fn run(
             .collect();
 
         if let Some(ref kind_str) = args.kind
-            && let Some(kind) = SymbolKind::from_str(kind_str) {
-                syms.retain(|(s, _)| s.kind == kind);
-            }
+            && let Some(kind) = SymbolKind::from_str(kind_str)
+        {
+            syms.retain(|(s, _)| s.kind == kind);
+        }
 
         if let Some(ref path_prefix) = args.path {
             syms.retain(|(s, _)| {
@@ -43,9 +44,10 @@ pub fn run(
         let mut results = index.search(&args.query, args.limit);
 
         if let Some(ref kind_str) = args.kind
-            && let Some(kind) = SymbolKind::from_str(kind_str) {
-                results.retain(|s| s.kind == kind);
-            }
+            && let Some(kind) = SymbolKind::from_str(kind_str)
+        {
+            results.retain(|s| s.kind == kind);
+        }
 
         if let Some(ref path_prefix) = args.path {
             results.retain(|s| {

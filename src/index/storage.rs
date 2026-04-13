@@ -58,10 +58,13 @@ pub fn load(root: &Path) -> anyhow::Result<Option<ProjectIndex>> {
     let data = fs::read(&index_path)?;
     let mut index: ProjectIndex = bincode::deserialize(&data)?;
 
-    // Rebuild call graph name_to_idx (skipped by serde)
+    // Rebuild call graph name_to_idx and digraph (skipped by serde)
     if let Some(ref mut cg) = index.call_graph {
         cg.rebuild_index();
     }
+
+    // Rebuild pre-computed search cache (skipped by serde)
+    index.rebuild_search_cache();
 
     Ok(Some(index))
 }

@@ -65,14 +65,18 @@ codelens --root /path/to/project search "handler"
 | `codelens blame <name>` | 符号行范围的 git blame | ~100 |
 | `codelens diff --from <ref> --to <ref>` | 两个 git ref 间变更的符号 | ~50/条 |
 | `codelens setup <agent>` | 安装 CodeLens 到 AI Agent | — |
+| `codelens setup --uninstall <agent>` | 卸载 CodeLens 集成 | — |
 | `codelens watch` | 监听文件变更自动更新索引 | — |
 | `codelens stats` | 索引统计信息 | ~50 |
+| `codelens doctor` | 诊断索引健康状态和项目信息 | — |
+| `codelens completions <shell>` | 生成 shell 补全脚本（bash/zsh/fish） | — |
+| `codelens init` | 生成默认 `codelens.toml` 配置文件 | — |
 
 **全局参数：** `--root <path>` 指定项目根目录（默认通过 `.git` 自动检测）。
 
 ## 语言支持
 
-5 种语言全部支持符号提取、调用分析、引用查找和 import 追踪：
+9 种语言全部支持符号提取、调用分析、引用查找和 import 追踪：
 
 | 语言 | 符号 | 调用 | 引用 | Import |
 |------|------|------|------|--------|
@@ -82,6 +86,9 @@ codelens --root /path/to/project search "handler"
 | **Swift** | ✅ func, class, struct, enum, protocol | ✅ | ✅ | ✅ |
 | **Go** | ✅ func, method, struct, interface, type, const, var | ✅ | ✅ | ✅ |
 | **Dart** | ✅ class, mixin, enum, extension, typedef, function, method | ✅ | ✅ | ✅ |
+| **C** | ✅ function, struct, enum, typedef, macro | ✅ | ✅ | ✅ |
+| **C++** | ✅ function, class, struct, enum, namespace, method, template | ✅ | ✅ | ✅ |
+| **Kotlin** | ✅ function, class, interface, enum, object, property | ✅ | ✅ | ✅ |
 
 ## Git 集成
 
@@ -110,7 +117,7 @@ cargo install --path . --features mcp
 codelens mcp
 ```
 
-**MCP 工具：** `codelens_index`、`codelens_search`、`codelens_symbol`、`codelens_outline`、`codelens_refs`、`codelens_impact`
+**MCP 工具：** `codelens_index`、`codelens_search`、`codelens_symbol`、`codelens_outline`、`codelens_refs`、`codelens_impact`、`codelens_callers`、`codelens_callees`
 
 服务器注册 `tools/list` 和 `tools/call` JSON-RPC 方法，遵循 MCP 协议。
 
@@ -170,7 +177,7 @@ codelens setup --list
 
 | 组件 | 作用 |
 |------|------|
-| **tree-sitter** | 解析 6 种语言 AST，提取符号 |
+| **tree-sitter** | 解析 9 种语言 AST，提取符号 |
 | **tantivy** | 全文 BM25 搜索，自定义 camelCase/snake_case 分词器 |
 | **petgraph** | 有向调用图谱，支持 callers/callees/影响分析 |
 | **bincode** | 快速二进制序列化，索引持久化 |
@@ -182,10 +189,13 @@ codelens setup --list
 
 | 操作 | 耗时 |
 |------|------|
-| 索引 1000 个文件 | < 1 秒 |
-| 搜索（BM25） | < 1 毫秒 |
-| 符号查找 | < 0.1 毫秒 |
-| 从磁盘加载索引 | < 50 毫秒 |
+| 索引 55 个文件 | 17 ms |
+| 搜索（BM25） | 89 µs |
+| callers 查询 | 13 ns |
+| callees 查询 | 116 ns |
+| 传递调用者（depth 3） | 60 ns |
+| 路径查找（双向 BFS） | 20 µs |
+| 解析单个 Rust 文件 | 437 µs |
 | Release 二进制大小 | 12 MB |
 
 ## 竞品对比
@@ -212,11 +222,12 @@ codelens setup --list
 
 ## 项目数据
 
-- **Rust 2024 edition**，最低 rustc 1.85
-- **~6000 行** Rust 代码，41 个源文件 + 680 行测试
-- **43 个测试**（6 单元 + 37 集成），零 warning
-- **17 个命令**（16 默认 + 1 MCP feature-gated）
-- **6 种语言**完整支持符号/调用/引用/import
+- **Rust 2024 edition**，最低 rustc 1.92
+- **~10,000 行** Rust 代码，48 个源文件 + 1,500 行测试
+- **85 个测试**（6 单元 + 79 集成），零 warning
+- **21 个命令**（19 默认 + 1 MCP feature-gated + 1 init）
+- **9 种语言**完整支持符号/调用/引用/import
+- **8 个 MCP 工具**用于 AI Agent 集成
 
 ## 许可证
 

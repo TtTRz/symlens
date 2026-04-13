@@ -98,7 +98,10 @@ impl SearchEngine {
 
     /// Index all symbols.
     pub fn index_symbols(&self, symbols: &[&Symbol]) -> anyhow::Result<()> {
-        let mut writer: IndexWriter = self.index.writer(50_000_000)?; // 50MB heap
+        // Dynamic heap: ~500 bytes per symbol, clamped to [15MB, 100MB]
+        // (tantivy requires at least 15MB per thread)
+        let heap_size = (symbols.len() * 500).clamp(15_000_000, 100_000_000);
+        let mut writer: IndexWriter = self.index.writer(heap_size)?;
 
         // Clear existing index
         writer.delete_all_documents()?;
@@ -146,12 +149,13 @@ impl SearchEngine {
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
             if let Some(id) = doc.get_first(self.f_symbol_id)
-                && let Some(id_str) = id.as_str() {
-                    results.push(SearchResult {
-                        symbol_id: id_str.to_string(),
-                        score,
-                    });
-                }
+                && let Some(id_str) = id.as_str()
+            {
+                results.push(SearchResult {
+                    symbol_id: id_str.to_string(),
+                    score,
+                });
+            }
         }
 
         Ok(results)

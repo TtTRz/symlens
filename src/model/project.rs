@@ -26,6 +26,11 @@ pub struct ProjectIndex {
     pub call_graph: Option<CallGraph>,
     /// Import name → files that import it (for refs v3)
     pub import_names: HashMap<String, Vec<PathBuf>>,
+    /// File content hashes for reliable incremental indexing (blake3, first 16 hex chars)
+    pub file_hashes: HashMap<PathBuf, String>,
+    /// Pre-computed lowercase name + qualified_name for fast search
+    #[serde(skip)]
+    search_cache: HashMap<SymbolId, (String, String)>,
 }
 
 /// Statistics about the index
@@ -54,6 +59,8 @@ impl ProjectIndex {
                 .as_secs(),
             call_graph: None,
             import_names: HashMap::new(),
+            file_hashes: HashMap::new(),
+            search_cache: HashMap::new(),
         }
     }
 
@@ -61,6 +68,10 @@ impl ProjectIndex {
     pub fn insert(&mut self, symbol: Symbol) {
         let file = symbol.file_path.clone();
         let id = symbol.id.clone();
+        let lower_name = symbol.name.to_lowercase();
+        let lower_qname = symbol.qualified_name.to_lowercase();
+        self.search_cache
+            .insert(id.clone(), (lower_name, lower_qname));
         self.symbols.insert(id.clone(), symbol);
         self.file_symbols.entry(file).or_default().push(id);
     }
@@ -70,10 +81,12 @@ impl ProjectIndex {
     pub fn remove_file(&mut self, file: &PathBuf) {
         if let Some(ids) = self.file_symbols.remove(file) {
             for id in ids {
+                self.search_cache.remove(&id);
                 self.symbols.remove(&id);
             }
         }
         self.file_mtimes.remove(file);
+        self.file_hashes.remove(file);
     }
 
     /// Get a symbol by ID.
@@ -89,30 +102,41 @@ impl ProjectIndex {
             .unwrap_or_default()
     }
 
-    /// Search symbols by name (simple substring match for MVP).
+    /// Search symbols by name (uses pre-computed lowercase cache for speed).
     pub fn search(&self, query: &str, limit: usize) -> Vec<&Symbol> {
         let query_lower = query.to_lowercase();
         let mut results: Vec<&Symbol> = self
             .symbols
-            .values()
-            .filter(|s| {
-                s.name.to_lowercase().contains(&query_lower)
-                    || s.qualified_name.to_lowercase().contains(&query_lower)
-                    || s.signature
-                        .as_ref()
-                        .map(|sig| sig.to_lowercase().contains(&query_lower))
-                        .unwrap_or(false)
-                    || s.doc_comment
-                        .as_ref()
-                        .map(|doc| doc.to_lowercase().contains(&query_lower))
-                        .unwrap_or(false)
+            .iter()
+            .filter(|(id, s)| {
+                if let Some((ln, lqn)) = self.search_cache.get(id) {
+                    ln.contains(&query_lower)
+                        || lqn.contains(&query_lower)
+                        || s.signature
+                            .as_ref()
+                            .is_some_and(|sig| sig.to_lowercase().contains(&query_lower))
+                        || s.doc_comment
+                            .as_ref()
+                            .is_some_and(|doc| doc.to_lowercase().contains(&query_lower))
+                } else {
+                    // Fallback if cache not built
+                    s.name.to_lowercase().contains(&query_lower)
+                        || s.qualified_name.to_lowercase().contains(&query_lower)
+                }
             })
+            .map(|(_, s)| s)
             .collect();
 
         // Sort: exact name match first, then by kind priority, then by name
         results.sort_by(|a, b| {
-            let a_exact = a.name.to_lowercase() == query_lower;
-            let b_exact = b.name.to_lowercase() == query_lower;
+            let a_exact = self
+                .search_cache
+                .get(&a.id)
+                .is_some_and(|(ln, _)| *ln == query_lower);
+            let b_exact = self
+                .search_cache
+                .get(&b.id)
+                .is_some_and(|(ln, _)| *ln == query_lower);
             b_exact
                 .cmp(&a_exact)
                 .then_with(|| kind_priority(&a.kind).cmp(&kind_priority(&b.kind)))
@@ -121,6 +145,18 @@ impl ProjectIndex {
 
         results.truncate(limit);
         results
+    }
+
+    /// Rebuild the pre-computed lowercase search cache after deserialization.
+    pub fn rebuild_search_cache(&mut self) {
+        self.search_cache.clear();
+        self.search_cache.reserve(self.symbols.len());
+        for (id, sym) in &self.symbols {
+            self.search_cache.insert(
+                id.clone(),
+                (sym.name.to_lowercase(), sym.qualified_name.to_lowercase()),
+            );
+        }
     }
 
     /// Compute index statistics.
@@ -160,7 +196,7 @@ fn kind_priority(kind: &SymbolKind) -> u8 {
     }
 }
 
-fn detect_language(path: &PathBuf) -> String {
+fn detect_language(path: &std::path::Path) -> String {
     match path.extension().and_then(|e| e.to_str()) {
         Some("rs") => "rust".into(),
         Some("ts") | Some("tsx") => "typescript".into(),

@@ -17,6 +17,23 @@ impl SymbolId {
             kind.as_str()
         ))
     }
+
+    /// Returns the file path portion (everything before the first "::" delimiter).
+    pub fn file(&self) -> &str {
+        self.0.find("::").map(|i| &self.0[..i]).unwrap_or(&self.0)
+    }
+
+    /// Returns the qualified name portion (between "::" and "#").
+    pub fn name(&self) -> &str {
+        let start = self.0.find("::").map(|i| i + 2).unwrap_or(0);
+        let end = self.0.rfind('#').unwrap_or(self.0.len());
+        &self.0[start..end]
+    }
+
+    /// Returns the kind portion (everything after "#").
+    pub fn kind_str(&self) -> &str {
+        self.0.rfind('#').map(|i| &self.0[i + 1..]).unwrap_or("")
+    }
 }
 
 impl fmt::Display for SymbolId {
@@ -89,6 +106,7 @@ impl SymbolKind {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "function" | "fn" => Some(Self::Function),

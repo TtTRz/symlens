@@ -52,7 +52,7 @@ fn export_json(
     let call_edges: Vec<serde_json::Value> = if let Some(ref cg) = index.call_graph {
         cg.all_edges()
             .iter()
-            .map(|(caller, callee)| serde_json::json!({ "caller": caller, "callee": callee }))
+            .map(|&(from, to)| serde_json::json!({ "caller": &cg.nodes[from], "callee": &cg.nodes[to] }))
             .collect()
     } else {
         vec![]

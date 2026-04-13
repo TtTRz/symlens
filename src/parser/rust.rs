@@ -245,22 +245,23 @@ fn extract_enum_variants(
     for child in body.children(cursor) {
         if child.kind() == "enum_variant"
             && let Some(name_node) = child.child_by_field_name("name")
-                && let Some(name) = node_text(name_node, source) {
-                    let qualified = format!("{}::{}", enum_name, name);
-                    symbols.push(Symbol {
-                        id: SymbolId::new(file_str, &qualified, &SymbolKind::EnumVariant),
-                        name,
-                        qualified_name: qualified,
-                        kind: SymbolKind::EnumVariant,
-                        file_path: file_path.to_path_buf(),
-                        span: node_span(child),
-                        signature: None,
-                        doc_comment: extract_doc_comment(child, source),
-                        visibility: Visibility::Public,
-                        parent: Some(SymbolId::new(file_str, enum_name, &SymbolKind::Enum)),
-                        children: vec![],
-                    });
-                }
+            && let Some(name) = node_text(name_node, source)
+        {
+            let qualified = format!("{}::{}", enum_name, name);
+            symbols.push(Symbol {
+                id: SymbolId::new(file_str, &qualified, &SymbolKind::EnumVariant),
+                name,
+                qualified_name: qualified,
+                kind: SymbolKind::EnumVariant,
+                file_path: file_path.to_path_buf(),
+                span: node_span(child),
+                signature: None,
+                doc_comment: extract_doc_comment(child, source),
+                visibility: Visibility::Public,
+                parent: Some(SymbolId::new(file_str, enum_name, &SymbolKind::Enum)),
+                children: vec![],
+            });
+        }
     }
 }
 
@@ -276,28 +277,29 @@ fn extract_fields(
     for child in body.children(cursor) {
         if child.kind() == "field_declaration"
             && let Some(name_node) = child.child_by_field_name("name")
-                && let Some(name) = node_text(name_node, source) {
-                    let qualified = format!("{}::{}", struct_name, name);
-                    let vis = extract_visibility(child, source);
-                    let type_str = child
-                        .child_by_field_name("type")
-                        .and_then(|t| node_text(t, source));
-                    let sig = type_str.map(|t| format!("{}: {}", name, t));
+            && let Some(name) = node_text(name_node, source)
+        {
+            let qualified = format!("{}::{}", struct_name, name);
+            let vis = extract_visibility(child, source);
+            let type_str = child
+                .child_by_field_name("type")
+                .and_then(|t| node_text(t, source));
+            let sig = type_str.map(|t| format!("{}: {}", name, t));
 
-                    symbols.push(Symbol {
-                        id: SymbolId::new(file_str, &qualified, &SymbolKind::Field),
-                        name,
-                        qualified_name: qualified,
-                        kind: SymbolKind::Field,
-                        file_path: file_path.to_path_buf(),
-                        span: node_span(child),
-                        signature: sig,
-                        doc_comment: extract_doc_comment(child, source),
-                        visibility: vis,
-                        parent: Some(SymbolId::new(file_str, struct_name, &SymbolKind::Struct)),
-                        children: vec![],
-                    });
-                }
+            symbols.push(Symbol {
+                id: SymbolId::new(file_str, &qualified, &SymbolKind::Field),
+                name,
+                qualified_name: qualified,
+                kind: SymbolKind::Field,
+                file_path: file_path.to_path_buf(),
+                span: node_span(child),
+                signature: sig,
+                doc_comment: extract_doc_comment(child, source),
+                visibility: vis,
+                parent: Some(SymbolId::new(file_str, struct_name, &SymbolKind::Struct)),
+                children: vec![],
+            });
+        }
     }
 }
 
@@ -344,9 +346,9 @@ fn extract_impl(
             if child.kind() == "function_item"
                 && let Some(sym) =
                     extract_function(child, source, file_str, file_path, type_name.as_deref())
-                {
-                    symbols.push(sym);
-                }
+            {
+                symbols.push(sym);
+            }
         }
     }
 }
@@ -530,17 +532,19 @@ fn collect_calls(
     // Track which function we're inside
     if node.kind() == "function_item"
         && let Some(name_node) = node.child_by_field_name("name")
-            && let Some(name) = node_text(name_node, source) {
-                fn_name = Some(Box::leak(name.into_boxed_str())); // Intentional leak for simplicity
-            }
+        && let Some(name) = node_text(name_node, source)
+    {
+        fn_name = Some(Box::leak(name.into_boxed_str())); // Intentional leak for simplicity
+    }
 
     // Detect call expressions
     if node.kind() == "call_expression"
         && let Some(caller) = fn_name
-            && let Some(func_node) = node.child_by_field_name("function")
-                && let Some(callee) = extract_callee_name(func_node, source) {
-                    edges.push((caller.to_string(), callee));
-                }
+        && let Some(func_node) = node.child_by_field_name("function")
+        && let Some(callee) = extract_callee_name(func_node, source)
+    {
+        edges.push((caller.to_string(), callee));
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
@@ -623,9 +627,10 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
         // If grandparent is call_expression, it's a method call
         "field_expression" => {
             if let Some(gp) = parent.parent()
-                && gp.kind() == "call_expression" {
-                    return RefKind::Call;
-                }
+                && gp.kind() == "call_expression"
+            {
+                return RefKind::Call;
+            }
             RefKind::FieldAccess
         }
 
@@ -670,18 +675,20 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
         | "const_item" | "static_item" | "macro_definition" => {
             // Check if this node is the "name" field of the definition
             if let Some(name_node) = parent.child_by_field_name("name")
-                && name_node.id() == node.id() {
-                    return RefKind::Definition;
-                }
+                && name_node.id() == node.id()
+            {
+                return RefKind::Definition;
+            }
             RefKind::Unknown
         }
 
         // impl block type
         "impl_item" => {
             if let Some(type_node) = parent.child_by_field_name("type")
-                && type_node.id() == node.id() {
-                    return RefKind::TypeRef;
-                }
+                && type_node.id() == node.id()
+            {
+                return RefKind::TypeRef;
+            }
             RefKind::Unknown
         }
 
@@ -694,52 +701,53 @@ fn classify_ref_context(node: tree_sitter::Node) -> RefKind {
 /// Extract `use` declarations from Rust source.
 fn collect_use_declarations(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
     if node.kind() == "use_declaration"
-        && let Some(text) = node_text(node, source) {
-            let cleaned = text
-                .trim_start_matches("use ")
-                .trim_start_matches("pub use ")
-                .trim_end_matches(';')
-                .trim();
+        && let Some(text) = node_text(node, source)
+    {
+        let cleaned = text
+            .trim_start_matches("use ")
+            .trim_start_matches("pub use ")
+            .trim_end_matches(';')
+            .trim();
 
-            // Handle "use crate::foo::bar::{A, B, C};"
-            if let Some(brace_pos) = cleaned.find('{') {
-                let module = cleaned[..brace_pos].trim_end_matches("::").trim();
-                let names_str = &cleaned[brace_pos + 1..];
-                let names_str = names_str.trim_end_matches('}');
-                let names: Vec<String> = names_str
-                    .split(',')
-                    .map(|n| {
-                        n.trim()
-                            .split(" as ")
-                            .next()
-                            .unwrap_or("")
-                            .trim()
-                            .to_string()
-                    })
-                    .filter(|n| !n.is_empty())
-                    .collect();
+        // Handle "use crate::foo::bar::{A, B, C};"
+        if let Some(brace_pos) = cleaned.find('{') {
+            let module = cleaned[..brace_pos].trim_end_matches("::").trim();
+            let names_str = &cleaned[brace_pos + 1..];
+            let names_str = names_str.trim_end_matches('}');
+            let names: Vec<String> = names_str
+                .split(',')
+                .map(|n| {
+                    n.trim()
+                        .split(" as ")
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string()
+                })
+                .filter(|n| !n.is_empty())
+                .collect();
+            imports.push(ImportInfo {
+                module_path: module.to_string(),
+                names,
+            });
+        } else {
+            // Simple: "use crate::foo::Bar;" → module = "crate::foo", name = "Bar"
+            let parts: Vec<&str> = cleaned.rsplitn(2, "::").collect();
+            if parts.len() == 2 {
+                let name = parts[0].split(" as ").next().unwrap_or(parts[0]).trim();
+                let module = parts[1].trim();
                 imports.push(ImportInfo {
                     module_path: module.to_string(),
-                    names,
+                    names: vec![name.to_string()],
                 });
             } else {
-                // Simple: "use crate::foo::Bar;" → module = "crate::foo", name = "Bar"
-                let parts: Vec<&str> = cleaned.rsplitn(2, "::").collect();
-                if parts.len() == 2 {
-                    let name = parts[0].split(" as ").next().unwrap_or(parts[0]).trim();
-                    let module = parts[1].trim();
-                    imports.push(ImportInfo {
-                        module_path: module.to_string(),
-                        names: vec![name.to_string()],
-                    });
-                } else {
-                    imports.push(ImportInfo {
-                        module_path: cleaned.to_string(),
-                        names: vec![],
-                    });
-                }
+                imports.push(ImportInfo {
+                    module_path: cleaned.to_string(),
+                    names: vec![],
+                });
             }
         }
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

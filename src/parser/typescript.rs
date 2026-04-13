@@ -64,31 +64,32 @@ impl LanguageParser for TypeScriptParser {
             let trimmed = line.trim();
             // import { Foo, Bar } from './module'
             if trimmed.starts_with("import ")
-                && let Some(from_pos) = trimmed.find(" from ") {
-                    let names_part = &trimmed[7..from_pos]; // between "import " and " from "
-                    let module = trimmed[from_pos + 6..]
-                        .trim()
-                        .trim_matches(|c| c == '\'' || c == '"' || c == ';');
-                    let names: Vec<String> = names_part
-                        .replace(['{', '}'], "")
-                        .split(',')
-                        .map(|n| {
-                            n.trim()
-                                .split(" as ")
-                                .next()
-                                .unwrap_or("")
-                                .trim()
-                                .to_string()
-                        })
-                        .filter(|n| !n.is_empty() && n != "*")
-                        .collect();
-                    if !names.is_empty() {
-                        imports.push(ImportInfo {
-                            module_path: module.to_string(),
-                            names,
-                        });
-                    }
+                && let Some(from_pos) = trimmed.find(" from ")
+            {
+                let names_part = &trimmed[7..from_pos]; // between "import " and " from "
+                let module = trimmed[from_pos + 6..]
+                    .trim()
+                    .trim_matches(|c| c == '\'' || c == '"' || c == ';');
+                let names: Vec<String> = names_part
+                    .replace(['{', '}'], "")
+                    .split(',')
+                    .map(|n| {
+                        n.trim()
+                            .split(" as ")
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string()
+                    })
+                    .filter(|n| !n.is_empty() && n != "*")
+                    .collect();
+                if !names.is_empty() {
+                    imports.push(ImportInfo {
+                        module_path: module.to_string(),
+                        names,
+                    });
                 }
+            }
         }
         Ok(imports)
     }
@@ -235,41 +236,43 @@ fn extract_ts_class_body(
         match child.kind() {
             "method_definition" => {
                 if let Some(name_node) = child.child_by_field_name("name")
-                    && let Some(name) = node_text(name_node, source) {
-                        let qualified = format!("{}::{}", class_name, name);
-                        symbols.push(Symbol {
-                            id: SymbolId::new(file_str, &qualified, &SymbolKind::Method),
-                            name,
-                            qualified_name: qualified,
-                            kind: SymbolKind::Method,
-                            file_path: file_path.to_path_buf(),
-                            span: node_span(child),
-                            signature: Some(extract_ts_signature(child, source)),
-                            doc_comment: extract_ts_doc(child, source),
-                            visibility: Visibility::Public,
-                            parent: Some(SymbolId::new(file_str, class_name, &SymbolKind::Class)),
-                            children: vec![],
-                        });
-                    }
+                    && let Some(name) = node_text(name_node, source)
+                {
+                    let qualified = format!("{}::{}", class_name, name);
+                    symbols.push(Symbol {
+                        id: SymbolId::new(file_str, &qualified, &SymbolKind::Method),
+                        name,
+                        qualified_name: qualified,
+                        kind: SymbolKind::Method,
+                        file_path: file_path.to_path_buf(),
+                        span: node_span(child),
+                        signature: Some(extract_ts_signature(child, source)),
+                        doc_comment: extract_ts_doc(child, source),
+                        visibility: Visibility::Public,
+                        parent: Some(SymbolId::new(file_str, class_name, &SymbolKind::Class)),
+                        children: vec![],
+                    });
+                }
             }
             "public_field_definition" | "property_definition" => {
                 if let Some(name_node) = child.child_by_field_name("name")
-                    && let Some(name) = node_text(name_node, source) {
-                        let qualified = format!("{}::{}", class_name, name);
-                        symbols.push(Symbol {
-                            id: SymbolId::new(file_str, &qualified, &SymbolKind::Field),
-                            name,
-                            qualified_name: qualified,
-                            kind: SymbolKind::Field,
-                            file_path: file_path.to_path_buf(),
-                            span: node_span(child),
-                            signature: None,
-                            doc_comment: None,
-                            visibility: Visibility::Public,
-                            parent: Some(SymbolId::new(file_str, class_name, &SymbolKind::Class)),
-                            children: vec![],
-                        });
-                    }
+                    && let Some(name) = node_text(name_node, source)
+                {
+                    let qualified = format!("{}::{}", class_name, name);
+                    symbols.push(Symbol {
+                        id: SymbolId::new(file_str, &qualified, &SymbolKind::Field),
+                        name,
+                        qualified_name: qualified,
+                        kind: SymbolKind::Field,
+                        file_path: file_path.to_path_buf(),
+                        span: node_span(child),
+                        signature: None,
+                        doc_comment: None,
+                        visibility: Visibility::Public,
+                        parent: Some(SymbolId::new(file_str, class_name, &SymbolKind::Class)),
+                        children: vec![],
+                    });
+                }
             }
             _ => {}
         }
@@ -371,39 +374,40 @@ fn extract_ts_variable(
     for child in node.children(cursor) {
         if child.kind() == "variable_declarator"
             && let Some(name_node) = child.child_by_field_name("name")
-                && let Some(name) = node_text(name_node, source) {
-                    // Check if value is an arrow function or function
-                    let is_function = child
-                        .child_by_field_name("value")
-                        .map(|v| v.kind() == "arrow_function" || v.kind() == "function")
-                        .unwrap_or(false);
+            && let Some(name) = node_text(name_node, source)
+        {
+            // Check if value is an arrow function or function
+            let is_function = child
+                .child_by_field_name("value")
+                .map(|v| v.kind() == "arrow_function" || v.kind() == "function")
+                .unwrap_or(false);
 
-                    let kind = if is_function {
-                        SymbolKind::Function
-                    } else {
-                        SymbolKind::Constant
-                    };
+            let kind = if is_function {
+                SymbolKind::Function
+            } else {
+                SymbolKind::Constant
+            };
 
-                    let vis = if has_export(node) {
-                        Visibility::Public
-                    } else {
-                        Visibility::Private
-                    };
+            let vis = if has_export(node) {
+                Visibility::Public
+            } else {
+                Visibility::Private
+            };
 
-                    symbols.push(Symbol {
-                        id: SymbolId::new(file_str, &name, &kind),
-                        name: name.clone(),
-                        qualified_name: name,
-                        kind,
-                        file_path: file_path.to_path_buf(),
-                        span: node_span(node),
-                        signature: Some(extract_first_line(node, source)),
-                        doc_comment: extract_ts_doc(node, source),
-                        visibility: vis,
-                        parent: None,
-                        children: vec![],
-                    });
-                }
+            symbols.push(Symbol {
+                id: SymbolId::new(file_str, &name, &kind),
+                name: name.clone(),
+                qualified_name: name,
+                kind,
+                file_path: file_path.to_path_buf(),
+                span: node_span(node),
+                signature: Some(extract_first_line(node, source)),
+                doc_comment: extract_ts_doc(node, source),
+                visibility: vis,
+                parent: None,
+                children: vec![],
+            });
+        }
     }
 }
 
@@ -435,28 +439,30 @@ fn extract_ts_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
     // Also check parent's prev sibling for exported items
     if sibling.is_none()
         && let Some(parent) = node.parent()
-            && parent.kind() == "export_statement" {
-                sibling = parent.prev_sibling();
-            }
+        && parent.kind() == "export_statement"
+    {
+        sibling = parent.prev_sibling();
+    }
 
     if let Some(s) = sibling
-        && s.kind() == "comment" {
-            let text = node_text(s, source)?;
-            if text.starts_with("/**") {
-                // Parse JSDoc comment
-                let cleaned: String = text
-                    .trim_start_matches("/**")
-                    .trim_end_matches("*/")
-                    .lines()
-                    .map(|l| l.trim().trim_start_matches('*').trim())
-                    .filter(|l| !l.is_empty())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !cleaned.is_empty() {
-                    return Some(cleaned);
-                }
+        && s.kind() == "comment"
+    {
+        let text = node_text(s, source)?;
+        if text.starts_with("/**") {
+            // Parse JSDoc comment
+            let cleaned: String = text
+                .trim_start_matches("/**")
+                .trim_end_matches("*/")
+                .lines()
+                .map(|l| l.trim().trim_start_matches('*').trim())
+                .filter(|l| !l.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !cleaned.is_empty() {
+                return Some(cleaned);
             }
         }
+    }
     None
 }
 
@@ -502,18 +508,20 @@ fn collect_ts_calls(
     let mut fn_name = current_fn;
     if (node.kind() == "function_declaration" || node.kind() == "method_definition")
         && let Some(name_node) = node.child_by_field_name("name")
-            && let Some(name) = node_text(name_node, source) {
-                fn_name = Some(Box::leak(name.into_boxed_str()));
-            }
+        && let Some(name) = node_text(name_node, source)
+    {
+        fn_name = Some(Box::leak(name.into_boxed_str()));
+    }
 
     if node.kind() == "call_expression"
         && let Some(caller) = fn_name
-            && let Some(func_node) = node.child_by_field_name("function")
-                && let Some(callee) = node_text(func_node, source) {
-                    // Clean up: "obj.method" → "method"
-                    let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
-                    edges.push((caller.to_string(), clean));
-                }
+        && let Some(func_node) = node.child_by_field_name("function")
+        && let Some(callee) = node_text(func_node, source)
+    {
+        // Clean up: "obj.method" → "method"
+        let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
+        edges.push((caller.to_string(), clean));
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

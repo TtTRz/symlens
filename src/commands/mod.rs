@@ -1,9 +1,12 @@
 pub mod blame;
 pub mod callers;
+pub mod completions;
 pub mod diff;
+pub mod doctor;
 pub mod export;
 pub mod graph;
 pub mod index;
+pub mod init;
 pub mod lines;
 #[cfg(feature = "mcp")]
 pub mod mcp;

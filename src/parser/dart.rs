@@ -704,9 +704,10 @@ fn collect_dart_calls(
 
     // Track current function/method scope
     if (node.kind() == "function_signature" || node.kind() == "method_signature")
-        && let Some(name) = find_child_text_by_kind(node, "identifier", source) {
-            fn_name = Some(Box::leak(name.into_boxed_str()));
-        }
+        && let Some(name) = find_child_text_by_kind(node, "identifier", source)
+    {
+        fn_name = Some(Box::leak(name.into_boxed_str()));
+    }
 
     // Detect function/constructor calls:
     // Pattern 1: identifier followed by argument_part → function call
@@ -717,22 +718,24 @@ fn collect_dart_calls(
         && node.parent().map(|p| p.kind()) != Some("getter_signature")
         && node.parent().map(|p| p.kind()) != Some("setter_signature")
         && let Some(next) = node.next_sibling()
-            && (next.kind() == "selector"
-                || next.kind() == "argument_part"
-                || next.kind() == "arguments")
-                && let Some(caller) = fn_name
-                    && let Some(callee) = node_text(node, source) {
-                        edges.push((caller.to_string(), callee));
-                    }
+        && (next.kind() == "selector"
+            || next.kind() == "argument_part"
+            || next.kind() == "arguments")
+        && let Some(caller) = fn_name
+        && let Some(callee) = node_text(node, source)
+    {
+        edges.push((caller.to_string(), callee));
+    }
 
     // Pattern 3: unconditional_assignable_selector(.identifier) followed by argument_part
     if node.kind() == "unconditional_assignable_selector"
         && let Some(id) = find_child_text_by_kind(node, "identifier", source)
-            && let Some(next) = node.next_sibling()
-                && (next.kind() == "argument_part" || next.kind() == "arguments")
-                    && let Some(caller) = fn_name {
-                        edges.push((caller.to_string(), id));
-                    }
+        && let Some(next) = node.next_sibling()
+        && (next.kind() == "argument_part" || next.kind() == "arguments")
+        && let Some(caller) = fn_name
+    {
+        edges.push((caller.to_string(), id));
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
@@ -819,24 +822,27 @@ fn classify_dart_ref(node: tree_sitter::Node) -> RefKind {
         "unconditional_assignable_selector" | "conditional_assignable_selector" => {
             // method.call() — check grandparent
             if let Some(gp) = parent.parent()
-                && (gp.kind() == "postfix_expression" || gp.kind() == "argument_part") {
-                    return RefKind::Call;
-                }
+                && (gp.kind() == "postfix_expression" || gp.kind() == "argument_part")
+            {
+                return RefKind::Call;
+            }
             RefKind::FieldAccess
         }
         "selector" => {
             if let Some(next) = node.next_sibling()
-                && (next.kind() == "argument_part" || next.kind() == "arguments") {
-                    return RefKind::Call;
-                }
+                && (next.kind() == "argument_part" || next.kind() == "arguments")
+            {
+                return RefKind::Call;
+            }
             RefKind::FieldAccess
         }
         _ => {
             // Check if next sibling is argument_part (direct call)
             if let Some(next) = node.next_sibling()
-                && (next.kind() == "argument_part" || next.kind() == "arguments") {
-                    return RefKind::Call;
-                }
+                && (next.kind() == "argument_part" || next.kind() == "arguments")
+            {
+                return RefKind::Call;
+            }
             RefKind::Unknown
         }
     }
@@ -850,51 +856,53 @@ fn collect_dart_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Ve
         if let Some(uri_node) = find_child_by_kind(node, "import_specification")
             .and_then(|spec| find_child_by_kind(spec, "configurable_uri"))
             .and_then(|cu| find_child_by_kind(cu, "uri"))
-            && let Some(uri_text) = node_text(uri_node, source) {
-                let cleaned = uri_text.trim_matches('\'').trim_matches('"');
+            && let Some(uri_text) = node_text(uri_node, source)
+        {
+            let cleaned = uri_text.trim_matches('\'').trim_matches('"');
 
-                // Extract "show" names if present
-                let mut names = Vec::new();
-                let cursor = &mut node.walk();
-                for child in node.children(cursor) {
-                    if child.kind() == "combinator"
-                        && let Ok(text) = child.utf8_text(source)
-                            && text.starts_with("show") {
-                                // Parse "show Foo, Bar, Baz"
-                                let parts = text.trim_start_matches("show").trim();
-                                for name in parts.split(',') {
-                                    let n = name.trim();
-                                    if !n.is_empty() {
-                                        names.push(n.to_string());
-                                    }
-                                }
-                            }
-                }
-
-                // If no show clause, use the last segment of the import path
-                if names.is_empty() {
-                    let pkg_name = cleaned
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or(cleaned)
-                        .trim_end_matches(".dart");
-                    // Also check for package:name/name.dart pattern
-                    if cleaned.starts_with("package:") {
-                        let pkg = cleaned
-                            .trim_start_matches("package:")
-                            .split('/')
-                            .next()
-                            .unwrap_or(cleaned);
-                        names.push(pkg.to_string());
+            // Extract "show" names if present
+            let mut names = Vec::new();
+            let cursor = &mut node.walk();
+            for child in node.children(cursor) {
+                if child.kind() == "combinator"
+                    && let Ok(text) = child.utf8_text(source)
+                    && text.starts_with("show")
+                {
+                    // Parse "show Foo, Bar, Baz"
+                    let parts = text.trim_start_matches("show").trim();
+                    for name in parts.split(',') {
+                        let n = name.trim();
+                        if !n.is_empty() {
+                            names.push(n.to_string());
+                        }
                     }
-                    names.push(pkg_name.to_string());
                 }
-
-                imports.push(ImportInfo {
-                    module_path: cleaned.to_string(),
-                    names,
-                });
             }
+
+            // If no show clause, use the last segment of the import path
+            if names.is_empty() {
+                let pkg_name = cleaned
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(cleaned)
+                    .trim_end_matches(".dart");
+                // Also check for package:name/name.dart pattern
+                if cleaned.starts_with("package:") {
+                    let pkg = cleaned
+                        .trim_start_matches("package:")
+                        .split('/')
+                        .next()
+                        .unwrap_or(cleaned);
+                    names.push(pkg.to_string());
+                }
+                names.push(pkg_name.to_string());
+            }
+
+            imports.push(ImportInfo {
+                module_path: cleaned.to_string(),
+                names,
+            });
+        }
     }
 
     let cursor = &mut node.walk();

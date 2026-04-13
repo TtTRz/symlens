@@ -65,14 +65,18 @@ codelens --root /path/to/project search "handler"
 | `codelens blame <name>` | Git blame for a symbol's line range | ~100 |
 | `codelens diff --from <ref> --to <ref>` | Changed symbols between git refs | ~50/change |
 | `codelens setup <agent>` | Install CodeLens into AI agent | — |
+| `codelens setup --uninstall <agent>` | Remove CodeLens integration | — |
 | `codelens watch` | Auto-update index on file changes | — |
 | `codelens stats` | Index statistics | ~50 |
+| `codelens doctor` | Diagnose index health and project info | — |
+| `codelens completions <shell>` | Generate shell completions (bash/zsh/fish) | — |
+| `codelens init` | Create default `codelens.toml` config | — |
 
 **Global flags:** `--root <path>` to specify project root (default: auto-detect via `.git`).
 
 ## Language Support
 
-All 6 languages have full support for symbols, call extraction, reference finding, and import tracking:
+All 9 languages have full support for symbols, call extraction, reference finding, and import tracking:
 
 | Language | Symbols | Calls | Refs | Imports |
 |----------|---------|-------|------|---------|
@@ -82,6 +86,9 @@ All 6 languages have full support for symbols, call extraction, reference findin
 | **Swift** | ✅ func, class, struct, enum, protocol | ✅ | ✅ | ✅ |
 | **Go** | ✅ func, method, struct, interface, type, const, var | ✅ | ✅ | ✅ |
 | **Dart** | ✅ class, mixin, enum, extension, typedef, function, method | ✅ | ✅ | ✅ |
+| **C** | ✅ function, struct, enum, typedef, macro | ✅ | ✅ | ✅ |
+| **C++** | ✅ function, class, struct, enum, namespace, method, template | ✅ | ✅ | ✅ |
+| **Kotlin** | ✅ function, class, interface, enum, object, property | ✅ | ✅ | ✅ |
 
 ## Git Integration
 
@@ -110,7 +117,7 @@ cargo install --path . --features mcp
 codelens mcp
 ```
 
-**MCP tools:** `codelens_index`, `codelens_search`, `codelens_symbol`, `codelens_outline`, `codelens_refs`, `codelens_impact`
+**MCP tools:** `codelens_index`, `codelens_search`, `codelens_symbol`, `codelens_outline`, `codelens_refs`, `codelens_impact`, `codelens_callers`, `codelens_callees`
 
 The server registers `tools/list` and `tools/call` JSON-RPC methods following the MCP protocol.
 
@@ -170,7 +177,7 @@ Source Files → tree-sitter AST → Symbol Extraction ─┬→ tantivy BM25 In
 
 | Component | Role |
 |-----------|------|
-| **tree-sitter** | Parse 6 languages into ASTs, extract symbols |
+| **tree-sitter** | Parse 9 languages into ASTs, extract symbols |
 | **tantivy** | Full-text BM25 search with custom camelCase/snake_case tokenizer |
 | **petgraph** | Directed call graph for callers/callees/impact analysis |
 | **bincode** | Fast binary serialization for index persistence |
@@ -182,10 +189,13 @@ Source Files → tree-sitter AST → Symbol Extraction ─┬→ tantivy BM25 In
 
 | Operation | Time |
 |-----------|------|
-| Index 1000 files | < 1s |
-| Search (BM25) | < 1ms |
-| Symbol lookup | < 0.1ms |
-| Index load from disk | < 50ms |
+| Index 55 files | 17 ms |
+| Search (BM25) | 89 µs |
+| Callers query | 13 ns |
+| Callees query | 116 ns |
+| Transitive callers (depth 3) | 60 ns |
+| Find path (bidirectional BFS) | 20 µs |
+| Parse single Rust file | 437 µs |
 | Release binary size | 12 MB |
 
 ## vs Other Tools
@@ -212,11 +222,12 @@ GitHub Actions workflows included:
 
 ## Project Stats
 
-- **Rust 2024 edition**, minimum rustc 1.85
-- **~6000 lines** of Rust across 41 source files + 680 lines of tests
-- **43 tests** (6 unit + 37 integration), zero warnings
-- **17 commands** (16 default + 1 MCP feature-gated)
-- **6 languages** with full symbol/call/refs/import support
+- **Rust 2024 edition**, minimum rustc 1.92
+- **~10,000 lines** of Rust across 48 source files + 1,500 lines of tests
+- **85 tests** (6 unit + 79 integration), zero warnings
+- **21 commands** (19 default + 1 MCP feature-gated + 1 init)
+- **9 languages** with full symbol/call/refs/import support
+- **8 MCP tools** for AI agent integration
 
 ## License
 

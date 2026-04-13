@@ -13,7 +13,11 @@ pub fn run(args: GraphArgs, root_override: Option<&str>, json: bool) -> anyhow::
     }
 }
 
-fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf, json: bool) -> anyhow::Result<()> {
+fn run_impact(
+    args: crate::cli::GraphImpactArgs,
+    root: &std::path::Path,
+    json: bool,
+) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let graph = index
         .call_graph
@@ -32,13 +36,23 @@ fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf, json: bool) -> 
                 "transitive_callers": result.transitive_callers.iter()
                     .map(|(n, d)| serde_json::json!({"name": n, "depth": d}))
                     .collect::<Vec<_>>(),
+                "transitive_callees": result.transitive_callees.iter()
+                    .map(|(n, d)| serde_json::json!({"name": n, "depth": d}))
+                    .collect::<Vec<_>>(),
                 "total_dependents": result.direct_callers.len() + result.transitive_callers.len(),
+                "affected_modules": result.affected_modules,
+                "has_cycle": result.has_cycle,
+                "risk_score": format!("{:.2}", result.risk_score),
             })
         );
         return Ok(());
     }
 
     println!("Impact: {}", result.target);
+    if result.has_cycle {
+        println!("  !! CYCLE DETECTED — this symbol is part of a circular call chain");
+    }
+    println!("  Risk score: {:.0}%", result.risk_score * 100.0);
     println!();
 
     if result.direct_callers.is_empty() {
@@ -75,15 +89,20 @@ fn run_impact(args: crate::cli::GraphImpactArgs, root: &PathBuf, json: bool) -> 
 
     let total = result.direct_callers.len() + result.transitive_callers.len();
     println!(
-        "Warning: {} direct callers, {} total dependents.",
+        "Summary: {} direct callers, {} total dependents, {} modules affected.",
         result.direct_callers.len(),
         total,
+        result.affected_modules.len(),
     );
 
     Ok(())
 }
 
-fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf, _json: bool) -> anyhow::Result<()> {
+fn run_deps(
+    args: crate::cli::GraphDepsArgs,
+    root: &std::path::Path,
+    _json: bool,
+) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let registry = LanguageRegistry::new();
 
@@ -92,33 +111,20 @@ fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf, _json: bool) -> any
 
     for file_path in &known_files {
         if let Some(ref scope) = args.path
-            && !file_path.to_string_lossy().starts_with(scope.as_str()) {
-                continue;
-            }
+            && !file_path.to_string_lossy().starts_with(scope.as_str())
+        {
+            continue;
+        }
 
         let full_path = root.join(file_path);
         if let Some(parser) = registry.parser_for(&full_path)
-            && let Ok(source) = std::fs::read(&full_path) {
-                if let Ok(source_str) = std::str::from_utf8(&source) {
-                    for line in source_str.lines() {
-                        let trimmed = line.trim();
-                        if trimmed.starts_with("use ") {
-                            let module = trimmed
-                                .trim_start_matches("use ")
-                                .split('{')
-                                .next()
-                                .unwrap_or("")
-                                .trim_end_matches(';')
-                                .trim_end_matches("::")
-                                .trim();
-                            if !module.is_empty() {
-                                imports.push((file_path.clone(), module.to_string()));
-                            }
-                        }
-                    }
-                }
-                let _ = parser;
+            && let Ok(source) = std::fs::read(&full_path)
+            && let Ok(imps) = parser.extract_imports(&source, file_path)
+        {
+            for imp in imps {
+                imports.push((file_path.clone(), imp.module_path));
             }
+        }
     }
 
     let deps_graph = DepsGraph::build(&imports, &known_files);
@@ -144,7 +150,11 @@ fn run_deps(args: crate::cli::GraphDepsArgs, root: &PathBuf, _json: bool) -> any
     Ok(())
 }
 
-fn run_path(args: crate::cli::GraphPathArgs, root: &PathBuf, json: bool) -> anyhow::Result<()> {
+fn run_path(
+    args: crate::cli::GraphPathArgs,
+    root: &std::path::Path,
+    json: bool,
+) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let graph = index
         .call_graph
@@ -184,7 +194,7 @@ fn run_path(args: crate::cli::GraphPathArgs, root: &PathBuf, json: bool) -> anyh
     Ok(())
 }
 
-fn load_index(root: &PathBuf) -> anyhow::Result<crate::model::project::ProjectIndex> {
+fn load_index(root: &std::path::Path) -> anyhow::Result<crate::model::project::ProjectIndex> {
     storage::load(root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))
 }

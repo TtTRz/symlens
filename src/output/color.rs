@@ -1,5 +1,4 @@
 /// ANSI color helpers. When `color` is false, returns the string as-is.
-
 pub fn bold(s: &str, color: bool) -> String {
     if color {
         format!("\x1b[1m{}\x1b[0m", s)

@@ -3,6 +3,7 @@ use crate::index::storage;
 use crate::output::color;
 use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::RefKind;
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -16,8 +17,6 @@ pub fn run(
 
     let index = storage::load(&root)?
         .ok_or_else(|| anyhow::anyhow!("No index found. Run `codelens index` first."))?;
-
-    let registry = LanguageRegistry::new();
 
     // Refs v3: narrow search scope using import_names
     // If we know which files import the target name, only search those + the defining file
@@ -37,28 +36,39 @@ pub fn run(
             index.file_symbols.keys().cloned().collect()
         };
 
-    let mut all_refs = Vec::new();
+    let scope = args.scope.clone();
+    let name = args.name.clone();
 
-    for file_path in &candidate_files {
-        let full_path = root.join(file_path);
-        if !full_path.exists() {
-            continue;
-        }
-
-        // Apply scope filter
-        if let Some(ref scope) = args.scope
-            && !file_path.to_string_lossy().starts_with(scope.as_str()) {
-                continue;
+    // Parallel file scanning (same pattern as indexer.rs — one registry per thread)
+    let mut all_refs: Vec<(PathBuf, crate::parser::traits::IdentifierRef)> = candidate_files
+        .par_iter()
+        .filter(|file_path| {
+            let full_path = root.join(file_path);
+            if !full_path.exists() {
+                return false;
             }
-
-        if let Some(parser) = registry.parser_for(&full_path)
-            && let Ok(source) = std::fs::read(&full_path)
-                && let Ok(refs) = parser.find_identifiers(&source, &args.name) {
-                    for r in refs {
-                        all_refs.push((file_path.clone(), r));
-                    }
+            if let Some(ref s) = scope
+                && !file_path.to_string_lossy().starts_with(s.as_str())
+            {
+                return false;
+            }
+            true
+        })
+        .flat_map_iter(|file_path| {
+            let full_path = root.join(file_path);
+            let registry = LanguageRegistry::new();
+            let mut results = Vec::new();
+            if let Some(parser) = registry.parser_for(&full_path)
+                && let Ok(source) = std::fs::read(&full_path)
+                && let Ok(refs) = parser.find_identifiers(&source, &name)
+            {
+                for r in refs {
+                    results.push((file_path.clone(), r));
                 }
-    }
+            }
+            results
+        })
+        .collect();
 
     // Apply kind filter
     if let Some(ref kind_filter) = args.kind {

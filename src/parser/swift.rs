@@ -63,8 +63,8 @@ impl LanguageParser for SwiftParser {
         let mut imports = Vec::new();
         for line in source_str.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("import ") {
-                let module = trimmed[7..].trim();
+            if let Some(rest) = trimmed.strip_prefix("import ") {
+                let module = rest.trim();
                 if !module.is_empty() {
                     let name = module.rsplit('.').next().unwrap_or(module).to_string();
                     imports.push(ImportInfo {
@@ -225,17 +225,18 @@ fn detect_swift_visibility(node: tree_sitter::Node, source: &[u8]) -> Visibility
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
         if (child.kind() == "modifiers" || child.kind() == "modifier")
-            && let Some(text) = node_text(child, source) {
-                if text.contains("public") || text.contains("open") {
-                    return Visibility::Public;
-                }
-                if text.contains("internal") {
-                    return Visibility::Internal;
-                }
-                if text.contains("private") || text.contains("fileprivate") {
-                    return Visibility::Private;
-                }
+            && let Some(text) = node_text(child, source)
+        {
+            if text.contains("public") || text.contains("open") {
+                return Visibility::Public;
             }
+            if text.contains("internal") {
+                return Visibility::Internal;
+            }
+            if text.contains("private") || text.contains("fileprivate") {
+                return Visibility::Private;
+            }
+        }
     }
     Visibility::Internal // Swift default is internal
 }
@@ -363,17 +364,19 @@ fn collect_swift_calls(
     let mut fn_name = current_fn;
     if node.kind() == "function_declaration"
         && let Some(name_node) = node.child_by_field_name("name")
-            && let Some(name) = node_text(name_node, source) {
-                fn_name = Some(Box::leak(name.into_boxed_str()));
-            }
+        && let Some(name) = node_text(name_node, source)
+    {
+        fn_name = Some(Box::leak(name.into_boxed_str()));
+    }
 
     if node.kind() == "call_expression"
         && let Some(caller) = fn_name
-            && let Some(func_node) = node.child(0)
-                && let Some(callee) = node_text(func_node, source) {
-                    let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
-                    edges.push((caller.to_string(), clean));
-                }
+        && let Some(func_node) = node.child(0)
+        && let Some(callee) = node_text(func_node, source)
+    {
+        let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
+        edges.push((caller.to_string(), clean));
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

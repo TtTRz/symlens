@@ -86,14 +86,9 @@ impl LanguageParser for PythonParser {
                         });
                     }
                 }
-            } else if trimmed.starts_with("import ") {
+            } else if let Some(rest) = trimmed.strip_prefix("import ") {
                 // import foo.bar
-                let module = trimmed[7..]
-                    .trim()
-                    .split(" as ")
-                    .next()
-                    .unwrap_or("")
-                    .trim();
+                let module = rest.trim().split(" as ").next().unwrap_or("").trim();
                 let name = module.rsplit('.').next().unwrap_or(module).to_string();
                 if !name.is_empty() {
                     imports.push(ImportInfo {
@@ -123,38 +118,32 @@ fn extract_py_node(
         }
         "class_definition" => {
             if let Some(name_node) = node.child_by_field_name("name")
-                && let Some(name) = node_text(name_node, source) {
-                    let doc = extract_py_docstring(node, source);
-                    symbols.push(Symbol {
-                        id: SymbolId::new(file_str, &name, &SymbolKind::Class),
-                        name: name.clone(),
-                        qualified_name: name.clone(),
-                        kind: SymbolKind::Class,
-                        file_path: file_path.to_path_buf(),
-                        span: node_span(node),
-                        signature: None,
-                        doc_comment: doc,
-                        visibility: Visibility::Public,
-                        parent: None,
-                        children: vec![],
-                    });
+                && let Some(name) = node_text(name_node, source)
+            {
+                let doc = extract_py_docstring(node, source);
+                symbols.push(Symbol {
+                    id: SymbolId::new(file_str, &name, &SymbolKind::Class),
+                    name: name.clone(),
+                    qualified_name: name.clone(),
+                    kind: SymbolKind::Class,
+                    file_path: file_path.to_path_buf(),
+                    span: node_span(node),
+                    signature: None,
+                    doc_comment: doc,
+                    visibility: Visibility::Public,
+                    parent: None,
+                    children: vec![],
+                });
 
-                    // Extract methods
-                    if let Some(body) = node.child_by_field_name("body") {
-                        let cursor = &mut body.walk();
-                        for child in body.children(cursor) {
-                            extract_py_node(
-                                child,
-                                source,
-                                file_str,
-                                file_path,
-                                Some(&name),
-                                symbols,
-                            );
-                        }
+                // Extract methods
+                if let Some(body) = node.child_by_field_name("body") {
+                    let cursor = &mut body.walk();
+                    for child in body.children(cursor) {
+                        extract_py_node(child, source, file_str, file_path, Some(&name), symbols);
                     }
-                    return; // Already handled children
                 }
+                return; // Already handled children
+            }
         }
         "decorated_definition" => {
             // Recurse into the decorated item
@@ -320,17 +309,19 @@ fn collect_py_calls(
     let mut fn_name = current_fn;
     if node.kind() == "function_definition"
         && let Some(name_node) = node.child_by_field_name("name")
-            && let Some(name) = node_text(name_node, source) {
-                fn_name = Some(Box::leak(name.into_boxed_str()));
-            }
+        && let Some(name) = node_text(name_node, source)
+    {
+        fn_name = Some(Box::leak(name.into_boxed_str()));
+    }
 
     if node.kind() == "call"
         && let Some(caller) = fn_name
-            && let Some(func_node) = node.child_by_field_name("function")
-                && let Some(callee) = node_text(func_node, source) {
-                    let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
-                    edges.push((caller.to_string(), clean));
-                }
+        && let Some(func_node) = node.child_by_field_name("function")
+        && let Some(callee) = node_text(func_node, source)
+    {
+        let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
+        edges.push((caller.to_string(), clean));
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

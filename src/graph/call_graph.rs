@@ -13,6 +13,12 @@ pub struct CallGraph {
     /// Name → node index
     #[serde(skip)]
     name_to_idx: HashMap<String, usize>,
+    /// Cached petgraph DiGraph (built once, reused for all queries)
+    #[serde(skip)]
+    digraph: Option<DiGraph<usize, ()>>,
+    /// NodeIndex parallel to `nodes` vec (built with digraph)
+    #[serde(skip)]
+    node_indices: Vec<NodeIndex>,
 }
 
 impl CallGraph {
@@ -41,80 +47,79 @@ impl CallGraph {
             })
             .collect();
 
+        let (digraph, node_indices) = Self::build_digraph(&nodes, &graph_edges);
+
         CallGraph {
             nodes,
             edges: graph_edges,
             name_to_idx,
+            digraph: Some(digraph),
+            node_indices,
         }
     }
 
-    /// Rebuild the name_to_idx after deserialization.
+    /// Build the petgraph DiGraph and NodeIndex mapping from nodes and edges.
+    fn build_digraph(
+        nodes: &[String],
+        edges: &[(usize, usize)],
+    ) -> (DiGraph<usize, ()>, Vec<NodeIndex>) {
+        let mut g = DiGraph::with_capacity(nodes.len(), edges.len());
+        let indices: Vec<NodeIndex> = (0..nodes.len()).map(|i| g.add_node(i)).collect();
+        for &(from, to) in edges {
+            if from < indices.len() && to < indices.len() {
+                g.add_edge(indices[from], indices[to], ());
+            }
+        }
+        (g, indices)
+    }
+
+    /// Rebuild the name_to_idx and cached digraph after deserialization.
     pub fn rebuild_index(&mut self) {
         self.name_to_idx.clear();
         for (i, name) in self.nodes.iter().enumerate() {
             self.name_to_idx.insert(name.clone(), i);
         }
+        let (digraph, node_indices) = Self::build_digraph(&self.nodes, &self.edges);
+        self.digraph = Some(digraph);
+        self.node_indices = node_indices;
     }
 
-    /// Get all call edges as (caller, callee) pairs.
-    pub fn all_edges(&self) -> Vec<(String, String)> {
-        self.edges
-            .iter()
-            .map(|&(from, to)| (self.nodes[from].clone(), self.nodes[to].clone()))
-            .collect()
-    }
-
-    /// Get the petgraph DiGraph representation.
-    fn to_digraph(&self) -> DiGraph<&str, ()> {
-        let mut graph = DiGraph::new();
-        let node_indices: Vec<NodeIndex> = self
-            .nodes
-            .iter()
-            .map(|name| graph.add_node(name.as_str()))
-            .collect();
-
-        for &(from, to) in &self.edges {
-            if from < node_indices.len() && to < node_indices.len() {
-                graph.add_edge(node_indices[from], node_indices[to], ());
-            }
-        }
-        graph
+    /// Get all call edges as (from_index, to_index) pairs.
+    /// Use `self.nodes[idx]` to resolve names.
+    pub fn all_edges(&self) -> &[(usize, usize)] {
+        &self.edges
     }
 
     /// Find direct callers of a symbol.
     pub fn callers(&self, name: &str) -> Vec<&str> {
-        let graph = self.to_digraph();
         let Some(&idx) = self.name_to_idx.get(name) else {
-            // Try partial match
             return self.callers_partial(name);
         };
-
-        let node_indices: Vec<NodeIndex> = (0..self.nodes.len()).map(NodeIndex::new).collect();
-
+        let Some(ref graph) = self.digraph else {
+            return self.callers_partial(name);
+        };
         graph
-            .neighbors_directed(node_indices[idx], Direction::Incoming)
-            .map(|ni| self.nodes[ni.index()].as_str())
+            .neighbors_directed(self.node_indices[idx], Direction::Incoming)
+            .map(|ni| self.nodes[graph[ni]].as_str())
             .collect()
     }
 
     /// Find direct callees of a symbol.
     pub fn callees(&self, name: &str) -> Vec<&str> {
-        let graph = self.to_digraph();
         let Some(&idx) = self.name_to_idx.get(name) else {
             return self.callees_partial(name);
         };
-
-        let node_indices: Vec<NodeIndex> = (0..self.nodes.len()).map(NodeIndex::new).collect();
-
+        let Some(ref graph) = self.digraph else {
+            return self.callees_partial(name);
+        };
         graph
-            .neighbors_directed(node_indices[idx], Direction::Outgoing)
-            .map(|ni| self.nodes[ni.index()].as_str())
+            .neighbors_directed(self.node_indices[idx], Direction::Outgoing)
+            .map(|ni| self.nodes[graph[ni]].as_str())
             .collect()
     }
 
     /// Find callers by partial name match (e.g. "process_block" matches "AudioEngine::process_block").
     fn callers_partial(&self, partial: &str) -> Vec<&str> {
-        // Find nodes whose name ends with the partial
         let targets: Vec<usize> = self
             .nodes
             .iter()
@@ -154,26 +159,41 @@ impl CallGraph {
         result
     }
 
-    /// Find transitive callers (up to max_depth).
+    /// Find transitive callers (up to max_depth) using cached digraph indices.
     pub fn transitive_callers(&self, name: &str, max_depth: usize) -> Vec<(String, usize)> {
-        let mut visited = HashMap::new();
-        let mut queue = vec![(name.to_string(), 0usize)];
+        let Some(&start_idx) = self.name_to_idx.get(name) else {
+            return vec![];
+        };
+        let Some(ref graph) = self.digraph else {
+            return vec![];
+        };
+
+        let mut visited: HashMap<usize, usize> = HashMap::new();
+        let mut queue = vec![(start_idx, 0usize)];
 
         while let Some((current, depth)) = queue.pop() {
             if depth > max_depth || visited.contains_key(&current) {
                 continue;
             }
-            visited.insert(current.clone(), depth);
+            visited.insert(current, depth);
 
-            for caller in self.callers(&current) {
-                if !visited.contains_key(caller) {
-                    queue.push((caller.to_string(), depth + 1));
+            if current < self.node_indices.len() {
+                for neighbor in
+                    graph.neighbors_directed(self.node_indices[current], Direction::Incoming)
+                {
+                    let ni = graph[neighbor];
+                    if !visited.contains_key(&ni) {
+                        queue.push((ni, depth + 1));
+                    }
                 }
             }
         }
 
-        visited.remove(name);
-        let mut result: Vec<_> = visited.into_iter().collect();
+        visited.remove(&start_idx);
+        let mut result: Vec<_> = visited
+            .into_iter()
+            .map(|(idx, d)| (self.nodes[idx].clone(), d))
+            .collect();
         result.sort_by_key(|(_, d)| *d);
         result
     }

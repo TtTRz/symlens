@@ -16,8 +16,25 @@ pub fn run(
     let registry = LanguageRegistry::new();
     let mut changed_symbols: Vec<ChangedSymbol> = Vec::new();
 
+    // ── Single git call to get all changed files with status ───
+    let name_status = git_diff_name_status(&root, &args.from, &args.to)?;
+    let added_files: Vec<_> = name_status
+        .iter()
+        .filter(|(s, _)| *s == 'A')
+        .map(|(_, f)| f.clone())
+        .collect();
+    let modified_files: Vec<_> = name_status
+        .iter()
+        .filter(|(s, _)| *s == 'M')
+        .map(|(_, f)| f.clone())
+        .collect();
+    let deleted_files: Vec<_> = name_status
+        .iter()
+        .filter(|(s, _)| *s == 'D')
+        .map(|(_, f)| f.clone())
+        .collect();
+
     // ── Added files (A): all symbols are new ──────────────────────
-    let added_files = git_diff_names(&root, &args.from, &args.to, "A")?;
     for file in &added_files {
         let file_path = PathBuf::from(file);
         let full_path = root.join(&file_path);
@@ -26,23 +43,23 @@ pub fn run(
         }
         if let Some(parser) = registry.parser_for(&full_path)
             && let Ok(source) = std::fs::read(&full_path)
-                && let Ok(symbols) = parser.extract_symbols(&source, &file_path) {
-                    for sym in &symbols {
-                        changed_symbols.push(ChangedSymbol {
-                            file: file.clone(),
-                            name: sym.qualified_name.clone(),
-                            kind: sym.kind,
-                            span_start: sym.span.start_line,
-                            span_end: sym.span.end_line,
-                            change_kind: ChangeKind::Added,
-                            signature: sym.signature.clone(),
-                        });
-                    }
-                }
+            && let Ok(symbols) = parser.extract_symbols(&source, &file_path)
+        {
+            for sym in &symbols {
+                changed_symbols.push(ChangedSymbol {
+                    file: file.clone(),
+                    name: sym.qualified_name.clone(),
+                    kind: sym.kind,
+                    span_start: sym.span.start_line,
+                    span_end: sym.span.end_line,
+                    change_kind: ChangeKind::Added,
+                    signature: sym.signature.clone(),
+                });
+            }
+        }
     }
 
     // ── Modified files (M): only symbols whose lines overlap the diff ─
-    let modified_files = git_diff_names(&root, &args.from, &args.to, "M")?;
     for file in &modified_files {
         let file_path = PathBuf::from(file);
         let full_path = root.join(&file_path);
@@ -57,28 +74,28 @@ pub fn run(
 
         if let Some(parser) = registry.parser_for(&full_path)
             && let Ok(source) = std::fs::read(&full_path)
-                && let Ok(symbols) = parser.extract_symbols(&source, &file_path) {
-                    for sym in &symbols {
-                        for &(start, end) in &changed_ranges {
-                            if ranges_overlap(start, end, sym.span.start_line, sym.span.end_line) {
-                                changed_symbols.push(ChangedSymbol {
-                                    file: file.clone(),
-                                    name: sym.qualified_name.clone(),
-                                    kind: sym.kind,
-                                    span_start: sym.span.start_line,
-                                    span_end: sym.span.end_line,
-                                    change_kind: ChangeKind::Modified,
-                                    signature: sym.signature.clone(),
-                                });
-                                break;
-                            }
-                        }
+            && let Ok(symbols) = parser.extract_symbols(&source, &file_path)
+        {
+            for sym in &symbols {
+                for &(start, end) in &changed_ranges {
+                    if ranges_overlap(start, end, sym.span.start_line, sym.span.end_line) {
+                        changed_symbols.push(ChangedSymbol {
+                            file: file.clone(),
+                            name: sym.qualified_name.clone(),
+                            kind: sym.kind,
+                            span_start: sym.span.start_line,
+                            span_end: sym.span.end_line,
+                            change_kind: ChangeKind::Modified,
+                            signature: sym.signature.clone(),
+                        });
+                        break;
                     }
                 }
+            }
+        }
     }
 
     // ── Deleted files (D): mark entire file ──────────────────────
-    let deleted_files = git_diff_names(&root, &args.from, &args.to, "D")?;
     for file in &deleted_files {
         let file_path = PathBuf::from(file);
         // Only track supported source files
@@ -98,9 +115,10 @@ pub fn run(
 
     // ── Apply filters ────────────────────────────────────────────
     if let Some(ref kind_filter) = args.kind
-        && let Some(kind) = SymbolKind::from_str(kind_filter) {
-            changed_symbols.retain(|s| s.kind == kind);
-        }
+        && let Some(kind) = SymbolKind::from_str(kind_filter)
+    {
+        changed_symbols.retain(|s| s.kind == kind);
+    }
 
     // Deduplicate
     let mut seen = HashMap::new();
@@ -239,20 +257,19 @@ enum ChangeKind {
     Deleted,
 }
 
-/// Get file names from git diff with a specific filter (A/M/D/etc).
-fn git_diff_names(
-    root: &PathBuf,
+/// Get file names with status from a single `git diff --name-status` call.
+/// Returns (status_char, filename) pairs, e.g. ('A', "src/foo.rs").
+fn git_diff_name_status(
+    root: &std::path::Path,
     from: &str,
     to: &str,
-    filter: &str,
-) -> anyhow::Result<Vec<String>> {
+) -> anyhow::Result<Vec<(char, String)>> {
     let output = Command::new("git")
         .args([
             "-C",
             &root.to_string_lossy(),
             "diff",
-            "--name-only",
-            &format!("--diff-filter={}", filter),
+            "--name-status",
             from,
             to,
         ])
@@ -265,13 +282,18 @@ fn git_diff_names(
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter(|l| !l.is_empty())
-        .map(|l| l.to_string())
+        .filter_map(|l| {
+            let mut parts = l.splitn(2, '\t');
+            let status = parts.next()?.chars().next()?;
+            let file = parts.next()?.to_string();
+            Some((status, file))
+        })
         .collect())
 }
 
 /// Get changed line ranges for a specific file from git diff.
 fn git_diff_ranges(
-    root: &PathBuf,
+    root: &std::path::Path,
     from: &str,
     to: &str,
     file: &str,
@@ -300,19 +322,20 @@ fn parse_diff_ranges(diff: &str) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
     for line in diff.lines() {
         if line.starts_with("@@")
-            && let Some(plus_part) = line.split('+').nth(1) {
-                let nums = plus_part.split_whitespace().next().unwrap_or("");
-                let parts: Vec<&str> = nums.split(',').collect();
-                let start: u32 = parts[0].parse().unwrap_or(0);
-                let count: u32 = if parts.len() > 1 {
-                    parts[1].parse().unwrap_or(1)
-                } else {
-                    1
-                };
-                if start > 0 {
-                    ranges.push((start, start + count.saturating_sub(1)));
-                }
+            && let Some(plus_part) = line.split('+').nth(1)
+        {
+            let nums = plus_part.split_whitespace().next().unwrap_or("");
+            let parts: Vec<&str> = nums.split(',').collect();
+            let start: u32 = parts[0].parse().unwrap_or(0);
+            let count: u32 = if parts.len() > 1 {
+                parts[1].parse().unwrap_or(1)
+            } else {
+                1
+            };
+            if start > 0 {
+                ranges.push((start, start + count.saturating_sub(1)));
             }
+        }
     }
     ranges
 }

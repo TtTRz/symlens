@@ -58,6 +58,12 @@ pub enum Commands {
     Export(ExportArgs),
     /// Install CodeLens integration into AI agents (Claude Code, OpenClaw, Cursor)
     Setup(SetupArgs),
+    /// Generate shell completions (bash, zsh, fish)
+    Completions(CompletionsArgs),
+    /// Diagnose index health, cache status, and project info
+    Doctor,
+    /// Generate a default codelens.toml configuration file
+    Init,
     /// Start MCP (Model Context Protocol) server (requires --features mcp)
     #[cfg(feature = "mcp")]
     Mcp,
@@ -272,4 +278,14 @@ pub struct SetupArgs {
     /// List supported agents
     #[arg(long)]
     pub list: bool,
+
+    /// Uninstall CodeLens integration (remove generated files)
+    #[arg(long)]
+    pub uninstall: bool,
+}
+
+#[derive(clap::Args)]
+pub struct CompletionsArgs {
+    /// Shell to generate completions for (bash, zsh, fish)
+    pub shell: String,
 }

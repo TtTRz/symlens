@@ -68,10 +68,18 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
     let force = args.force;
 
     for target in &targets {
-        match target {
-            AgentTarget::ClaudeCode => setup_claude_code(&root, global, force)?,
-            AgentTarget::OpenClaw => setup_openclaw(force)?,
-            AgentTarget::Cursor => setup_cursor(&root, global, force)?,
+        if args.uninstall {
+            match target {
+                AgentTarget::ClaudeCode => uninstall_claude_code(&root, global)?,
+                AgentTarget::OpenClaw => uninstall_openclaw()?,
+                AgentTarget::Cursor => uninstall_cursor(&root, global)?,
+            }
+        } else {
+            match target {
+                AgentTarget::ClaudeCode => setup_claude_code(&root, global, force)?,
+                AgentTarget::OpenClaw => setup_openclaw(force)?,
+                AgentTarget::Cursor => setup_cursor(&root, global, force)?,
+            }
         }
     }
 
@@ -371,5 +379,96 @@ fn write_file(path: &Path, content: &str, force: bool) -> anyhow::Result<()> {
         fs::create_dir_all(parent)?;
     }
     fs::write(path, content)?;
+    Ok(())
+}
+
+// ─── Uninstall ──────────────────────────────────────────────────────
+
+fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
+    if global {
+        let home = home_dir()?;
+        let skill_dir = home.join(".claude").join("skills").join("codelens");
+        if skill_dir.exists() {
+            fs::remove_dir_all(&skill_dir)?;
+            println!(
+                "  ✓ Claude Code (global skill): removed {}",
+                skill_dir.display()
+            );
+        } else {
+            println!("  - Claude Code (global skill): not installed");
+        }
+    } else {
+        let target = root.join("CLAUDE.md");
+        if target.exists() {
+            let content = fs::read_to_string(&target)?;
+            if content.contains("## Code Navigation (CodeLens)") {
+                // Remove the codelens section
+                let section_start = "## Code Navigation (CodeLens)";
+                if let Some(start_idx) = content.find(section_start) {
+                    // Find the next ## heading or end of file
+                    let after_section = &content[start_idx + section_start.len()..];
+                    let end_offset = after_section
+                        .find("\n## ")
+                        .map(|i| start_idx + section_start.len() + i)
+                        .unwrap_or(content.len());
+                    let mut new_content = String::new();
+                    new_content.push_str(content[..start_idx].trim_end());
+                    let remainder = &content[end_offset..];
+                    if !remainder.is_empty() {
+                        new_content.push_str("\n\n");
+                        new_content.push_str(remainder.trim_start());
+                    }
+                    new_content.push('\n');
+                    // If only whitespace left, remove the file
+                    if new_content.trim().is_empty() {
+                        fs::remove_file(&target)?;
+                        println!(
+                            "  ✓ Claude Code (project): removed empty {}",
+                            target.display()
+                        );
+                    } else {
+                        fs::write(&target, new_content)?;
+                        println!(
+                            "  ✓ Claude Code (project): removed codelens section from {}",
+                            target.display()
+                        );
+                    }
+                }
+            } else {
+                println!("  - Claude Code (project): no codelens section found in CLAUDE.md");
+            }
+        } else {
+            println!("  - Claude Code (project): CLAUDE.md not found");
+        }
+    }
+    Ok(())
+}
+
+fn uninstall_openclaw() -> anyhow::Result<()> {
+    let home = home_dir()?;
+    let skill_dir = home.join(".openclaw").join("skills").join("codelens");
+    if skill_dir.exists() {
+        fs::remove_dir_all(&skill_dir)?;
+        println!("  ✓ OpenClaw: removed {}", skill_dir.display());
+    } else {
+        println!("  - OpenClaw: not installed");
+    }
+    Ok(())
+}
+
+fn uninstall_cursor(root: &Path, global: bool) -> anyhow::Result<()> {
+    let target = if global {
+        let home = home_dir()?;
+        home.join(".cursor").join("rules").join("codelens.mdc")
+    } else {
+        root.join(".cursor").join("rules").join("codelens.mdc")
+    };
+    let scope = if global { "global" } else { "project" };
+    if target.exists() {
+        fs::remove_file(&target)?;
+        println!("  ✓ Cursor ({scope}): removed {}", target.display());
+    } else {
+        println!("  - Cursor ({scope}): not installed");
+    }
     Ok(())
 }

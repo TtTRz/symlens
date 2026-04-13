@@ -1,5 +1,8 @@
+pub mod c;
+pub mod cpp;
 pub mod dart;
 pub mod go;
+pub mod kotlin;
 pub mod python;
 pub mod registry;
 pub mod rust;

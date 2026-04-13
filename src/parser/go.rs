@@ -86,9 +86,10 @@ fn extract_go_node(
             let cursor = &mut node.walk();
             for child in node.children(cursor) {
                 if child.kind() == "type_spec"
-                    && let Some(sym) = extract_go_type_spec(child, source, file_str, file_path) {
-                        symbols.push(sym);
-                    }
+                    && let Some(sym) = extract_go_type_spec(child, source, file_str, file_path)
+                {
+                    symbols.push(sym);
+                }
             }
         }
         "const_declaration" | "var_declaration" => {
@@ -159,9 +160,10 @@ fn extract_go_method(
             let cursor = &mut r.walk();
             for child in r.children(cursor) {
                 if child.kind() == "parameter_declaration"
-                    && let Some(type_node) = child.child_by_field_name("type") {
-                        return node_text(type_node, source);
-                    }
+                    && let Some(type_node) = child.child_by_field_name("type")
+                {
+                    return node_text(type_node, source);
+                }
             }
             None
         })
@@ -267,37 +269,38 @@ fn extract_go_vars(
     for child in node.children(cursor) {
         if (child.kind() == "const_spec" || child.kind() == "var_spec")
             && let Some(name_node) = child.child_by_field_name("name")
-                && let Some(name) = node_text(name_node, source) {
-                    let vis = if name
-                        .chars()
-                        .next()
-                        .map(|c| c.is_uppercase())
-                        .unwrap_or(false)
-                    {
-                        Visibility::Public
-                    } else {
-                        Visibility::Private
-                    };
+            && let Some(name) = node_text(name_node, source)
+        {
+            let vis = if name
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
+                Visibility::Public
+            } else {
+                Visibility::Private
+            };
 
-                    let first_line = node
-                        .utf8_text(source)
-                        .ok()
-                        .and_then(|t| t.lines().next().map(|l| l.trim().to_string()));
+            let first_line = node
+                .utf8_text(source)
+                .ok()
+                .and_then(|t| t.lines().next().map(|l| l.trim().to_string()));
 
-                    symbols.push(Symbol {
-                        id: SymbolId::new(file_str, &name, &kind),
-                        name: name.clone(),
-                        qualified_name: name,
-                        kind,
-                        file_path: file_path.to_path_buf(),
-                        span: node_span(child),
-                        signature: first_line,
-                        doc_comment: extract_go_doc(node, source),
-                        visibility: vis,
-                        parent: None,
-                        children: vec![],
-                    });
-                }
+            symbols.push(Symbol {
+                id: SymbolId::new(file_str, &name, &kind),
+                name: name.clone(),
+                qualified_name: name,
+                kind,
+                file_path: file_path.to_path_buf(),
+                span: node_span(child),
+                signature: first_line,
+                doc_comment: extract_go_doc(node, source),
+                visibility: vis,
+                parent: None,
+                children: vec![],
+            });
+        }
     }
 }
 
@@ -353,16 +356,18 @@ fn collect_go_calls(
 
     if (node.kind() == "function_declaration" || node.kind() == "method_declaration")
         && let Some(name_node) = node.child_by_field_name("name")
-            && let Some(name) = node_text(name_node, source) {
-                fn_name = Some(Box::leak(name.into_boxed_str()));
-            }
+        && let Some(name) = node_text(name_node, source)
+    {
+        fn_name = Some(Box::leak(name.into_boxed_str()));
+    }
 
     if node.kind() == "call_expression"
         && let Some(caller) = fn_name
-            && let Some(func_node) = node.child_by_field_name("function")
-                && let Some(callee) = node_text(func_node, source) {
-                    edges.push((caller.to_string(), callee));
-                }
+        && let Some(func_node) = node.child_by_field_name("function")
+        && let Some(callee) = node_text(func_node, source)
+    {
+        edges.push((caller.to_string(), callee));
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
@@ -429,9 +434,10 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
         }
         "selector_expression" => {
             if let Some(gp) = parent.parent()
-                && gp.kind() == "call_expression" {
-                    return RefKind::Call;
-                }
+                && gp.kind() == "call_expression"
+            {
+                return RefKind::Call;
+            }
             RefKind::FieldAccess
         }
         "composite_literal" => RefKind::Constructor,
@@ -444,14 +450,15 @@ fn classify_go_ref(node: tree_sitter::Node) -> RefKind {
 fn collect_go_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
     if node.kind() == "import_spec"
         && let Some(path_node) = node.child_by_field_name("path")
-            && let Some(path_text) = node_text(path_node, source) {
-                let cleaned = path_text.trim_matches('"');
-                let pkg_name = cleaned.rsplit('/').next().unwrap_or(cleaned).to_string();
-                imports.push(ImportInfo {
-                    module_path: cleaned.to_string(),
-                    names: vec![pkg_name],
-                });
-            }
+        && let Some(path_text) = node_text(path_node, source)
+    {
+        let cleaned = path_text.trim_matches('"');
+        let pkg_name = cleaned.rsplit('/').next().unwrap_or(cleaned).to_string();
+        imports.push(ImportInfo {
+            module_path: cleaned.to_string(),
+            names: vec![pkg_name],
+        });
+    }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {

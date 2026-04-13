@@ -2,11 +2,39 @@
 pub mod server {
     use crate::index::{indexer, storage};
     use crate::model::symbol::SymbolKind;
+    use rayon::prelude::*;
     use serde_json::{Value, json};
+    use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::{Arc, LazyLock, RwLock};
     use tower_lsp::jsonrpc::{self, Result};
     use tower_lsp::lsp_types::*;
     use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+    use crate::model::project::ProjectIndex;
+
+    // ─── Opt 11: Static index cache for MCP server ──────────────
+    static INDEX_CACHE: LazyLock<RwLock<HashMap<PathBuf, Arc<ProjectIndex>>>> =
+        LazyLock::new(|| RwLock::new(HashMap::new()));
+
+    /// Load index from cache or disk. Caches on first load per root.
+    fn load_or_cache(root: &std::path::Path) -> Option<Arc<ProjectIndex>> {
+        // Check cache first
+        if let Some(idx) = INDEX_CACHE.read().expect("cache lock poisoned").get(root) {
+            return Some(Arc::clone(idx));
+        }
+        // Load from disk and cache
+        if let Ok(Some(idx)) = storage::load(root) {
+            let arc = Arc::new(idx);
+            INDEX_CACHE
+                .write()
+                .unwrap()
+                .insert(root.to_path_buf(), Arc::clone(&arc));
+            Some(arc)
+        } else {
+            None
+        }
+    }
 
     pub struct CodeLensMcp {
         client: Client,
@@ -121,6 +149,32 @@ pub mod server {
                     "required": ["path", "name"]
                 }
             }),
+            json!({
+                "name": "codelens_callers",
+                "description": "Show direct callers of a symbol (who calls this?).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Project root path" },
+                        "name": { "type": "string", "description": "Symbol name" },
+                        "limit": { "type": "integer", "description": "Max results (default 20)" }
+                    },
+                    "required": ["path", "name"]
+                }
+            }),
+            json!({
+                "name": "codelens_callees",
+                "description": "Show direct callees of a symbol (what does this call?).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Project root path" },
+                        "name": { "type": "string", "description": "Symbol name" },
+                        "limit": { "type": "integer", "description": "Max results (default 20)" }
+                    },
+                    "required": ["path", "name"]
+                }
+            }),
         ]
     }
 
@@ -132,6 +186,8 @@ pub mod server {
             "codelens_outline" => tool_outline(args),
             "codelens_refs" => tool_refs(args),
             "codelens_impact" => tool_impact(args),
+            "codelens_callers" => tool_callers(args),
+            "codelens_callees" => tool_callees(args),
             _ => json!({ "error": format!("Unknown tool: {}", name) }),
         }
     }
@@ -165,12 +221,19 @@ pub mod server {
 
         match indexer::index_project(&root, 100_000) {
             Ok(result) => match storage::save(&result.index) {
-                Ok(cache_path) => json!({
-                    "files": result.index.file_symbols.len(),
-                    "symbols": result.index.symbols.len(),
-                    "duration_ms": result.duration_ms,
-                    "cache": cache_path.to_string_lossy(),
-                }),
+                Ok(cache_path) => {
+                    // Invalidate cache after re-indexing
+                    INDEX_CACHE
+                        .write()
+                        .expect("cache lock poisoned")
+                        .remove(&root);
+                    json!({
+                        "files": result.index.file_symbols.len(),
+                        "symbols": result.index.symbols.len(),
+                        "duration_ms": result.duration_ms,
+                        "cache": cache_path.to_string_lossy(),
+                    })
+                }
                 Err(e) => json!({ "error": format!("Save failed: {}", e) }),
             },
             Err(e) => json!({ "error": format!("Index failed: {}", e) }),
@@ -184,8 +247,8 @@ pub mod server {
         let kind_filter = args["kind"].as_str();
         let root = PathBuf::from(path);
 
-        let index = match storage::load(&root) {
-            Ok(Some(idx)) => idx,
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
             _ => return json!({ "error": "No index found. Run codelens_index first." }),
         };
 
@@ -242,8 +305,8 @@ pub mod server {
         let include_source = args["source"].as_bool().unwrap_or(false);
         let root = PathBuf::from(path);
 
-        let index = match storage::load(&root) {
-            Ok(Some(idx)) => idx,
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
             _ => return json!({ "error": "No index found." }),
         };
 
@@ -279,8 +342,8 @@ pub mod server {
         let file = args["file"].as_str();
         let root = PathBuf::from(path);
 
-        let index = match storage::load(&root) {
-            Ok(Some(idx)) => idx,
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
             _ => return json!({ "error": "No index found." }),
         };
 
@@ -316,12 +379,11 @@ pub mod server {
         let name = args["name"].as_str().unwrap_or("");
         let root = PathBuf::from(path);
 
-        let index = match storage::load(&root) {
-            Ok(Some(idx)) => idx,
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
             _ => return json!({ "error": "No index found." }),
         };
 
-        let registry = crate::parser::registry::LanguageRegistry::new();
         let candidate_files: Vec<PathBuf> =
             if let Some(importing_files) = index.import_names.get(name) {
                 let mut files: std::collections::HashSet<PathBuf> =
@@ -336,27 +398,33 @@ pub mod server {
                 index.file_symbols.keys().cloned().collect()
             };
 
-        let mut all_refs = Vec::new();
-        for file_path in &candidate_files {
-            let full_path = root.join(file_path);
-            if !full_path.exists() {
-                continue;
-            }
-            if let Some(parser) = registry.parser_for(&full_path) {
-                if let Ok(source) = std::fs::read(&full_path) {
-                    if let Ok(refs) = parser.find_identifiers(&source, name) {
-                        for r in refs {
-                            if r.kind != crate::parser::traits::RefKind::Definition {
-                                all_refs.push(json!({
-                                    "file": file_path.to_string_lossy(), "line": r.line,
-                                    "context": r.context, "kind": format!("{:?}", r.kind),
-                                }));
+        let name_owned = name.to_string();
+        let all_refs: Vec<Value> = candidate_files
+            .par_iter()
+            .flat_map_iter(|file_path| {
+                let full_path = root.join(file_path);
+                let mut results = Vec::new();
+                if !full_path.exists() {
+                    return results;
+                }
+                let registry = crate::parser::registry::LanguageRegistry::new();
+                if let Some(parser) = registry.parser_for(&full_path) {
+                    if let Ok(source) = std::fs::read(&full_path) {
+                        if let Ok(refs) = parser.find_identifiers(&source, &name_owned) {
+                            for r in refs {
+                                if r.kind != crate::parser::traits::RefKind::Definition {
+                                    results.push(json!({
+                                        "file": file_path.to_string_lossy(), "line": r.line,
+                                        "context": r.context, "kind": format!("{:?}", r.kind),
+                                    }));
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
+                results
+            })
+            .collect();
 
         json!({ "name": name, "refs": all_refs, "count": all_refs.len() })
     }
@@ -367,8 +435,8 @@ pub mod server {
         let depth = args["depth"].as_u64().unwrap_or(3) as usize;
         let root = PathBuf::from(path);
 
-        let index = match storage::load(&root) {
-            Ok(Some(idx)) => idx,
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
             _ => return json!({ "error": "No index found." }),
         };
 
@@ -386,8 +454,54 @@ pub mod server {
             "transitive_callers": result.transitive_callers.iter()
                 .map(|(n, d)| json!({"name": n, "depth": d}))
                 .collect::<Vec<_>>(),
+            "transitive_callees": result.transitive_callees.iter()
+                .map(|(n, d)| json!({"name": n, "depth": d}))
+                .collect::<Vec<_>>(),
             "total_dependents": result.direct_callers.len() + result.transitive_callers.len(),
+            "affected_modules": result.affected_modules,
+            "has_cycle": result.has_cycle,
+            "risk_score": format!("{:.2}", result.risk_score),
         })
+    }
+
+    fn tool_callers(args: &Value) -> Value {
+        let path = args["path"].as_str().unwrap_or(".");
+        let name = args["name"].as_str().unwrap_or("");
+        let limit = args["limit"].as_u64().unwrap_or(20) as usize;
+        let root = PathBuf::from(path);
+
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
+            _ => return json!({ "error": "No index found." }),
+        };
+
+        let graph = match index.call_graph.as_ref() {
+            Some(g) => g,
+            None => return json!({ "error": "No call graph. Re-run codelens_index." }),
+        };
+
+        let callers: Vec<&str> = graph.callers(name).into_iter().take(limit).collect();
+        json!({ "name": name, "callers": callers, "count": callers.len() })
+    }
+
+    fn tool_callees(args: &Value) -> Value {
+        let path = args["path"].as_str().unwrap_or(".");
+        let name = args["name"].as_str().unwrap_or("");
+        let limit = args["limit"].as_u64().unwrap_or(20) as usize;
+        let root = PathBuf::from(path);
+
+        let index = match load_or_cache(&root) {
+            Some(idx) => idx,
+            _ => return json!({ "error": "No index found." }),
+        };
+
+        let graph = match index.call_graph.as_ref() {
+            Some(g) => g,
+            None => return json!({ "error": "No call graph. Re-run codelens_index." }),
+        };
+
+        let callees: Vec<&str> = graph.callees(name).into_iter().take(limit).collect();
+        json!({ "name": name, "callees": callees, "count": callees.len() })
     }
 
     // ─── Server startup ─────────────────────────────────────────────

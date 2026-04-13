@@ -144,7 +144,7 @@ fn parse_porcelain_blame(output: &str) -> Vec<BlameInfo> {
         std::collections::HashMap::new();
 
     for line in output.lines() {
-        if line.starts_with('\t') {
+        if let Some(content) = line.strip_prefix('\t') {
             // Content line
             results.push(BlameInfo {
                 commit: current_commit.clone(),
@@ -153,7 +153,7 @@ fn parse_porcelain_blame(output: &str) -> Vec<BlameInfo> {
                 summary: current_summary.clone(),
                 timestamp: current_timestamp,
                 line: current_line,
-                content: line[1..].to_string(),
+                content: content.to_string(),
             });
         } else if let Some(rest) = line.strip_prefix("author ") {
             current_author = rest.to_string();

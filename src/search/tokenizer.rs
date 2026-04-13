@@ -92,7 +92,7 @@ fn split_identifier(word: &str, base_offset: usize, tokens: &mut Vec<(String, us
             let prev_upper = i > 0 && chars[i - 1].is_uppercase();
             let next_lower = i + 1 < chars.len() && chars[i + 1].is_lowercase();
 
-            if !prev_upper || (prev_upper && next_lower) {
+            if !prev_upper || next_lower {
                 // Flush: "process" before "Audio", or "HTT" before "P" in "HTTPClient"→"http","client"
                 if !current.is_empty() {
                     let start = base_offset + current_start;

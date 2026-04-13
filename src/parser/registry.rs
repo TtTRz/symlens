@@ -1,5 +1,8 @@
+use crate::parser::c::CParser;
+use crate::parser::cpp::CppParser;
 use crate::parser::dart::DartParser;
 use crate::parser::go::GoParser;
+use crate::parser::kotlin::KotlinParser;
 use crate::parser::python::PythonParser;
 use crate::parser::rust::RustParser;
 use crate::parser::swift::SwiftParser;
@@ -33,6 +36,9 @@ impl LanguageRegistry {
         reg.register(Box::new(SwiftParser));
         reg.register(Box::new(GoParser));
         reg.register(Box::new(DartParser));
+        reg.register(Box::new(KotlinParser));
+        reg.register(Box::new(CParser));
+        reg.register(Box::new(CppParser));
 
         reg
     }
@@ -46,10 +52,29 @@ impl LanguageRegistry {
     }
 
     /// Get the parser for a given file path, or None if unsupported.
+    /// Fast path: static match for the 6 built-in languages.
+    /// Indices match registration order in new(): 0=Rust, 1=TS, 2=Python, 3=Swift, 4=Go, 5=Dart.
+    /// Falls through to HashMap lookup for any dynamically registered parsers.
     pub fn parser_for(&self, path: &Path) -> Option<&dyn LanguageParser> {
         let ext = path.extension()?.to_str()?;
-        let idx = self.extension_map.get(ext)?;
-        Some(self.parsers[*idx].as_ref())
+        let idx = match ext {
+            "rs" => 0,
+            "ts" | "tsx" | "js" | "jsx" => 1,
+            "py" => 2,
+            "swift" => 3,
+            "go" => 4,
+            "dart" => 5,
+            "kt" | "kts" => 6,
+            "c" | "h" => 7,
+            "cpp" | "cc" | "cxx" | "hpp" | "hh" => 8,
+            _ => {
+                return self
+                    .extension_map
+                    .get(ext)
+                    .map(|&i| self.parsers[i].as_ref());
+            }
+        };
+        Some(self.parsers[idx].as_ref())
     }
 
     /// Check if a file extension is supported.
