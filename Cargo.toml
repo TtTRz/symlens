@@ -1,6 +1,6 @@
 [package]
 name = "symlens"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 rust-version = "1.92"
 description = "Token-efficient code intelligence CLI powered by tree-sitter — search symbols, call graphs, and impact analysis without reading entire files"
