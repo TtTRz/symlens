@@ -1823,7 +1823,7 @@ fn main() {
         let (_dir, root) = create_test_project();
         let result = index_project(&root);
 
-        assert!(result.index.symbols.len() > 0, "Should have symbols");
+        assert!(!result.index.symbols.is_empty(), "Should have symbols");
         assert!(result.files_scanned >= 3, "Should scan at least 3 files");
         assert!(result.files_parsed >= 3, "Should parse at least 3 files");
         assert!(
