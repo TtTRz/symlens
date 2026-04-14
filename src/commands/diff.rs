@@ -6,18 +6,45 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub fn run(
-    args: DiffArgs,
-    root_override: Option<&str>,
-    json: bool,
-    color_on: bool,
-) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
+/// Result of a diff analysis between two git refs.
+pub struct DiffResult {
+    pub changes: Vec<ChangedSymbol>,
+    pub added_count: usize,
+    pub modified_count: usize,
+    pub deleted_count: usize,
+}
+
+#[derive(Debug)]
+pub struct ChangedSymbol {
+    pub file: String,
+    pub name: String,
+    pub kind: SymbolKind,
+    pub span_start: u32,
+    pub span_end: u32,
+    pub change_kind: ChangeKind,
+    pub signature: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum ChangeKind {
+    Added,
+    Modified,
+    Deleted,
+}
+
+/// Collect changed symbols between two git refs.
+/// This is the core logic shared by CLI and MCP.
+pub fn collect_changes(
+    root: &std::path::Path,
+    from: &str,
+    to: &str,
+    kind_filter: Option<&str>,
+) -> anyhow::Result<DiffResult> {
     let registry = LanguageRegistry::new();
     let mut changed_symbols: Vec<ChangedSymbol> = Vec::new();
 
-    // ── Single git call to get all changed files with status ───
-    let name_status = git_diff_name_status(&root, &args.from, &args.to)?;
+    // Single git call to get all changed files with status
+    let name_status = git_diff_name_status(root, from, to)?;
     let added_files: Vec<_> = name_status
         .iter()
         .filter(|(s, _)| *s == 'A')
@@ -34,7 +61,7 @@ pub fn run(
         .map(|(_, f)| f.clone())
         .collect();
 
-    // ── Added files (A): all symbols are new ──────────────────────
+    // Added files (A): all symbols are new
     for file in &added_files {
         let file_path = PathBuf::from(file);
         let full_path = root.join(&file_path);
@@ -59,7 +86,7 @@ pub fn run(
         }
     }
 
-    // ── Modified files (M): only symbols whose lines overlap the diff ─
+    // Modified files (M): only symbols whose lines overlap the diff
     for file in &modified_files {
         let file_path = PathBuf::from(file);
         let full_path = root.join(&file_path);
@@ -67,7 +94,7 @@ pub fn run(
             continue;
         }
 
-        let changed_ranges = git_diff_ranges(&root, &args.from, &args.to, file)?;
+        let changed_ranges = git_diff_ranges(root, from, to, file)?;
         if changed_ranges.is_empty() {
             continue;
         }
@@ -95,10 +122,9 @@ pub fn run(
         }
     }
 
-    // ── Deleted files (D): mark entire file ──────────────────────
+    // Deleted files (D): mark entire file
     for file in &deleted_files {
         let file_path = PathBuf::from(file);
-        // Only track supported source files
         if !registry.is_supported(&file_path) {
             continue;
         }
@@ -113,9 +139,9 @@ pub fn run(
         });
     }
 
-    // ── Apply filters ────────────────────────────────────────────
-    if let Some(ref kind_filter) = args.kind
-        && let Some(kind) = SymbolKind::from_str(kind_filter)
+    // Apply filters
+    if let Some(kf) = kind_filter
+        && let Some(kind) = SymbolKind::from_str(kf)
     {
         changed_symbols.retain(|s| s.kind == kind);
     }
@@ -127,29 +153,6 @@ pub fn run(
         seen.insert(key, ()).is_none()
     });
 
-    if changed_symbols.is_empty() {
-        if json {
-            println!(
-                "{}",
-                serde_json::json!({ "changes": [], "from": args.from, "to": args.to })
-            );
-        } else {
-            println!("No symbol changes between {} and {}", args.from, args.to);
-        }
-        return Ok(());
-    }
-
-    // ── Output ───────────────────────────────────────────────────
-    let mut by_file: HashMap<String, Vec<&ChangedSymbol>> = HashMap::new();
-    for sym in &changed_symbols {
-        by_file.entry(sym.file.clone()).or_default().push(sym);
-    }
-
-    let mut files: Vec<_> = by_file.keys().cloned().collect();
-    files.sort();
-
-    let total_files = files.len();
-    let total_symbols = changed_symbols.len();
     let added_count = changed_symbols
         .iter()
         .filter(|s| matches!(s.change_kind, ChangeKind::Added))
@@ -163,8 +166,40 @@ pub fn run(
         .filter(|s| matches!(s.change_kind, ChangeKind::Deleted))
         .count();
 
+    Ok(DiffResult {
+        changes: changed_symbols,
+        added_count,
+        modified_count,
+        deleted_count,
+    })
+}
+
+pub fn run(
+    args: DiffArgs,
+    root_override: Option<&str>,
+    json: bool,
+    color_on: bool,
+) -> anyhow::Result<()> {
+    let root = crate::commands::resolve_root(root_override)?;
+
+    let result = collect_changes(&root, &args.from, &args.to, args.kind.as_deref())?;
+
+    if result.changes.is_empty() {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({ "changes": [], "from": args.from, "to": args.to })
+            );
+        } else {
+            println!("No symbol changes between {} and {}", args.from, args.to);
+        }
+        return Ok(());
+    }
+
+    let total_symbols = result.changes.len();
+
     if json {
-        let items: Vec<serde_json::Value> = changed_symbols.iter().map(|s| {
+        let items: Vec<serde_json::Value> = result.changes.iter().map(|s| {
             serde_json::json!({
                 "file": s.file, "name": s.name, "kind": s.kind.as_str(),
                 "change": match s.change_kind { ChangeKind::Added => "added", ChangeKind::Modified => "modified", ChangeKind::Deleted => "deleted" },
@@ -176,11 +211,22 @@ pub fn run(
             serde_json::json!({
                 "from": args.from, "to": args.to,
                 "changes": items, "total": total_symbols,
-                "added": added_count, "modified": modified_count, "deleted": deleted_count,
+                "added": result.added_count, "modified": result.modified_count, "deleted": result.deleted_count,
             })
         );
         return Ok(());
     }
+
+    // Group by file for text output
+    let mut by_file: HashMap<String, Vec<&ChangedSymbol>> = HashMap::new();
+    for sym in &result.changes {
+        by_file.entry(sym.file.clone()).or_default().push(sym);
+    }
+
+    let mut files: Vec<_> = by_file.keys().cloned().collect();
+    files.sort();
+
+    let total_files = files.len();
 
     println!(
         "Changed symbols: {} → {} ({} symbols in {} files — {}+ {}~ {}-)",
@@ -188,9 +234,9 @@ pub fn run(
         args.to,
         total_symbols,
         total_files,
-        color::green(&format!("{}", added_count), color_on),
-        color::yellow(&format!("{}", modified_count), color_on),
-        color::red(&format!("{}", deleted_count), color_on),
+        color::green(&format!("{}", result.added_count), color_on),
+        color::yellow(&format!("{}", result.modified_count), color_on),
+        color::red(&format!("{}", result.deleted_count), color_on),
     );
     println!();
 
@@ -237,24 +283,6 @@ pub fn run(
     }
 
     Ok(())
-}
-
-#[derive(Debug)]
-struct ChangedSymbol {
-    file: String,
-    name: String,
-    kind: SymbolKind,
-    span_start: u32,
-    span_end: u32,
-    change_kind: ChangeKind,
-    signature: Option<String>,
-}
-
-#[derive(Debug)]
-enum ChangeKind {
-    Added,
-    Modified,
-    Deleted,
 }
 
 /// Get file names with status from a single `git diff --name-status` call.

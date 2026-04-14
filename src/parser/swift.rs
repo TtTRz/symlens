@@ -10,8 +10,12 @@ impl LanguageParser for SwiftParser {
         &["swift"]
     }
 
+    fn language(&self) -> tree_sitter::Language {
+        tree_sitter_swift::LANGUAGE.into()
+    }
+
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let tree = parse_source(tree_sitter_swift::LANGUAGE.into(), source, file_path)?;
+        let tree = parse_source(self.language(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -31,11 +35,7 @@ impl LanguageParser for SwiftParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let tree = parse_source(
-            tree_sitter_swift::LANGUAGE.into(),
-            source,
-            std::path::Path::new(""),
-        )?;
+        let tree = parse_source(self.language(), source, std::path::Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -44,7 +44,7 @@ impl LanguageParser for SwiftParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let tree = parse_source(tree_sitter_swift::LANGUAGE.into(), source, file_path)?;
+        let tree = parse_source(self.language(), source, file_path)?;
         let mut edges = Vec::new();
         collect_swift_calls(tree.root_node(), source, None, &mut edges);
         Ok(edges)
@@ -67,6 +67,46 @@ impl LanguageParser for SwiftParser {
             }
         }
         Ok(imports)
+    }
+
+    fn extract_symbols_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<Symbol>> {
+        let mut symbols = Vec::new();
+        let file_str = file_path.to_string_lossy();
+        extract_swift_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            None,
+            &mut symbols,
+        );
+        Ok(symbols)
+    }
+
+    fn extract_calls_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        _file_path: &Path,
+    ) -> anyhow::Result<Vec<CallEdge>> {
+        let mut edges = Vec::new();
+        collect_swift_calls(tree.root_node(), source, None, &mut edges);
+        Ok(edges)
+    }
+
+    fn extract_imports_from_tree(
+        &self,
+        _tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<ImportInfo>> {
+        // Still uses regex — will be migrated to tree-sitter later
+        self.extract_imports(source, file_path)
     }
 }
 

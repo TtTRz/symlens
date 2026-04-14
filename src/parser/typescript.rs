@@ -11,12 +11,12 @@ impl LanguageParser for TypeScriptParser {
         &["ts", "tsx", "js", "jsx"]
     }
 
+    fn language(&self) -> tree_sitter::Language {
+        tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+    }
+
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let tree = parse_source(
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            source,
-            file_path,
-        )?;
+        let tree = parse_source(self.language(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -32,11 +32,7 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let tree = parse_source(
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            source,
-            file_path,
-        )?;
+        let tree = parse_source(self.language(), source, file_path)?;
         let mut edges = Vec::new();
         collect_ts_calls(tree.root_node(), source, None, &mut edges);
         Ok(edges)
@@ -47,51 +43,59 @@ impl LanguageParser for TypeScriptParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let tree = parse_source(
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            source,
-            Path::new(""),
-        )?;
+        let tree = parse_source(self.language(), source, Path::new(""))?;
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
         collect_ts_identifiers(tree.root_node(), source, target_name, &lines, &mut refs);
         Ok(refs)
     }
 
-    fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let source_str = std::str::from_utf8(source).unwrap_or("");
+    fn extract_imports(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
+        let tree = parse_source(self.language(), source, file_path)?;
+
         let mut imports = Vec::new();
-        for line in source_str.lines() {
-            let trimmed = line.trim();
-            // import { Foo, Bar } from './module'
-            if trimmed.starts_with("import ")
-                && let Some(from_pos) = trimmed.find(" from ")
-            {
-                let names_part = &trimmed[7..from_pos]; // between "import " and " from "
-                let module = trimmed[from_pos + 6..]
-                    .trim()
-                    .trim_matches(|c| c == '\'' || c == '"' || c == ';');
-                let names: Vec<String> = names_part
-                    .replace(['{', '}'], "")
-                    .split(',')
-                    .map(|n| {
-                        n.trim()
-                            .split(" as ")
-                            .next()
-                            .unwrap_or("")
-                            .trim()
-                            .to_string()
-                    })
-                    .filter(|n| !n.is_empty() && n != "*")
-                    .collect();
-                if !names.is_empty() {
-                    imports.push(ImportInfo {
-                        module_path: module.to_string(),
-                        names,
-                    });
-                }
-            }
-        }
+        collect_ts_imports(tree.root_node(), source, &mut imports);
+        Ok(imports)
+    }
+
+    fn extract_symbols_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<Symbol>> {
+        let mut symbols = Vec::new();
+        let file_str = file_path.to_string_lossy();
+        extract_ts_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            None,
+            &mut symbols,
+        );
+        Ok(symbols)
+    }
+
+    fn extract_calls_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        _file_path: &Path,
+    ) -> anyhow::Result<Vec<CallEdge>> {
+        let mut edges = Vec::new();
+        collect_ts_calls(tree.root_node(), source, None, &mut edges);
+        Ok(edges)
+    }
+
+    fn extract_imports_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        _file_path: &Path,
+    ) -> anyhow::Result<Vec<ImportInfo>> {
+        let mut imports = Vec::new();
+        collect_ts_imports(tree.root_node(), source, &mut imports);
         Ok(imports)
     }
 }
@@ -412,7 +416,131 @@ fn extract_ts_variable(
     }
 }
 
-// ─── Utility helpers ────────────────────────────────────────────────
+// ─── Import extraction ─────────────────────────────────────────────
+
+/// Extract import statements from TypeScript AST.
+/// Handles: `import { A, B } from 'module'`, `import X from 'module'`,
+/// `import * as N from 'module'`, `import 'side-effect'`,
+/// `import type { T } from 'module'`, `export { X } from 'module'`.
+fn collect_ts_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
+    match node.kind() {
+        "import_statement" => {
+            // import_clause children: import_clause, string_literal (source), semicolon
+            let mut module = None;
+            let mut names = Vec::new();
+
+            let cursor = &mut node.walk();
+            for child in node.children(cursor) {
+                match child.kind() {
+                    "import_clause" => {
+                        // import_clause contains: named_imports, namespace_import, identifier
+                        let cc = &mut child.walk();
+                        for sub in child.children(cc) {
+                            match sub.kind() {
+                                "named_imports" => {
+                                    // { A, B as C, type D }
+                                    let nc = &mut sub.walk();
+                                    for spec in sub.children(nc) {
+                                        if spec.kind() == "import_specifier" {
+                                            // import_specifier has "name" and optionally "alias"
+                                            if let Some(name_node) =
+                                                spec.child_by_field_name("name")
+                                                && let Some(name) = node_text(name_node, source)
+                                            {
+                                                names.push(name);
+                                            }
+                                        }
+                                    }
+                                }
+                                "namespace_import" => {
+                                    // import * as Foo
+                                    if let Some(alias_node) = child_by_field_name(&sub, "alias")
+                                        && let Some(alias) = node_text(alias_node, source)
+                                    {
+                                        names.push(alias);
+                                    }
+                                }
+                                "identifier" => {
+                                    // import Foo from 'module' (default import)
+                                    if let Some(name) = node_text(sub, source) {
+                                        names.push(name);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    "string" | "string_literal" => {
+                        // Module source: 'path' or "path"
+                        let text = node_text(child, source).unwrap_or_default();
+                        module = Some(
+                            text.trim_matches(|c| c == '\'' || c == '"' || c == '`')
+                                .to_string(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(module_path) = module
+                && !names.is_empty()
+            {
+                imports.push(ImportInfo { module_path, names });
+            }
+        }
+        "export_statement" => {
+            // export { X } from 'module' — re-exports
+            let mut module = None;
+            let mut names = Vec::new();
+
+            let cursor = &mut node.walk();
+            for child in node.children(cursor) {
+                match child.kind() {
+                    "export_clause" => {
+                        let ec = &mut child.walk();
+                        for spec in child.children(ec) {
+                            if spec.kind() == "export_specifier"
+                                && let Some(name_node) = spec.child_by_field_name("name")
+                                && let Some(name) = node_text(name_node, source)
+                            {
+                                names.push(name);
+                            }
+                        }
+                    }
+                    "string" | "string_literal" => {
+                        let text = node_text(child, source).unwrap_or_default();
+                        module = Some(
+                            text.trim_matches(|c| c == '\'' || c == '"' || c == '`')
+                                .to_string(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(module_path) = module
+                && !names.is_empty()
+            {
+                imports.push(ImportInfo { module_path, names });
+            }
+        }
+        _ => {}
+    }
+
+    // Recurse into children
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_ts_imports(child, source, imports);
+    }
+}
+
+/// Helper: get child by field name for any node (workaround for tree-sitter API).
+fn child_by_field_name<'a>(
+    node: &tree_sitter::Node<'a>,
+    field: &str,
+) -> Option<tree_sitter::Node<'a>> {
+    node.child_by_field_name(field)
+}
 
 fn has_export(node: tree_sitter::Node) -> bool {
     node.parent()

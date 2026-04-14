@@ -2,6 +2,7 @@
 pub mod server {
     use crate::index::{indexer, storage};
     use crate::model::symbol::SymbolKind;
+    use crate::output::json as fmt;
     use rayon::prelude::*;
     use rmcp::ServiceExt;
     use rmcp::handler::server::ServerHandler;
@@ -134,6 +135,37 @@ pub mod server {
         pub limit: Option<usize>,
     }
 
+    #[derive(Debug, Deserialize, JsonSchema)]
+    pub struct LinesParams {
+        /// Project root path
+        pub path: String,
+        /// File path relative to project root
+        pub file: String,
+        /// Start line (1-based, inclusive)
+        pub start: u32,
+        /// End line (1-based, inclusive)
+        pub end: u32,
+    }
+
+    #[derive(Debug, Deserialize, JsonSchema)]
+    pub struct DiffParams {
+        /// Project root path
+        pub path: String,
+        /// Git ref to diff from (e.g. "HEAD~1", "main")
+        pub from: String,
+        /// Git ref to diff to (e.g. "HEAD")
+        pub to: String,
+        /// Filter by symbol kind (e.g. "function", "struct")
+        #[serde(default)]
+        pub kind: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize, JsonSchema)]
+    pub struct StatsParams {
+        /// Project root path
+        pub path: String,
+    }
+
     // ─── Server struct + tool methods ────────────────────────────────
 
     #[derive(Clone)]
@@ -211,17 +243,7 @@ pub mod server {
                     .collect()
             };
 
-            let items: Vec<serde_json::Value> = results
-                .iter()
-                .map(|(sym, score)| {
-                    json!({
-                        "id": sym.id.0, "name": sym.name, "kind": sym.kind.as_str(),
-                        "file": sym.file_path.to_string_lossy(),
-                        "lines": [sym.span.start_line, sym.span.end_line],
-                        "signature": sym.signature, "doc": sym.doc_comment, "score": score,
-                    })
-                })
-                .collect();
+            let items = fmt::format_search_results(&results);
 
             Ok(
                 serde_json::to_string_pretty(&json!({ "results": items, "count": items.len() }))
@@ -244,23 +266,19 @@ pub mod server {
                 .get(&id)
                 .ok_or_else(|| mcp_error(format!("Symbol not found: {}", params.symbol_id)))?;
 
-            let mut result = json!({
-                "id": symbol.id.0, "name": symbol.name, "qualified_name": symbol.qualified_name,
-                "kind": symbol.kind.as_str(), "file": symbol.file_path.to_string_lossy(),
-                "lines": [symbol.span.start_line, symbol.span.end_line],
-                "signature": symbol.signature, "doc": symbol.doc_comment,
-                "visibility": format!("{:?}", symbol.visibility),
-            });
-
-            if include_source {
+            let source = if include_source {
                 let source_file = root.join(&symbol.file_path);
-                if let Ok(content) = std::fs::read_to_string(&source_file) {
+                std::fs::read_to_string(&source_file).ok().map(|content| {
                     let lines: Vec<&str> = content.lines().collect();
                     let start = (symbol.span.start_line as usize).saturating_sub(1);
                     let end = (symbol.span.end_line as usize).min(lines.len());
-                    result["source"] = serde_json::Value::String(lines[start..end].join("\n"));
-                }
-            }
+                    lines[start..end].join("\n")
+                })
+            } else {
+                None
+            };
+
+            let result = fmt::format_symbol_value(symbol, source.as_deref());
 
             Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
         }
@@ -443,6 +461,131 @@ pub mod server {
             Ok(serde_json::to_string_pretty(
                 &json!({ "name": params.name, "callees": callees, "count": callees.len() }),
             )
+            .unwrap_or_default())
+        }
+
+        #[tool(description = "Read specific lines from a file. Returns line-numbered source code.")]
+        fn symlens_lines(
+            &self,
+            Parameters(params): Parameters<LinesParams>,
+        ) -> Result<String, McpError> {
+            let root = PathBuf::from(&params.path);
+            let full_path = root.join(&params.file);
+
+            if !full_path.exists() {
+                return Err(mcp_error(format!("File not found: {}", params.file)));
+            }
+
+            let content = std::fs::read_to_string(&full_path)
+                .map_err(|e| mcp_error(format!("Read failed: {e}")))?;
+            let lines: Vec<&str> = content.lines().collect();
+
+            let start = (params.start as usize).saturating_sub(1);
+            let end = (params.end as usize).min(lines.len());
+
+            if start >= lines.len() {
+                return Err(mcp_error(format!(
+                    "Start line {} exceeds file length {}",
+                    params.start,
+                    lines.len()
+                )));
+            }
+
+            let max_lines = 500;
+            let actual_end = end.min(start + max_lines);
+
+            let line_items: Vec<serde_json::Value> = lines[start..actual_end]
+                .iter()
+                .enumerate()
+                .map(|(i, line)| json!({ "line": start + i + 1, "content": line }))
+                .collect();
+
+            let mut result = json!({
+                "file": params.file,
+                "start": params.start,
+                "end": params.end,
+                "lines": line_items,
+                "total_lines": lines.len(),
+            });
+
+            if actual_end < end {
+                result["truncated"] = serde_json::Value::Bool(true);
+                result["truncated_after"] =
+                    serde_json::Value::Number(serde_json::Number::from(actual_end));
+            }
+
+            Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
+        }
+
+        #[tool(
+            description = "Show changed symbols between two git refs. Identifies which functions, structs, etc. were added, modified, or deleted."
+        )]
+        fn symlens_diff(
+            &self,
+            Parameters(params): Parameters<DiffParams>,
+        ) -> Result<String, McpError> {
+            let root = PathBuf::from(&params.path);
+
+            let diff_result = crate::commands::diff::collect_changes(
+                &root,
+                &params.from,
+                &params.to,
+                params.kind.as_deref(),
+            )
+            .map_err(|e| mcp_error(format!("Diff failed: {e}")))?;
+
+            let items: Vec<serde_json::Value> = diff_result
+                .changes
+                .iter()
+                .map(|s| {
+                    json!({
+                        "file": s.file,
+                        "name": s.name,
+                        "kind": s.kind.as_str(),
+                        "change": match s.change_kind {
+                            crate::commands::diff::ChangeKind::Added => "added",
+                            crate::commands::diff::ChangeKind::Modified => "modified",
+                            crate::commands::diff::ChangeKind::Deleted => "deleted",
+                        },
+                        "lines": [s.span_start, s.span_end],
+                        "signature": s.signature,
+                    })
+                })
+                .collect();
+
+            Ok(serde_json::to_string_pretty(&json!({
+                "from": params.from,
+                "to": params.to,
+                "changes": items,
+                "total": diff_result.changes.len(),
+                "added": diff_result.added_count,
+                "modified": diff_result.modified_count,
+                "deleted": diff_result.deleted_count,
+            }))
+            .unwrap_or_default())
+        }
+
+        #[tool(
+            description = "Get project index statistics: file counts, symbol counts by language and kind."
+        )]
+        fn symlens_stats(
+            &self,
+            Parameters(params): Parameters<StatsParams>,
+        ) -> Result<String, McpError> {
+            let root = PathBuf::from(&params.path);
+
+            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+
+            let stats = index.stats();
+
+            Ok(serde_json::to_string_pretty(&json!({
+                "root": index.root.to_string_lossy(),
+                "version": index.version,
+                "files": stats.total_files,
+                "symbols": stats.total_symbols,
+                "by_language": stats.by_language,
+                "by_kind": stats.by_kind,
+            }))
             .unwrap_or_default())
         }
     }

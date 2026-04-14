@@ -1,14 +1,17 @@
 use crate::model::symbol::Symbol;
 use crate::search::tokenizer::CodeTokenizer;
 use std::path::Path;
+use std::sync::RwLock;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{Index, IndexWriter, ReloadPolicy, doc};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, doc};
 
 /// BM25 search engine backed by tantivy.
+/// Caches Reader and QueryParser across searches to avoid per-query overhead.
 pub struct SearchEngine {
     index: Index,
+    reader: IndexReader,
     // Field handles
     f_symbol_id: Field,
     f_name: Field,
@@ -17,6 +20,8 @@ pub struct SearchEngine {
     f_doc: Field,
     f_kind: Field,
     f_file: Field,
+    // Cached QueryParser, rebuilt after index_symbols() invalidates the reader
+    query_parser: RwLock<QueryParser>,
 }
 
 #[derive(Debug)]
@@ -57,8 +62,17 @@ impl SearchEngine {
         // Register custom tokenizer
         index.tokenizers().register("code", CodeTokenizer);
 
+        let reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual)
+            .try_into()?;
+
+        let query_parser =
+            QueryParser::for_index(&index, vec![f_name, f_qualified_name, f_signature, f_doc]);
+
         Ok(Self {
             index,
+            reader,
             f_symbol_id,
             f_name,
             f_qualified_name,
@@ -66,6 +80,7 @@ impl SearchEngine {
             f_doc,
             f_kind,
             f_file,
+            query_parser: RwLock::new(query_parser),
         })
     }
 
@@ -84,8 +99,17 @@ impl SearchEngine {
         let f_kind = schema.get_field("kind")?;
         let f_file = schema.get_field("file")?;
 
+        let reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual)
+            .try_into()?;
+
+        let query_parser =
+            QueryParser::for_index(&index, vec![f_name, f_qualified_name, f_signature, f_doc]);
+
         Ok(Self {
             index,
+            reader,
             f_symbol_id,
             f_name,
             f_qualified_name,
@@ -93,6 +117,7 @@ impl SearchEngine {
             f_doc,
             f_kind,
             f_file,
+            query_parser: RwLock::new(query_parser),
         })
     }
 
@@ -119,30 +144,36 @@ impl SearchEngine {
         }
 
         writer.commit()?;
+
+        // Reload reader to pick up the new commit
+        self.reader.reload()?;
+
+        // Rebuild QueryParser after commit (index state changed)
+        {
+            let mut qp = self.query_parser.write().unwrap();
+            *qp = QueryParser::for_index(
+                &self.index,
+                vec![
+                    self.f_name,
+                    self.f_qualified_name,
+                    self.f_signature,
+                    self.f_doc,
+                ],
+            );
+        }
+
         Ok(())
     }
 
     /// BM25 search.
     pub fn search(&self, query_str: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>> {
-        let reader = self
-            .index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::Manual)
-            .try_into()?;
+        let searcher = self.reader.searcher();
 
-        let searcher = reader.searcher();
+        let query = {
+            let qp = self.query_parser.read().unwrap();
+            qp.parse_query(query_str)?
+        };
 
-        let query_parser = QueryParser::for_index(
-            &self.index,
-            vec![
-                self.f_name,
-                self.f_qualified_name,
-                self.f_signature,
-                self.f_doc,
-            ],
-        );
-
-        let query = query_parser.parse_query(query_str)?;
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
 
         let mut results = Vec::new();

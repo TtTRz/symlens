@@ -101,31 +101,41 @@ pub fn index_project_incremental(
                 }
             }
 
-            // Full parse path
+            // Full parse path: single parse, extract all data at once
             if let Some(parser) = registry.parser_for(file_path)
                 && let Ok(source) = std::fs::read(file_path)
             {
-                if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
-                    result.symbols = symbols;
-                    result.file_mtime = Some((rel_path.to_path_buf(), current_mtime));
-                    let hash = blake3::hash(&source).to_hex()[..16].to_string();
-                    result.file_hash = Some((rel_path.to_path_buf(), hash));
-                    result.parsed = true;
-                }
+                match parser.extract_all(&source, rel_path) {
+                    Ok(output) => {
+                        result.symbols = output.symbols;
+                        result.file_mtime = Some((rel_path.to_path_buf(), current_mtime));
+                        let hash = blake3::hash(&source).to_hex()[..16].to_string();
+                        result.file_hash = Some((rel_path.to_path_buf(), hash));
+                        result.parsed = true;
 
-                if let Ok(edges) = parser.extract_calls(&source, rel_path)
-                    && !edges.is_empty()
-                {
-                    result.file_call_edges = Some((rel_path.to_path_buf(), edges.clone()));
-                    result.call_edges = edges;
-                }
+                        if !output.call_edges.is_empty() {
+                            result.file_call_edges =
+                                Some((rel_path.to_path_buf(), output.call_edges.clone()));
+                            result.call_edges = output.call_edges;
+                        }
 
-                if let Ok(imps) = parser.extract_imports(&source, rel_path)
-                    && !imps.is_empty()
-                {
-                    result.file_imports = Some((rel_path.to_path_buf(), imps.clone()));
-                    for imp in imps {
-                        result.imports.push((rel_path.to_path_buf(), imp));
+                        if !output.imports.is_empty() {
+                            result.file_imports =
+                                Some((rel_path.to_path_buf(), output.imports.clone()));
+                            for imp in output.imports {
+                                result.imports.push((rel_path.to_path_buf(), imp));
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Fallback: try extract_symbols only
+                        if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
+                            result.symbols = symbols;
+                            result.file_mtime = Some((rel_path.to_path_buf(), current_mtime));
+                            let hash = blake3::hash(&source).to_hex()[..16].to_string();
+                            result.file_hash = Some((rel_path.to_path_buf(), hash));
+                            result.parsed = true;
+                        }
                     }
                 }
             }

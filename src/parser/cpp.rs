@@ -10,8 +10,12 @@ impl LanguageParser for CppParser {
         &["cpp", "cc", "cxx", "hpp", "hh"]
     }
 
+    fn language(&self) -> tree_sitter::Language {
+        tree_sitter_cpp::LANGUAGE.into()
+    }
+
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let tree = parse_source(tree_sitter_cpp::LANGUAGE.into(), source, file_path)?;
+        let tree = parse_source(self.language(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -28,7 +32,7 @@ impl LanguageParser for CppParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let tree = parse_source(tree_sitter_cpp::LANGUAGE.into(), source, file_path)?;
+        let tree = parse_source(self.language(), source, file_path)?;
 
         let mut edges = Vec::new();
         collect_cpp_calls(tree.root_node(), source, None, &mut edges);
@@ -40,11 +44,7 @@ impl LanguageParser for CppParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let tree = parse_source(
-            tree_sitter_cpp::LANGUAGE.into(),
-            source,
-            std::path::Path::new(""),
-        )?;
+        let tree = parse_source(self.language(), source, std::path::Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -86,6 +86,47 @@ impl LanguageParser for CppParser {
             }
         }
         Ok(imports)
+    }
+
+    fn extract_symbols_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<Symbol>> {
+        let mut symbols = Vec::new();
+        let file_str = file_path.to_string_lossy();
+        extract_cpp_node(
+            tree.root_node(),
+            source,
+            &file_str,
+            file_path,
+            &mut symbols,
+            None,
+            Visibility::Public,
+        );
+        Ok(symbols)
+    }
+
+    fn extract_calls_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+        _file_path: &Path,
+    ) -> anyhow::Result<Vec<CallEdge>> {
+        let mut edges = Vec::new();
+        collect_cpp_calls(tree.root_node(), source, None, &mut edges);
+        Ok(edges)
+    }
+
+    fn extract_imports_from_tree(
+        &self,
+        _tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<ImportInfo>> {
+        // #include uses text-based scan, not tree-sitter
+        self.extract_imports(source, file_path)
     }
 }
 

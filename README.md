@@ -153,7 +153,7 @@ symlens mcp
 }
 ```
 
-**8 tools:** `symlens_index` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees`
+**10 tools:** `symlens_index` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
 
 </details>
 

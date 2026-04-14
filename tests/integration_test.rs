@@ -2023,7 +2023,9 @@ fn main() {
         let source = std::fs::read(root.join("src/engine.rs")).unwrap();
         let parser = symlens::parser::rust::RustParser;
         let refs = symlens::parser::traits::LanguageParser::find_identifiers(
-            &parser, &source, "normalize",
+            &parser,
+            &source,
+            "normalize",
         )
         .expect("Failed to find identifiers");
 
@@ -2120,9 +2122,6 @@ fn main() {
             0,
             "Empty project should have 0 symbols"
         );
-        assert_eq!(
-            result.files_scanned, 0,
-            "Empty project should scan 0 files"
-        );
+        assert_eq!(result.files_scanned, 0, "Empty project should scan 0 files");
     }
 }

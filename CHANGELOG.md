@@ -5,6 +5,22 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-14
+
+### Added
+
+- **MCP tools**: 3 new tools — `symlens_lines` (read source lines), `symlens_diff` (changed symbols between git refs), `symlens_stats` (index statistics). MCP tools now 7→10
+- **`LanguageParser::language()`**: all 9 parsers return their `tree_sitter::Language`, enabling single-parse optimization
+- **`extract_all()`**: new trait method that parses once and extracts symbols + calls + imports simultaneously — indexing now does **1 parse per file instead of 3**
+- **`ParsedOutput`**: new struct holding all extraction results from a single parse pass
+- **TypeScript AST imports**: `extract_imports` migrated from regex to tree-sitter AST traversal — now handles `import type`, `import * as`, default imports, and `export {} from` re-exports
+
+### Changed
+
+- **Diff command refactor**: core logic extracted into `collect_changes()` public function, shared by CLI and MCP
+- **tantivy Reader/QueryParser caching**: `SearchEngine` now caches `IndexReader` and `QueryParser` across searches instead of recreating per query — `index_symbols()` auto-reloads both after commit
+- **JSON output unification**: `format_search_results()` and `format_symbol_value()` shared between CLI and MCP — consistent field names (`qualified_name`, `visibility`, `parent`) across both interfaces
+
 ## [0.5.0] - 2026-04-14
 
 ### Fixed

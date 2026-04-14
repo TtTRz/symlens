@@ -32,10 +32,22 @@ pub enum RefKind {
     Unknown,
 }
 
+/// All extractable data from a single parse pass.
+#[derive(Default)]
+pub struct ParsedOutput {
+    pub symbols: Vec<Symbol>,
+    pub call_edges: Vec<CallEdge>,
+    pub imports: Vec<ImportInfo>,
+}
+
 /// Each language implements this trait to extract symbols from source code.
 pub trait LanguageParser: Send + Sync {
     /// File extensions this parser handles (e.g. ["rs"])
     fn extensions(&self) -> &[&str];
+
+    /// Return the tree-sitter Language for this parser.
+    /// Used by `extract_all()` to parse once and reuse the tree.
+    fn language(&self) -> tree_sitter::Language;
 
     /// Parse source code and extract symbols.
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>>;
@@ -60,6 +72,56 @@ pub trait LanguageParser: Send + Sync {
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
         let _ = source;
         Ok(vec![])
+    }
+
+    /// Extract symbols from a pre-parsed tree.
+    /// Override this to benefit from single-parse optimization via `extract_all()`.
+    fn extract_symbols_from_tree(
+        &self,
+        _tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<Symbol>> {
+        // Default: fall back to re-parsing
+        self.extract_symbols(source, file_path)
+    }
+
+    /// Extract call edges from a pre-parsed tree.
+    fn extract_calls_from_tree(
+        &self,
+        _tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<CallEdge>> {
+        let _ = source;
+        self.extract_calls(source, file_path)
+    }
+
+    /// Extract imports from a pre-parsed tree.
+    fn extract_imports_from_tree(
+        &self,
+        _tree: &tree_sitter::Tree,
+        source: &[u8],
+        file_path: &Path,
+    ) -> anyhow::Result<Vec<ImportInfo>> {
+        let _ = source;
+        self.extract_imports(source, file_path)
+    }
+
+    /// Parse once and extract all data (symbols, calls, imports).
+    /// Uses `language()` to create the tree, then calls `_from_tree` variants.
+    fn extract_all(&self, source: &[u8], file_path: &Path) -> anyhow::Result<ParsedOutput> {
+        let tree = crate::parser::helpers::parse_source(self.language(), source, file_path)?;
+
+        let symbols = self.extract_symbols_from_tree(&tree, source, file_path)?;
+        let call_edges = self.extract_calls_from_tree(&tree, source, file_path)?;
+        let imports = self.extract_imports_from_tree(&tree, source, file_path)?;
+
+        Ok(ParsedOutput {
+            symbols,
+            call_edges,
+            imports,
+        })
     }
 }
 
