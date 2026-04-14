@@ -43,6 +43,18 @@ SymLens indexes codebases with tree-sitter and provides token-efficient access t
 6. **Before reviewing changes**: run `symlens diff --from main --to HEAD`.
 7. Use `symlens symbol "<id>"` to get just the signature (~60 tokens) instead of the whole file (~4000 tokens).
 
+## When to Use `grep`/`cat` Instead
+
+Use grep/cat when the target is **not** a code symbol in a supported language:
+
+- **Non-code files**: `.md`, `.toml`, `.yml`, `.json`, `.env`, logs, configs
+- **String literals / comments / magic numbers**: symlens only indexes symbols (functions, types, methods)
+- **Unsupported languages**: anything outside the 9 languages listed above
+- **Regex pattern matching**: arbitrary text patterns across file contents
+
+> **Decision rule**: Is the target a symbol (function/struct/trait/class/method) in a supported language?
+> → Yes: use `symlens` · No: use `grep`/`cat`
+
 ## Supported Languages
 
 Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin — full support for symbols, calls, refs, and imports.

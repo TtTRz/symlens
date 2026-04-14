@@ -2,24 +2,30 @@
 
 SymLens indexes codebases with tree-sitter and provides token-efficient access to symbols, call graphs, and impact analysis. **Always prefer SymLens over reading entire files.**
 
-## When to Use
+## When to Use `symlens` (saves 60-90% tokens)
 
-- Searching for symbols, functions, or types → `symlens search`
-- Understanding a function's signature → `symlens symbol`
-- Getting a file or project overview → `symlens outline`
-- Finding references → `symlens refs`
-- Analyzing impact before refactoring → `symlens graph impact`
-- Reviewing changes → `symlens diff`
+| Instead of... | Use this | Why |
+|--------------|----------|-----|
+| `grep -r "query"` | `symlens search "query"` | BM25 symbol search, no noise |
+| `cat file.rs` | `symlens outline file.rs` | Structure only, ~50 tokens vs ~4000 |
+| Reading a whole file for one function | `symlens symbol "file.rs::Foo::bar#method"` | Signature ~60 tokens |
+| `find . -name "*.rs" \| xargs cat` | `symlens outline --project` | Project overview ~200 tokens |
+| `grep -r "FnName"` | `symlens refs "FnName"` | AST-level, import-aware |
+| (no grep equivalent) | `symlens callers/callees "name"` | Call relationship analysis |
+| (no grep equivalent) | `symlens graph impact "name"` | Blast radius before refactoring |
 
-## Commands
+## When to Use `grep`/`cat` Instead
 
-| Instead of... | Use this |
-|--------------|----------|
-| `grep -r "query"` | `symlens search "query"` |
-| `cat file.rs` | `symlens outline file.rs` |
-| Reading a whole file for one function | `symlens symbol "file.rs::Foo::bar#method"` |
-| `find . -name "*.rs" \| xargs cat` | `symlens outline --project` |
-| `grep -r "FnName"` | `symlens refs "FnName"` |
+- **Non-code files**: `.md`, `.toml`, `.yml`, `.json`, `.env`, logs, configs
+- **String literals / comments / magic numbers**: symlens only indexes symbols, not string content
+- **Unsupported languages**: anything outside Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin
+- **Regex pattern matching**: when you need arbitrary text patterns, not symbol names
+- **Config/data files**: no AST structure to parse
+
+### Decision Rule
+
+> **Is the target a symbol (function/struct/trait/class/method) in a supported language?**
+> → **Yes**: use `symlens` · **No**: use `grep`/`cat`
 
 ## Full Command Reference
 

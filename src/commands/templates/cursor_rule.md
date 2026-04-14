@@ -26,6 +26,14 @@ This project has `symlens` installed for token-efficient code navigation.
 
 5. Run `symlens index` if you get "index not found" errors.
 
+6. **Fall back to `grep`/`cat`** when:
+   - Searching non-code files (`.md`, `.toml`, `.yml`, `.json`, `.env`, logs)
+   - Searching string literals, comments, or magic numbers in code
+   - Working with unsupported languages (symlens supports: Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin)
+   - Need regex pattern matching across file contents (not symbol names)
+
+   > **Decision rule**: Is the target a symbol (function/struct/trait/class/method) in a supported language? → Yes: `symlens` · No: `grep`/`cat`
+
 ## Quick Reference
 
 | Task | Command |
