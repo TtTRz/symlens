@@ -61,3 +61,15 @@ jobs:
           toolchain: "1.92"
           components: rustfmt
       - run: cargo fmt --all -- --check
+
+  wasm:
+    name: WASM Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92"
+      - uses: Swatinem/rust-cache@v2
+      - name: Check WASM feature compiles (host target)
+        run: cargo check --no-default-features --features wasm

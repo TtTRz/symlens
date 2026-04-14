@@ -160,6 +160,33 @@ graph LR
 
 ---
 
+## 🌐 WASM 支持
+
+SymLens 核心（解析、调用图、符号查询）可编译为 WASM，用于浏览器环境：
+
+```bash
+cargo build --target wasm32-wasip1 --no-default-features --features wasm
+```
+
+<details>
+<summary>WASM API（点击展开）</summary>
+
+通过 `wasm-bindgen` 提供 **7 个函数**：
+
+| 函数 | 描述 |
+|------|------|
+| `parse_source(filename, source)` | 解析代码 → 符号 JSON |
+| `extract_calls(filename, source)` | 提取调用边 |
+| `extract_imports(filename, source)` | 提取导入 |
+| `build_call_graph(edges)` | 从边构建调用图 |
+| `query_callers(graph, symbol)` | 查询调用者 |
+| `query_callees(graph, symbol)` | 查询被调用者 |
+| `supported_extensions()` | 列出支持的文件类型 |
+
+</details>
+
+---
+
 ## 局限
 
 - **语法级分析**（~90% 精度）。没有类型推断——如果需要重命名重构或 99% 精度，请用 LSP。

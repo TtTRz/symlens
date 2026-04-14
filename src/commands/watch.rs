@@ -44,6 +44,16 @@ pub fn run(path: Option<&str>) -> anyhow::Result<()> {
                             | Some("py")
                             | Some("swift")
                             | Some("go")
+                            | Some("dart")
+                            | Some("c")
+                            | Some("h")
+                            | Some("cpp")
+                            | Some("cc")
+                            | Some("cxx")
+                            | Some("hpp")
+                            | Some("hh")
+                            | Some("kt")
+                            | Some("kts")
                     ) {
                         pending_files.insert(p.clone());
                         last_event = Instant::now();

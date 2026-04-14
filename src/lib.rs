@@ -1,9 +1,17 @@
+#[cfg(feature = "native")]
 pub mod cli;
+#[cfg(feature = "native")]
 pub mod commands;
+#[cfg(feature = "native")]
 pub mod config;
 pub mod graph;
+#[cfg(feature = "native")]
 pub mod index;
 pub mod model;
+#[cfg(feature = "native")]
 pub mod output;
 pub mod parser;
+#[cfg(feature = "native")]
 pub mod search;
+#[cfg(feature = "wasm")]
+pub mod wasm;

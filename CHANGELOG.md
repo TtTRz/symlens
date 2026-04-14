@@ -5,6 +5,32 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-14
+
+### Changed
+
+- **README/README_CN**: added WASM Support section with collapsible API table
+- **docs/commands.md**: updated test count (104), added Feature Flags table, WASM API reference, CI description
+
+## [0.3.0] - 2026-04-14
+
+### Added
+
+- **Incremental call graph updates**: watch mode now carries forward call edges and imports for unchanged files, eliminating full graph rebuilds when only a few files change
+- **WASM compilation support**: new `wasm` feature flag with `wasm-bindgen` API — `parse_source()`, `extract_calls()`, `extract_imports()`, `build_call_graph()`, `query_callers()`, `query_callees()`, `supported_extensions()`
+- **Feature restructuring**: `native` feature (default) for CLI/filesystem deps, `wasm` feature for browser-compatible builds
+- **CI WASM check**: GitHub Actions job verifies WASM feature compiles
+
+### Changed
+
+- **Dependencies restructured**: `rayon`, `tantivy`, `ignore`, `notify`, `blake3`, `clap`, `toml` now optional behind `native` feature
+- **Watch mode**: now monitors all 9 language extensions (added C, C++, Kotlin, Dart file types)
+- **ImportInfo**: now serializable (`Serialize`/`Deserialize`) for incremental import caching
+
+### Testing
+
+- **104 tests** (was 85): added 6 incremental call graph tests + 8 WASM API tests + 5 serialization roundtrip tests
+
 ## [0.2.2] - 2026-04-13
 
 ### Changed

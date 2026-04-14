@@ -1491,3 +1491,253 @@ mod kotlin_tests {
         let _ = calls; // at minimum, parser doesn't crash
     }
 }
+
+// ─── Incremental call graph tests ──────────────────────────────────
+
+mod incremental_tests {
+    use std::path::PathBuf;
+    use symlens::graph::call_graph::CallGraph;
+    use symlens::model::project::ProjectIndex;
+
+    #[test]
+    fn project_index_stores_file_call_edges() {
+        let mut index = ProjectIndex::new(PathBuf::from("/tmp/test"));
+        let edges = vec![
+            ("main".to_string(), "foo".to_string()),
+            ("main".to_string(), "bar".to_string()),
+        ];
+        index
+            .file_call_edges
+            .insert(PathBuf::from("src/main.rs"), edges.clone());
+
+        assert_eq!(index.file_call_edges.len(), 1);
+        assert_eq!(
+            index
+                .file_call_edges
+                .get(&PathBuf::from("src/main.rs"))
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn project_index_stores_file_imports() {
+        let mut index = ProjectIndex::new(PathBuf::from("/tmp/test"));
+        let imports = vec![symlens::parser::traits::ImportInfo {
+            module_path: "std::collections".to_string(),
+            names: vec!["HashMap".to_string()],
+        }];
+        index
+            .file_imports
+            .insert(PathBuf::from("src/main.rs"), imports);
+
+        assert_eq!(index.file_imports.len(), 1);
+    }
+
+    #[test]
+    fn call_graph_from_merged_edges() {
+        // Simulate two files contributing edges
+        let file_a_edges = vec![("a::main".to_string(), "a::foo".to_string())];
+        let file_b_edges = vec![("b::run".to_string(), "a::foo".to_string())];
+
+        // Merge like the indexer does
+        let mut all_edges = Vec::new();
+        all_edges.extend(file_a_edges);
+        all_edges.extend(file_b_edges);
+
+        let graph = CallGraph::build(&all_edges);
+        let callers = graph.callers("a::foo");
+        assert_eq!(callers.len(), 2, "Should have callers from both files");
+        assert!(callers.contains(&"a::main"));
+        assert!(callers.contains(&"b::run"));
+    }
+
+    #[test]
+    fn incremental_edge_carryforward_produces_complete_graph() {
+        // Simulate: file A unchanged (edges carried forward), file B re-parsed
+        let carried_edges = vec![
+            ("module_a::init".to_string(), "module_a::setup".to_string()),
+            ("module_a::init".to_string(), "shared::log".to_string()),
+        ];
+        let new_edges = vec![
+            ("module_b::run".to_string(), "shared::log".to_string()),
+            ("module_b::run".to_string(), "module_b::cleanup".to_string()),
+        ];
+
+        let mut all_edges = Vec::new();
+        all_edges.extend(carried_edges);
+        all_edges.extend(new_edges);
+
+        let graph = CallGraph::build(&all_edges);
+
+        // shared::log should have 2 callers from different modules
+        let log_callers = graph.callers("shared::log");
+        assert_eq!(log_callers.len(), 2);
+        assert!(log_callers.contains(&"module_a::init"));
+        assert!(log_callers.contains(&"module_b::run"));
+
+        // module_a::init should have 2 callees
+        let init_callees = graph.callees("module_a::init");
+        assert_eq!(init_callees.len(), 2);
+    }
+
+    #[test]
+    fn file_call_edges_serialization_roundtrip() {
+        let mut index = ProjectIndex::new(PathBuf::from("/tmp/test"));
+        let edges = vec![
+            ("foo".to_string(), "bar".to_string()),
+            ("baz".to_string(), "qux".to_string()),
+        ];
+        index
+            .file_call_edges
+            .insert(PathBuf::from("test.rs"), edges);
+
+        // Serialize and deserialize via bincode
+        let encoded = bincode::serde::encode_to_vec(&index, bincode::config::standard())
+            .expect("encode failed");
+        let (decoded, _): (ProjectIndex, _) =
+            bincode::serde::decode_from_slice(&encoded, bincode::config::standard())
+                .expect("decode failed");
+
+        assert_eq!(decoded.file_call_edges.len(), 1);
+        let decoded_edges = decoded
+            .file_call_edges
+            .get(&PathBuf::from("test.rs"))
+            .unwrap();
+        assert_eq!(decoded_edges.len(), 2);
+        assert_eq!(decoded_edges[0], ("foo".to_string(), "bar".to_string()));
+    }
+
+    #[test]
+    fn file_imports_serialization_roundtrip() {
+        let mut index = ProjectIndex::new(PathBuf::from("/tmp/test"));
+        let imports = vec![symlens::parser::traits::ImportInfo {
+            module_path: "crate::utils".to_string(),
+            names: vec!["helper".to_string(), "format".to_string()],
+        }];
+        index.file_imports.insert(PathBuf::from("test.rs"), imports);
+
+        let encoded = bincode::serde::encode_to_vec(&index, bincode::config::standard())
+            .expect("encode failed");
+        let (decoded, _): (ProjectIndex, _) =
+            bincode::serde::decode_from_slice(&encoded, bincode::config::standard())
+                .expect("decode failed");
+
+        assert_eq!(decoded.file_imports.len(), 1);
+        let decoded_imports = decoded.file_imports.get(&PathBuf::from("test.rs")).unwrap();
+        assert_eq!(decoded_imports.len(), 1);
+        assert_eq!(decoded_imports[0].module_path, "crate::utils");
+        assert_eq!(decoded_imports[0].names, vec!["helper", "format"]);
+    }
+}
+
+// ─── WASM API tests (run on host, not actual WASM target) ──────────
+
+mod wasm_api_tests {
+    use super::*;
+    use symlens::graph::call_graph::CallGraph;
+    use symlens::parser::registry::LanguageRegistry;
+
+    #[test]
+    fn parse_rust_via_registry() {
+        let registry = LanguageRegistry::new();
+        let path = Path::new("test.rs");
+        let source = b"fn hello() { println!(\"hi\"); }";
+        let parser = registry.parser_for(path).expect("Should find Rust parser");
+        let symbols = parser.extract_symbols(source, path).expect("Should parse");
+        assert!(symbols.iter().any(|s| s.name == "hello"));
+    }
+
+    #[test]
+    fn parse_typescript_via_registry() {
+        let registry = LanguageRegistry::new();
+        let path = Path::new("app.ts");
+        let source = b"function greet(name: string): string { return name; }";
+        let parser = registry.parser_for(path).expect("Should find TS parser");
+        let symbols = parser.extract_symbols(source, path).expect("Should parse");
+        assert!(symbols.iter().any(|s| s.name == "greet"));
+    }
+
+    #[test]
+    fn parse_python_via_registry() {
+        let registry = LanguageRegistry::new();
+        let path = Path::new("app.py");
+        let source = b"def process(data):\n    return data";
+        let parser = registry
+            .parser_for(path)
+            .expect("Should find Python parser");
+        let symbols = parser.extract_symbols(source, path).expect("Should parse");
+        assert!(symbols.iter().any(|s| s.name == "process"));
+    }
+
+    #[test]
+    fn extract_calls_and_build_graph() {
+        let registry = LanguageRegistry::new();
+        let path = Path::new("test.rs");
+        let source = b"fn main() { foo(); bar(); } fn foo() {} fn bar() { foo(); }";
+        let parser = registry.parser_for(path).unwrap();
+        let edges = parser.extract_calls(source, path).unwrap();
+
+        let graph = CallGraph::build(&edges);
+        let foo_callers = graph.callers("foo");
+        // main and bar both call foo
+        assert!(!foo_callers.is_empty(), "foo should have at least 1 caller");
+    }
+
+    #[test]
+    fn call_graph_roundtrip_json() {
+        let edges = vec![
+            ("main".to_string(), "init".to_string()),
+            ("main".to_string(), "run".to_string()),
+            ("run".to_string(), "cleanup".to_string()),
+        ];
+        let graph = CallGraph::build(&edges);
+
+        // Serialize to JSON (like WASM API would do)
+        let json = serde_json::to_value(&graph).expect("Should serialize to JSON");
+        assert!(json.get("nodes").is_some());
+        assert!(json.get("edges").is_some());
+
+        // Deserialize back
+        let mut restored: CallGraph =
+            serde_json::from_value(json).expect("Should deserialize from JSON");
+        restored.rebuild_index();
+
+        let callers = restored.callers("init");
+        assert!(callers.contains(&"main"));
+
+        let callees = restored.callees("main");
+        assert_eq!(callees.len(), 2);
+    }
+
+    #[test]
+    fn unsupported_extension_returns_none() {
+        let registry = LanguageRegistry::new();
+        assert!(registry.parser_for(Path::new("data.csv")).is_none());
+        assert!(registry.parser_for(Path::new("image.png")).is_none());
+    }
+
+    #[test]
+    fn all_nine_languages_have_parsers() {
+        let registry = LanguageRegistry::new();
+        let test_files = [
+            "test.rs",
+            "test.ts",
+            "test.py",
+            "test.swift",
+            "test.go",
+            "test.dart",
+            "test.c",
+            "test.cpp",
+            "test.kt",
+        ];
+        for file in &test_files {
+            assert!(
+                registry.parser_for(Path::new(file)).is_some(),
+                "Should have parser for {}",
+                file
+            );
+        }
+    }
+}

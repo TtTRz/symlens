@@ -128,12 +128,38 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 
 ## CI/CD
 
-- **CI** (`ci.yml`): cargo check, test (Linux + macOS), clippy, rustfmt — every push/PR to `main`
+- **CI** (`ci.yml`): cargo check, test (Linux + macOS), clippy, rustfmt, WASM check — every push/PR to `master`
 - **Release** (`release.yml`): cross-platform builds (Linux x86/ARM, macOS x86/ARM) + GitHub Release — triggered by `v*` tags
 
 ## Project Stats
 
 - Rust 2024 edition, minimum rustc 1.92
 - ~10,000 lines across 48 source files
-- 85 tests (6 unit + 79 integration), 0 clippy warnings
+- 104 tests (6 unit + 98 integration), 0 clippy warnings
 - 21 commands, 9 languages, 8 MCP tools
+- WASM build support via `--features wasm`
+
+## Feature Flags
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `native` | ✅ | CLI, filesystem, BM25 search, watch mode, incremental indexing |
+| `mcp` | — | MCP server via tower-lsp (includes `native`) |
+| `wasm` | — | WASM API via wasm-bindgen (parsing, call graphs, queries) |
+
+## WASM API
+
+Build with `cargo build --target wasm32-wasip1 --no-default-features --features wasm`.
+
+| Function | Description |
+|----------|-------------|
+| `parse_source(filename, source)` | Parse source code → symbols JSON |
+| `extract_calls(filename, source)` | Extract call edges from source |
+| `extract_imports(filename, source)` | Extract import statements |
+| `build_call_graph(edges_json)` | Build call graph from edge pairs |
+| `query_callers(graph_json, symbol)` | Query direct callers |
+| `query_callees(graph_json, symbol)` | Query direct callees |
+| `supported_extensions()` | List all supported file extensions |
+
+**Supported in WASM:** symbol parsing (9 languages), call graph building/querying, import extraction.
+**Not supported in WASM:** filesystem indexing, BM25 search, watch mode, MCP server.

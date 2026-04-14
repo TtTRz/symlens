@@ -84,6 +84,24 @@ pub fn index_project_incremental(
                 if let Some(hash) = prev.file_hashes.get(rel_path) {
                     idx.file_hashes.insert(rel_path.to_path_buf(), hash.clone());
                 }
+                // Carry forward call edges for incremental call graph
+                if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
+                    all_call_edges
+                        .lock()
+                        .expect("edges lock poisoned")
+                        .extend(prev_edges.clone());
+                    idx.file_call_edges
+                        .insert(rel_path.to_path_buf(), prev_edges.clone());
+                }
+                // Carry forward imports
+                if let Some(prev_imps) = prev.file_imports.get(rel_path) {
+                    let mut all = all_imports.lock().expect("imports lock poisoned");
+                    for imp in prev_imps {
+                        all.push((rel_path.to_path_buf(), imp.clone()));
+                    }
+                    idx.file_imports
+                        .insert(rel_path.to_path_buf(), prev_imps.clone());
+                }
                 *files_skipped.lock().expect("counter lock poisoned") += 1;
                 return;
             }
@@ -106,6 +124,24 @@ pub fn index_project_incremental(
                     idx.file_mtimes
                         .insert(rel_path.to_path_buf(), current_mtime);
                     idx.file_hashes.insert(rel_path.to_path_buf(), hash);
+                    // Carry forward call edges for incremental call graph
+                    if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
+                        all_call_edges
+                            .lock()
+                            .expect("edges lock poisoned")
+                            .extend(prev_edges.clone());
+                        idx.file_call_edges
+                            .insert(rel_path.to_path_buf(), prev_edges.clone());
+                    }
+                    // Carry forward imports
+                    if let Some(prev_imps) = prev.file_imports.get(rel_path) {
+                        let mut all = all_imports.lock().expect("imports lock poisoned");
+                        for imp in prev_imps {
+                            all.push((rel_path.to_path_buf(), imp.clone()));
+                        }
+                        idx.file_imports
+                            .insert(rel_path.to_path_buf(), prev_imps.clone());
+                    }
                     *files_skipped.lock().expect("counter lock poisoned") += 1;
                     return;
                 }
@@ -131,6 +167,10 @@ pub fn index_project_incremental(
             if let Ok(edges) = parser.extract_calls(&source, rel_path)
                 && !edges.is_empty()
             {
+                let mut idx = index.lock().expect("index lock poisoned");
+                idx.file_call_edges
+                    .insert(rel_path.to_path_buf(), edges.clone());
+                drop(idx);
                 all_call_edges
                     .lock()
                     .expect("edges lock poisoned")
@@ -140,6 +180,10 @@ pub fn index_project_incremental(
             if let Ok(imps) = parser.extract_imports(&source, rel_path)
                 && !imps.is_empty()
             {
+                let mut idx = index.lock().expect("index lock poisoned");
+                idx.file_imports
+                    .insert(rel_path.to_path_buf(), imps.clone());
+                drop(idx);
                 let mut all = all_imports.lock().expect("imports lock poisoned");
                 for imp in imps {
                     all.push((rel_path.to_path_buf(), imp));

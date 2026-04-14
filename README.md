@@ -160,6 +160,33 @@ Single binary · no runtime dependencies · index persists across sessions
 
 ---
 
+## 🌐 WASM Support
+
+SymLens core (parsing, call graphs, symbol queries) can compile to WASM for browser-based usage:
+
+```bash
+cargo build --target wasm32-wasip1 --no-default-features --features wasm
+```
+
+<details>
+<summary>WASM API (click to expand)</summary>
+
+**7 functions** available via `wasm-bindgen`:
+
+| Function | Description |
+|----------|-------------|
+| `parse_source(filename, source)` | Parse code → symbols JSON |
+| `extract_calls(filename, source)` | Extract call edges |
+| `extract_imports(filename, source)` | Extract imports |
+| `build_call_graph(edges)` | Build graph from edges |
+| `query_callers(graph, symbol)` | Query callers |
+| `query_callees(graph, symbol)` | Query callees |
+| `supported_extensions()` | List supported file types |
+
+</details>
+
+---
+
 ## Limitations
 
 - **Syntax-level analysis** (~90% precision). No type inference — for rename-refactoring or 99% accuracy, use an LSP.

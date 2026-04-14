@@ -1,4 +1,5 @@
 use crate::model::symbol::Symbol;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// A call edge: (caller_qualified_name, callee_name)
@@ -63,7 +64,7 @@ pub trait LanguageParser: Send + Sync {
 }
 
 /// Import information extracted from source.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportInfo {
     /// Module path (e.g. "crate::audio::engine", "audio.engine")
     #[allow(dead_code)]

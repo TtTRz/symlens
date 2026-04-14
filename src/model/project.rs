@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use super::symbol::{Symbol, SymbolId, SymbolKind};
 use crate::graph::call_graph::CallGraph;
+use crate::parser::traits::{CallEdge, ImportInfo};
 
 /// The in-memory project index — core data structure.
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,6 +29,10 @@ pub struct ProjectIndex {
     pub import_names: HashMap<String, Vec<PathBuf>>,
     /// File content hashes for reliable incremental indexing (blake3, first 16 hex chars)
     pub file_hashes: HashMap<PathBuf, String>,
+    /// Call edges per file (for incremental call graph rebuilds)
+    pub file_call_edges: HashMap<PathBuf, Vec<CallEdge>>,
+    /// Imports per file (for incremental import rebuilds)
+    pub file_imports: HashMap<PathBuf, Vec<ImportInfo>>,
     /// Pre-computed lowercase name + qualified_name for fast search
     #[serde(skip)]
     search_cache: HashMap<SymbolId, (String, String)>,
@@ -44,7 +49,17 @@ pub struct IndexStats {
 
 impl ProjectIndex {
     pub fn new(root: PathBuf) -> Self {
-        let root_hash = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
+        let root_hash = {
+            #[cfg(feature = "native")]
+            {
+                blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string()
+            }
+            #[cfg(not(feature = "native"))]
+            {
+                // Simple hash fallback for WASM builds
+                format!("{:x}", root.to_string_lossy().len())
+            }
+        };
 
         Self {
             root,
@@ -60,6 +75,8 @@ impl ProjectIndex {
             call_graph: None,
             import_names: HashMap::new(),
             file_hashes: HashMap::new(),
+            file_call_edges: HashMap::new(),
+            file_imports: HashMap::new(),
             search_cache: HashMap::new(),
         }
     }

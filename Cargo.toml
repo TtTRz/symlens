@@ -1,6 +1,6 @@
 [package]
 name = "symlens"
-version = "0.2.2"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.92"
 description = "Token-efficient code intelligence CLI powered by tree-sitter — search symbols, call graphs, and impact analysis without reading entire files"
@@ -20,11 +20,25 @@ path = "src/lib.rs"
 [[bin]]
 name = "symlens"
 path = "src/main.rs"
+required-features = ["native"]
+
+[features]
+default = ["native"]
+native = [
+    "dep:clap",
+    "dep:clap_complete",
+    "dep:tantivy",
+    "dep:ignore",
+    "dep:notify",
+    "dep:blake3",
+    "dep:rayon",
+    "dep:toml",
+]
+mcp = ["native", "dep:tokio", "dep:tower-lsp"]
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 
 [dependencies]
-# CLI framework
-clap = { version = "4", features = ["derive", "env"] }
-clap_complete = "4"
+# === Always available (WASM-compatible) ===
 
 # tree-sitter core + languages
 tree-sitter = "0.26"
@@ -38,34 +52,40 @@ tree-sitter-c = "0.24"
 tree-sitter-cpp = "0.23"
 tree-sitter-kotlin-ng = "1.1"
 
-# Serialization
+# Serialization (core)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bincode = { version = "2", features = ["serde"] }
-toml = "1.1"
-
-# Full-text search
-tantivy = "0.26"
 
 # Call graph
 petgraph = "0.8"
 
+# === Native-only (optional) ===
+
+# CLI framework
+clap = { version = "4", features = ["derive", "env"], optional = true }
+clap_complete = { version = "4", optional = true }
+
+# Config
+toml = { version = "1.1", optional = true }
+
+# Full-text search
+tantivy = { version = "0.26", optional = true }
+
 # File system
-ignore = "0.4"
-notify = "8"
+ignore = { version = "0.4", optional = true }
+notify = { version = "8", optional = true }
 
 # Hash
-blake3 = "1"
+blake3 = { version = "1", optional = true }
 
 # Parallel
-rayon = "1"
+rayon = { version = "1", optional = true }
 
 # Error handling
 anyhow = "1"
 
-[features]
-default = []
-mcp = ["tokio", "tower-lsp"]
+# === MCP-only (optional) ===
 
 [dependencies.tokio]
 version = "1"
@@ -74,6 +94,16 @@ optional = true
 
 [dependencies.tower-lsp]
 version = "0.20"
+optional = true
+
+# === WASM-only (optional) ===
+
+[dependencies.wasm-bindgen]
+version = "0.2"
+optional = true
+
+[dependencies.serde-wasm-bindgen]
+version = "0.6"
 optional = true
 
 [profile.release]
