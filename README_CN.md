@@ -64,6 +64,7 @@ symlens callers "process_block"
 symlens callees "process_block"
 symlens graph impact "Engine::run"
 symlens graph path "main" "cleanup"
+symlens graph deps --fmt mermaid
 ```
 
 </td></tr>
@@ -79,6 +80,9 @@ symlens blame "Engine::process_block"
 
 **工具链**
 ```bash
+symlens stats
+symlens export --format json
+symlens lines src/main.rs 10 25
 symlens doctor
 symlens watch
 symlens completions zsh
@@ -135,11 +139,20 @@ symlens mcp
 一条命令让你的 AI 代理学会使用 SymLens：
 
 ```bash
-symlens setup claude-code                    # → CLAUDE.md
+# 项目级（写入项目配置）
+symlens setup claude-code                    # → ./CLAUDE.md
 symlens setup cursor                         # → .cursor/rules/symlens.mdc
 symlens setup openclaw                       # → ~/.openclaw/skills/symlens/SKILL.md
 symlens setup --all                          # 一键全部安装
-symlens setup --uninstall claude-code        # 卸载
+
+# 全局级（所有项目可用）
+symlens setup claude-code --global           # → ~/.claude/skills/symlens/SKILL.md（用 /symlens 激活）
+symlens setup cursor --global                # → ~/.cursor/rules/symlens.mdc
+symlens setup --all --global                 # 所有 agent，用户级
+
+# 卸载
+symlens setup --uninstall claude-code        # 移除项目级
+symlens setup --uninstall claude-code --global  # 移除全局 skill
 ```
 
 ---

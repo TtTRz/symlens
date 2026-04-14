@@ -64,6 +64,7 @@ symlens callers "process_block"
 symlens callees "process_block"
 symlens graph impact "Engine::run"
 symlens graph path "main" "cleanup"
+symlens graph deps --fmt mermaid
 ```
 
 </td></tr>
@@ -79,6 +80,9 @@ symlens blame "Engine::process_block"
 
 **Tooling**
 ```bash
+symlens stats
+symlens export --format json
+symlens lines src/main.rs 10 25
 symlens doctor
 symlens watch
 symlens completions zsh
@@ -135,11 +139,20 @@ symlens mcp
 One command to teach your AI agent to use SymLens:
 
 ```bash
-symlens setup claude-code                    # → CLAUDE.md
+# Project-level (writes to project config)
+symlens setup claude-code                    # → ./CLAUDE.md
 symlens setup cursor                         # → .cursor/rules/symlens.mdc
 symlens setup openclaw                       # → ~/.openclaw/skills/symlens/SKILL.md
 symlens setup --all                          # all agents at once
-symlens setup --uninstall claude-code        # remove
+
+# Global-level (available in all projects)
+symlens setup claude-code --global           # → ~/.claude/skills/symlens/SKILL.md (use /symlens to activate)
+symlens setup cursor --global                # → ~/.cursor/rules/symlens.mdc
+symlens setup --all --global                 # all agents, user-level
+
+# Uninstall
+symlens setup --uninstall claude-code        # remove project-level
+symlens setup --uninstall claude-code --global  # remove global skill
 ```
 
 ---
