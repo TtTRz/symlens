@@ -101,6 +101,11 @@ fn setup_claude_code(root: &Path, global: bool, force: bool) -> anyhow::Result<(
         let content = claude_code_skill();
         write_file(&target, &content, force)?;
         println!("  ✓ Claude Code (global skill): wrote {}", target.display());
+
+        // Register in ~/.claude/CLAUDE.md so the agent knows when to use it
+        let claude_md = home.join(".claude").join("CLAUDE.md");
+        register_claude_md(&claude_md)?;
+
         println!("    Use /symlens in Claude Code to activate");
     } else {
         // Project: write/append CLAUDE.md
@@ -147,6 +152,81 @@ fn claude_code_full() -> String {
 
 fn claude_code_skill() -> String {
     include_str!("templates/claude_code_skill.md").to_string()
+}
+
+fn claude_code_register() -> String {
+    include_str!("templates/claude_code_register.md").to_string()
+}
+
+/// Append the symlens registration block to ~/.claude/CLAUDE.md
+fn register_claude_md(path: &Path) -> anyhow::Result<()> {
+    if path.exists() {
+        let content = fs::read_to_string(path)?;
+        if content.contains("# symlens") {
+            println!(
+                "  ✓ Claude Code (CLAUDE.md): already contains symlens registration"
+            );
+            return Ok(());
+        }
+        // Append
+        let mut new_content = content;
+        if !new_content.ends_with('\n') {
+            new_content.push('\n');
+        }
+        new_content.push('\n');
+        new_content.push_str(&claude_code_register());
+        fs::write(path, new_content)?;
+    } else {
+        // Create new
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, claude_code_register())?;
+    }
+    println!("  ✓ Claude Code (CLAUDE.md): registered symlens at {}", path.display());
+    Ok(())
+}
+
+/// Remove the symlens registration block from ~/.claude/CLAUDE.md
+fn unregister_claude_md(path: &Path) -> anyhow::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path)?;
+    let section_start = "# symlens";
+    let Some(start_idx) = content.find(section_start) else {
+        return Ok(());
+    };
+
+    // Find the next top-level heading or end of file
+    let after_section = &content[start_idx + section_start.len()..];
+    let end_offset = after_section
+        .find("\n# ")
+        .map(|i| start_idx + section_start.len() + i)
+        .unwrap_or(content.len());
+
+    let mut new_content = String::new();
+    new_content.push_str(content[..start_idx].trim_end());
+    let remainder = &content[end_offset..];
+    if !remainder.is_empty() {
+        new_content.push_str("\n\n");
+        new_content.push_str(remainder.trim_start());
+    }
+    if !new_content.is_empty() && !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+
+    if new_content.trim().is_empty() {
+        fs::remove_file(path)?;
+        println!("  ✓ Claude Code (CLAUDE.md): removed empty {}", path.display());
+    } else {
+        fs::write(path, new_content)?;
+        println!(
+            "  ✓ Claude Code (CLAUDE.md): removed symlens registration from {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 // ─── OpenClaw ────────────────────────────────────────────────────────
@@ -231,6 +311,10 @@ fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
         } else {
             println!("  - Claude Code (global skill): not installed");
         }
+
+        // Also remove registration from ~/.claude/CLAUDE.md
+        let claude_md = home.join(".claude").join("CLAUDE.md");
+        unregister_claude_md(&claude_md)?;
     } else {
         let target = root.join("CLAUDE.md");
         if target.exists() {

@@ -5,6 +5,14 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-04-14
+
+### Added
+
+- **`setup claude-code --global`**: now also registers symlens in `~/.claude/CLAUDE.md` with usage decision guide (when to use symlens vs grep/cat), so the agent knows when and how to trigger the skill
+- **`setup claude-code --global --uninstall`**: now also removes the symlens registration from `~/.claude/CLAUDE.md`
+- **New template**: `claude_code_register.md` for the CLAUDE.md registration block
+
 ## [0.3.3] - 2026-04-14
 
 ### Changed
