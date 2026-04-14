@@ -1,5 +1,6 @@
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
+use super::helpers::{node_text, node_span, parse_source, node_text_first_line};
 use std::path::Path;
 
 pub struct KotlinParser;
@@ -10,11 +11,7 @@ impl LanguageParser for KotlinParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_kotlin_ng::LANGUAGE.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -30,11 +27,7 @@ impl LanguageParser for KotlinParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_kotlin_ng::LANGUAGE.into(), source, file_path)?;
 
         let mut edges = Vec::new();
         collect_kotlin_calls(tree.root_node(), source, None, &mut edges);
@@ -46,11 +39,7 @@ impl LanguageParser for KotlinParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_kotlin_ng::LANGUAGE.into(), source, std::path::Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -59,11 +48,7 @@ impl LanguageParser for KotlinParser {
     }
 
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_kotlin_ng::LANGUAGE.into(), source, std::path::Path::new(""))?;
 
         let mut imports = Vec::new();
         collect_kotlin_imports(tree.root_node(), source, &mut imports);
@@ -308,24 +293,24 @@ fn collect_kotlin_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
 
     if node.kind() == "function_declaration"
         && let Some(name) = find_child_text_by_kind(node, "identifier", source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str()));
+        fn_name = Some(name);
     }
 
     if node.kind() == "call_expression"
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(callee) = extract_call_name(node, source)
     {
-        edges.push((caller.to_string(), callee));
+        edges.push((caller.clone(), callee));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_kotlin_calls(child, source, fn_name, edges);
+        collect_kotlin_calls(child, source, fn_name.as_deref(), edges);
     }
 }
 
@@ -473,21 +458,6 @@ fn collect_kotlin_imports(node: tree_sitter::Node, source: &[u8], imports: &mut 
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}
-
 fn find_child_by_kind<'a>(
     node: tree_sitter::Node<'a>,
     kind: &str,
@@ -498,13 +468,6 @@ fn find_child_by_kind<'a>(
 
 fn find_child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {
     find_child_by_kind(node, kind).and_then(|n| node_text(n, source))
-}
-
-fn node_text_first_line(node: tree_sitter::Node, source: &[u8]) -> String {
-    node.utf8_text(source)
-        .ok()
-        .and_then(|t| t.lines().next().map(|l| l.trim().to_string()))
-        .unwrap_or_default()
 }
 
 fn extract_kotlin_signature(node: tree_sitter::Node, source: &[u8], body_kinds: &[&str]) -> String {

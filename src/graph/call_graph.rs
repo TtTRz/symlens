@@ -1,7 +1,7 @@
 use petgraph::Direction;
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// A call graph built from extracted call edges.
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,7 +38,7 @@ impl CallGraph {
             }
         };
 
-        let graph_edges: Vec<(usize, usize)> = edges
+        let mut graph_edges: Vec<(usize, usize)> = edges
             .iter()
             .map(|(caller, callee)| {
                 let from = get_or_insert(caller);
@@ -46,6 +46,10 @@ impl CallGraph {
                 (from, to)
             })
             .collect();
+
+        // Deduplicate edges to avoid redundant graph traversals
+        graph_edges.sort_unstable();
+        graph_edges.dedup();
 
         let (digraph, node_indices) = Self::build_digraph(&nodes, &graph_edges);
 
@@ -120,7 +124,7 @@ impl CallGraph {
 
     /// Find callers by partial name match (e.g. "process_block" matches "AudioEngine::process_block").
     fn callers_partial(&self, partial: &str) -> Vec<&str> {
-        let targets: Vec<usize> = self
+        let targets: HashSet<usize> = self
             .nodes
             .iter()
             .enumerate()
@@ -140,7 +144,7 @@ impl CallGraph {
     }
 
     fn callees_partial(&self, partial: &str) -> Vec<&str> {
-        let sources: Vec<usize> = self
+        let sources: HashSet<usize> = self
             .nodes
             .iter()
             .enumerate()
@@ -169,9 +173,9 @@ impl CallGraph {
         };
 
         let mut visited: HashMap<usize, usize> = HashMap::new();
-        let mut queue = vec![(start_idx, 0usize)];
+        let mut queue = VecDeque::from([(start_idx, 0usize)]);
 
-        while let Some((current, depth)) = queue.pop() {
+        while let Some((current, depth)) = queue.pop_front() {
             if depth > max_depth || visited.contains_key(&current) {
                 continue;
             }
@@ -183,7 +187,7 @@ impl CallGraph {
                 {
                     let ni = graph[neighbor];
                     if !visited.contains_key(&ni) {
-                        queue.push((ni, depth + 1));
+                        queue.push_back((ni, depth + 1));
                     }
                 }
             }

@@ -104,6 +104,13 @@ impl ProjectIndex {
         }
         self.file_mtimes.remove(file);
         self.file_hashes.remove(file);
+        self.file_call_edges.remove(file);
+        self.file_imports.remove(file);
+        // Clean import_names entries pointing to this file
+        self.import_names.retain(|_, files| {
+            files.retain(|f| f != file);
+            !files.is_empty()
+        });
     }
 
     /// Get a symbol by ID.

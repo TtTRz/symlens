@@ -1,5 +1,6 @@
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
+use super::helpers::{node_text, node_span, parse_source};
 use std::path::Path;
 
 pub struct CppParser;
@@ -10,11 +11,7 @@ impl LanguageParser for CppParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_cpp::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_cpp::LANGUAGE.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -31,11 +28,7 @@ impl LanguageParser for CppParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_cpp::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_cpp::LANGUAGE.into(), source, file_path)?;
 
         let mut edges = Vec::new();
         collect_cpp_calls(tree.root_node(), source, None, &mut edges);
@@ -47,11 +40,7 @@ impl LanguageParser for CppParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_cpp::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_cpp::LANGUAGE.into(), source, std::path::Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -598,26 +587,26 @@ fn collect_cpp_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
 
     if node.kind() == "function_definition"
         && let Some(decl) = node.child_by_field_name("declarator")
         && let Some(name) = extract_declarator_name(decl, source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str()));
+        fn_name = Some(name);
     }
 
     if node.kind() == "call_expression"
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(func_node) = node.child_by_field_name("function")
         && let Some(callee) = node_text(func_node, source)
     {
-        edges.push((caller.to_string(), callee));
+        edges.push((caller.clone(), callee));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_cpp_calls(child, source, fn_name, edges);
+        collect_cpp_calls(child, source, fn_name.as_deref(), edges);
     }
 }
 
@@ -709,19 +698,3 @@ fn classify_cpp_ref(node: tree_sitter::Node) -> RefKind {
     }
 }
 
-// ─── Shared helpers ────────────────────────────────────────────────
-
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}

@@ -2,20 +2,17 @@ use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
+use super::helpers::{node_span, node_text, node_text_first_line, parse_source};
+
 pub struct TypeScriptParser;
 
 impl LanguageParser for TypeScriptParser {
     fn extensions(&self) -> &[&str] {
-        &["ts", "tsx"]
+        &["ts", "tsx", "js", "jsx"]
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?;
-
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -31,11 +28,7 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), source, file_path)?;
         let mut edges = Vec::new();
         collect_ts_calls(tree.root_node(), source, None, &mut edges);
         Ok(edges)
@@ -46,11 +39,7 @@ impl LanguageParser for TypeScriptParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), source, Path::new(""))?;
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
         collect_ts_identifiers(tree.root_node(), source, target_name, &lines, &mut refs);
@@ -323,7 +312,7 @@ fn extract_ts_type_alias(
         kind: SymbolKind::TypeAlias,
         file_path: file_path.to_path_buf(),
         span: node_span(node),
-        signature: Some(extract_first_line(node, source)),
+        signature: Some(node_text_first_line(node, source)),
         doc_comment: extract_ts_doc(node, source),
         visibility: if has_export(node) {
             Visibility::Public
@@ -401,7 +390,7 @@ fn extract_ts_variable(
                 kind,
                 file_path: file_path.to_path_buf(),
                 span: node_span(node),
-                signature: Some(extract_first_line(node, source)),
+                signature: Some(node_text_first_line(node, source)),
                 doc_comment: extract_ts_doc(node, source),
                 visibility: vis,
                 parent: None,
@@ -412,21 +401,6 @@ fn extract_ts_variable(
 }
 
 // ─── Utility helpers ────────────────────────────────────────────────
-
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}
 
 fn has_export(node: tree_sitter::Node) -> bool {
     node.parent()
@@ -487,16 +461,6 @@ fn extract_ts_signature(node: tree_sitter::Node, source: &[u8]) -> String {
         .join(" ")
 }
 
-fn extract_first_line(node: tree_sitter::Node, source: &[u8]) -> String {
-    node.utf8_text(source)
-        .unwrap_or("")
-        .lines()
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_string()
-}
-
 // ─── Call extraction ────────────────────────────────────────────────
 
 fn collect_ts_calls(
@@ -505,27 +469,27 @@ fn collect_ts_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
     if (node.kind() == "function_declaration" || node.kind() == "method_definition")
         && let Some(name_node) = node.child_by_field_name("name")
         && let Some(name) = node_text(name_node, source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str()));
+        fn_name = Some(name);
     }
 
     if node.kind() == "call_expression"
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(func_node) = node.child_by_field_name("function")
         && let Some(callee) = node_text(func_node, source)
     {
         // Clean up: "obj.method" → "method"
         let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
-        edges.push((caller.to_string(), clean));
+        edges.push((caller.clone(), clean));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_ts_calls(child, source, fn_name, edges);
+        collect_ts_calls(child, source, fn_name.as_deref(), edges);
     }
 }
 

@@ -2,6 +2,8 @@ use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
+use super::helpers::{node_span, node_text, parse_source};
+
 pub struct PythonParser;
 
 impl LanguageParser for PythonParser {
@@ -10,12 +12,7 @@ impl LanguageParser for PythonParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_python::LANGUAGE.into())?;
-
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_python::LANGUAGE.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -35,11 +32,7 @@ impl LanguageParser for PythonParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_python::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_python::LANGUAGE.into(), source, Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -48,11 +41,7 @@ impl LanguageParser for PythonParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_python::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_python::LANGUAGE.into(), source, file_path)?;
         let mut edges = Vec::new();
         collect_py_calls(tree.root_node(), source, None, &mut edges);
         Ok(edges)
@@ -283,21 +272,6 @@ fn collect_py_identifiers(
     }
 }
 
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}
-
 // ─── Call extraction ────────────────────────────────────────────────
 
 fn collect_py_calls(
@@ -306,25 +280,25 @@ fn collect_py_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
     if node.kind() == "function_definition"
         && let Some(name_node) = node.child_by_field_name("name")
         && let Some(name) = node_text(name_node, source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str()));
+        fn_name = Some(name);
     }
 
     if node.kind() == "call"
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(func_node) = node.child_by_field_name("function")
         && let Some(callee) = node_text(func_node, source)
     {
         let clean = callee.rsplit('.').next().unwrap_or(&callee).to_string();
-        edges.push((caller.to_string(), clean));
+        edges.push((caller.clone(), clean));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_py_calls(child, source, fn_name, edges);
+        collect_py_calls(child, source, fn_name.as_deref(), edges);
     }
 }

@@ -21,7 +21,10 @@ pub fn save(index: &ProjectIndex) -> anyhow::Result<PathBuf> {
     // Save index as bincode
     let index_path = dir.join(INDEX_FILE);
     let encoded = bincode::serde::encode_to_vec(index, bincode::config::standard())?;
-    fs::write(&index_path, encoded)?;
+    // Atomic write: write to temp file then rename to avoid corruption on crash
+    let tmp_index = dir.join("index.bin.tmp");
+    fs::write(&tmp_index, encoded)?;
+    fs::rename(&tmp_index, &index_path)?;
 
     // Build tantivy search index
     let search_dir = dir.join(SEARCH_DIR);
@@ -40,7 +43,9 @@ pub fn save(index: &ProjectIndex) -> anyhow::Result<PathBuf> {
         "files": index.file_symbols.len(),
         "symbols": index.symbols.len(),
     });
-    fs::write(dir.join(META_FILE), serde_json::to_string_pretty(&meta)?)?;
+    let tmp_meta = dir.join("meta.json.tmp");
+    fs::write(&tmp_meta, serde_json::to_string_pretty(&meta)?)?;
+    fs::rename(&tmp_meta, dir.join(META_FILE))?;
 
     Ok(dir)
 }

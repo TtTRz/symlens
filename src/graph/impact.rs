@@ -1,5 +1,5 @@
 use crate::graph::call_graph::CallGraph;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Enhanced impact analysis result.
 pub struct ImpactResult {
@@ -50,7 +50,7 @@ pub fn analyze_impact(graph: &CallGraph, target: &str, max_depth: usize) -> Impa
     let has_cycle = detect_cycle(graph, target);
 
     // Risk score: 0.0-1.0
-    let total_dependents = direct_callers.len() + transitive_callers.len();
+    let total_dependents = transitive_callers.len().max(direct_callers.len());
     let max_depth_reached = transitive_callers
         .iter()
         .map(|(_, d)| *d)
@@ -88,9 +88,9 @@ fn compute_transitive_callees(
     max_depth: usize,
 ) -> Vec<(String, usize)> {
     let mut visited: HashMap<String, usize> = HashMap::new();
-    let mut queue = vec![(name.to_string(), 0usize)];
+    let mut queue = VecDeque::from([(name.to_string(), 0usize)]);
 
-    while let Some((current, depth)) = queue.pop() {
+    while let Some((current, depth)) = queue.pop_front() {
         if depth > max_depth || visited.contains_key(&current) {
             continue;
         }
@@ -98,7 +98,7 @@ fn compute_transitive_callees(
 
         for callee in graph.callees(&current) {
             if !visited.contains_key(callee) {
-                queue.push((callee.to_string(), depth + 1));
+                queue.push_back((callee.to_string(), depth + 1));
             }
         }
     }
@@ -112,13 +112,13 @@ fn compute_transitive_callees(
 /// Detect if target is part of a call cycle (A→B→...→A).
 fn detect_cycle(graph: &CallGraph, target: &str) -> bool {
     let mut visited: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = graph
+    let mut queue: VecDeque<String> = graph
         .callees(target)
         .into_iter()
         .map(|s| s.to_string())
         .collect();
 
-    while let Some(current) = queue.pop() {
+    while let Some(current) = queue.pop_front() {
         if current == target {
             return true;
         }
@@ -127,7 +127,7 @@ fn detect_cycle(graph: &CallGraph, target: &str) -> bool {
         }
         for callee in graph.callees(&current) {
             if !visited.contains(callee) {
-                queue.push(callee.to_string());
+                queue.push_back(callee.to_string());
             }
         }
     }
@@ -136,5 +136,11 @@ fn detect_cycle(graph: &CallGraph, target: &str) -> bool {
 
 /// Extract module portion from a qualified name (first segment before "::").
 fn extract_module(name: &str) -> Option<String> {
-    name.split("::").next().map(|s| s.to_string())
+    let segments: Vec<&str> = name.split("::").collect();
+    // Skip Rust path prefixes that don't represent actual modules
+    let skip = segments
+        .iter()
+        .take_while(|s| matches!(**s, "crate" | "self" | "super"))
+        .count();
+    segments.get(skip).map(|s| s.to_string())
 }

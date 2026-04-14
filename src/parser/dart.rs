@@ -1,5 +1,6 @@
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
+use super::helpers::{node_text, node_span, parse_source, node_text_first_line};
 use std::path::Path;
 
 pub struct DartParser;
@@ -10,11 +11,7 @@ impl LanguageParser for DartParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_dart::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_dart::LANGUAGE.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -30,11 +27,7 @@ impl LanguageParser for DartParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_dart::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_dart::LANGUAGE.into(), source, file_path)?;
 
         let mut edges = Vec::new();
         collect_dart_calls(tree.root_node(), source, None, &mut edges);
@@ -46,11 +39,7 @@ impl LanguageParser for DartParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_dart::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_dart::LANGUAGE.into(), source, std::path::Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -59,11 +48,7 @@ impl LanguageParser for DartParser {
     }
 
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_dart::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_dart::LANGUAGE.into(), source, std::path::Path::new(""))?;
 
         let mut imports = Vec::new();
         collect_dart_imports(tree.root_node(), source, &mut imports);
@@ -700,13 +685,13 @@ fn collect_dart_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
 
     // Track current function/method scope
     if (node.kind() == "function_signature" || node.kind() == "method_signature")
         && let Some(name) = find_child_text_by_kind(node, "identifier", source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str()));
+        fn_name = Some(name);
     }
 
     // Detect function/constructor calls:
@@ -721,10 +706,10 @@ fn collect_dart_calls(
         && (next.kind() == "selector"
             || next.kind() == "argument_part"
             || next.kind() == "arguments")
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(callee) = node_text(node, source)
     {
-        edges.push((caller.to_string(), callee));
+        edges.push((caller.clone(), callee));
     }
 
     // Pattern 3: unconditional_assignable_selector(.identifier) followed by argument_part
@@ -732,14 +717,14 @@ fn collect_dart_calls(
         && let Some(id) = find_child_text_by_kind(node, "identifier", source)
         && let Some(next) = node.next_sibling()
         && (next.kind() == "argument_part" || next.kind() == "arguments")
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
     {
-        edges.push((caller.to_string(), id));
+        edges.push((caller.clone(), id));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_dart_calls(child, source, fn_name, edges);
+        collect_dart_calls(child, source, fn_name.as_deref(), edges);
     }
 }
 
@@ -913,21 +898,6 @@ fn collect_dart_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Ve
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}
-
 fn find_child_by_kind<'a>(
     node: tree_sitter::Node<'a>,
     kind: &str,
@@ -938,13 +908,6 @@ fn find_child_by_kind<'a>(
 
 fn find_child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {
     find_child_by_kind(node, kind).and_then(|n| node_text(n, source))
-}
-
-fn node_text_first_line(node: tree_sitter::Node, source: &[u8]) -> String {
-    node.utf8_text(source)
-        .ok()
-        .and_then(|t| t.lines().next().map(|l| l.trim().to_string()))
-        .unwrap_or_default()
 }
 
 fn extract_dart_sig_text(sig_node: tree_sitter::Node, source: &[u8]) -> String {

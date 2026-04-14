@@ -2,6 +2,8 @@ use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
+use super::helpers::{node_span, node_text, node_text_first_line, parse_source};
+
 pub struct RustParser;
 
 impl LanguageParser for RustParser {
@@ -10,12 +12,7 @@ impl LanguageParser for RustParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
-
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_rust::LANGUAGE.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -31,11 +28,7 @@ impl LanguageParser for RustParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_rust::LANGUAGE.into(), source, file_path)?;
 
         let mut edges = Vec::new();
         collect_calls(tree.root_node(), source, None, &mut edges);
@@ -47,11 +40,7 @@ impl LanguageParser for RustParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse"))?;
+        let tree = parse_source(tree_sitter_rust::LANGUAGE.into(), source, Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -60,11 +49,7 @@ impl LanguageParser for RustParser {
     }
 
     fn extract_imports(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_rust::LANGUAGE.into(), source, file_path)?;
 
         let mut imports = Vec::new();
         collect_use_declarations(tree.root_node(), source, &mut imports);
@@ -362,7 +347,7 @@ fn extract_const(
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
     let vis = extract_visibility(node, source);
-    let sig = extract_first_line(node, source);
+    let sig = Some(node_text_first_line(node, source));
 
     Some(Symbol {
         id: SymbolId::new(file_str, &name, &SymbolKind::Constant),
@@ -388,7 +373,7 @@ fn extract_type_alias(
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
     let vis = extract_visibility(node, source);
-    let sig = extract_first_line(node, source);
+    let sig = Some(node_text_first_line(node, source));
 
     Some(Symbol {
         id: SymbolId::new(file_str, &name, &SymbolKind::TypeAlias),
@@ -430,21 +415,6 @@ fn extract_macro(
 }
 
 // ─── Utility helpers ────────────────────────────────────────────────
-
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}
 
 fn extract_visibility(node: tree_sitter::Node, source: &[u8]) -> Visibility {
     let cursor = &mut node.walk();
@@ -513,11 +483,6 @@ fn extract_signature(node: tree_sitter::Node, source: &[u8]) -> String {
     sig.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
 }
 
-fn extract_first_line(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let text = node.utf8_text(source).ok()?;
-    Some(text.lines().next().unwrap_or("").trim().to_string())
-}
-
 // ─── Call graph extraction ──────────────────────────────────────────
 
 /// Recursively collect call edges: (caller_function, callee_name).
@@ -527,28 +492,28 @@ fn collect_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
 
     // Track which function we're inside
     if node.kind() == "function_item"
         && let Some(name_node) = node.child_by_field_name("name")
         && let Some(name) = node_text(name_node, source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str())); // Intentional leak for simplicity
+        fn_name = Some(name);
     }
 
     // Detect call expressions
     if node.kind() == "call_expression"
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(func_node) = node.child_by_field_name("function")
         && let Some(callee) = extract_callee_name(func_node, source)
     {
-        edges.push((caller.to_string(), callee));
+        edges.push((caller.clone(), callee));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_calls(child, source, fn_name, edges);
+        collect_calls(child, source, fn_name.as_deref(), edges);
     }
 }
 

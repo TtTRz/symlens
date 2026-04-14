@@ -41,6 +41,31 @@ SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) 
 | **Token cost** | ~4000 tokens (whole file) | ~60 tokens (signature only) — **66x cheaper** |
 | **References** | Matches comments, strings, everything | AST-level — only real code references |
 
+### Real-world comparison
+
+Measured on the SymLens codebase itself (65 files, 672 symbols):
+
+**Token efficiency** — how much context your agent consumes per query:
+
+| Task | `cat` | `grep` | `symlens` | Saving |
+|:--|--:|--:|--:|:--|
+| Understand a file structure | 1,694 | — | **280** (`outline`) | **6x** fewer tokens |
+| Find a symbol across project | — | 346 | **853** (`search`) | 2.5x more tokens, but includes type + signature + doc |
+| Understand an entire project | 86,657 | — | **863** (`search`) | **100x** fewer tokens |
+
+**Information quality** — what your agent gets back:
+
+| | `grep` | `cat` | `symlens` |
+|:--|:--:|:--:|:--:|
+| Symbol kind (fn / struct / method) | — | — | Yes |
+| Function signature | — | Must read function body | Directly provided |
+| Doc comments | Unassociated | Must scroll up | Attached to symbol |
+| Call relationships | — | — | `callers` / `callees` |
+| File structure tree | — | — | `outline` |
+| Cross-file navigation | Line number | — | Symbol ID + line range |
+
+> **Key insight:** `grep` returns *matching lines*. `cat` returns *entire files*. SymLens returns *symbols with signatures and docs* — the exact granularity an AI agent needs to understand code without wasting context window.
+
 ---
 
 ## 🔍 What Can It Do?

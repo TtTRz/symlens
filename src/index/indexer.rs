@@ -1,11 +1,11 @@
 use crate::graph::call_graph::CallGraph;
 use crate::model::project::ProjectIndex;
+use crate::model::symbol::Symbol;
 use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::{CallEdge, ImportInfo};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::Instant;
 
 pub struct IndexResult {
@@ -14,6 +14,20 @@ pub struct IndexResult {
     pub files_scanned: usize,
     pub files_parsed: usize,
     pub files_skipped: usize,
+}
+
+/// Per-file parsing result collected in parallel, merged sequentially.
+#[derive(Default)]
+struct FileResult {
+    symbols: Vec<Symbol>,
+    file_mtime: Option<(PathBuf, u64)>,
+    file_hash: Option<(PathBuf, String)>,
+    call_edges: Vec<CallEdge>,
+    file_call_edges: Option<(PathBuf, Vec<CallEdge>)>,
+    imports: Vec<(PathBuf, ImportInfo)>,
+    file_imports: Option<(PathBuf, Vec<ImportInfo>)>,
+    parsed: bool,
+    skipped: bool,
 }
 
 /// Index a project directory using tree-sitter.
@@ -47,172 +61,124 @@ pub fn index_project_incremental(
 
     let files_scanned = files.len();
 
-    // Parse files in parallel
-    let index = Mutex::new(ProjectIndex::new(root.to_path_buf()));
-    let files_parsed = Mutex::new(0usize);
-    let files_skipped = Mutex::new(0usize);
-    let all_call_edges: Mutex<Vec<CallEdge>> = Mutex::new(Vec::new());
-    let all_imports: Mutex<Vec<(PathBuf, ImportInfo)>> = Mutex::new(Vec::new());
+    // Parse files in parallel — lock-free collection via map-reduce
+    let results: Vec<FileResult> = files
+        .par_iter()
+        .map(|file_path| {
+            let rel_path = file_path.strip_prefix(root).unwrap_or(file_path);
+            let mut result = FileResult::default();
 
-    files.par_iter().for_each(|file_path| {
-        let rel_path = file_path.strip_prefix(root).unwrap_or(file_path);
+            // Incremental: check if file is unchanged
+            let current_mtime = std::fs::metadata(file_path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
 
-        // Incremental: check if file is unchanged
-        let current_mtime = std::fs::metadata(file_path)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        if let Some(prev) = prev_index {
-            // Fast path: mtime unchanged → skip entirely
-            if let Some(&prev_mtime) = prev.file_mtimes.get(rel_path)
-                && prev_mtime == current_mtime
-            {
-                // File unchanged — copy symbols from previous index
-                let mut idx = index.lock().expect("index lock poisoned");
-                if let Some(sym_ids) = prev.file_symbols.get(rel_path) {
-                    for sym_id in sym_ids {
-                        if let Some(sym) = prev.symbols.get(sym_id) {
-                            idx.insert(sym.clone());
-                        }
-                    }
-                }
-                idx.file_mtimes.insert(rel_path.to_path_buf(), prev_mtime);
-                // Carry forward content hash
-                if let Some(hash) = prev.file_hashes.get(rel_path) {
-                    idx.file_hashes.insert(rel_path.to_path_buf(), hash.clone());
-                }
-                // Carry forward call edges for incremental call graph
-                if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
-                    all_call_edges
-                        .lock()
-                        .expect("edges lock poisoned")
-                        .extend(prev_edges.clone());
-                    idx.file_call_edges
-                        .insert(rel_path.to_path_buf(), prev_edges.clone());
-                }
-                // Carry forward imports
-                if let Some(prev_imps) = prev.file_imports.get(rel_path) {
-                    let mut all = all_imports.lock().expect("imports lock poisoned");
-                    for imp in prev_imps {
-                        all.push((rel_path.to_path_buf(), imp.clone()));
-                    }
-                    idx.file_imports
-                        .insert(rel_path.to_path_buf(), prev_imps.clone());
-                }
-                *files_skipped.lock().expect("counter lock poisoned") += 1;
-                return;
-            }
-
-            // Slow path: mtime changed, check content hash to catch git checkout/rebase
-            if let Ok(ref source) = std::fs::read(file_path) {
-                let hash = blake3::hash(source).to_hex()[..16].to_string();
-                if let Some(prev_hash) = prev.file_hashes.get(rel_path)
-                    && hash == *prev_hash
+            if let Some(prev) = prev_index {
+                // Fast path: mtime unchanged → reuse previous results
+                if let Some(&prev_mtime) = prev.file_mtimes.get(rel_path)
+                    && prev_mtime == current_mtime
                 {
-                    // Content unchanged despite mtime change — skip re-parsing
-                    let mut idx = index.lock().expect("index lock poisoned");
-                    if let Some(sym_ids) = prev.file_symbols.get(rel_path) {
-                        for sym_id in sym_ids {
-                            if let Some(sym) = prev.symbols.get(sym_id) {
-                                idx.insert(sym.clone());
-                            }
-                        }
-                    }
-                    idx.file_mtimes
-                        .insert(rel_path.to_path_buf(), current_mtime);
-                    idx.file_hashes.insert(rel_path.to_path_buf(), hash);
-                    // Carry forward call edges for incremental call graph
-                    if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
-                        all_call_edges
-                            .lock()
-                            .expect("edges lock poisoned")
-                            .extend(prev_edges.clone());
-                        idx.file_call_edges
-                            .insert(rel_path.to_path_buf(), prev_edges.clone());
-                    }
-                    // Carry forward imports
-                    if let Some(prev_imps) = prev.file_imports.get(rel_path) {
-                        let mut all = all_imports.lock().expect("imports lock poisoned");
-                        for imp in prev_imps {
-                            all.push((rel_path.to_path_buf(), imp.clone()));
-                        }
-                        idx.file_imports
-                            .insert(rel_path.to_path_buf(), prev_imps.clone());
-                    }
-                    *files_skipped.lock().expect("counter lock poisoned") += 1;
-                    return;
+                    copy_prev_data(prev, rel_path, prev_mtime, &mut result);
+                    result.skipped = true;
+                    return result;
                 }
+
+                // Slow path: mtime changed, check content hash to catch git checkout/rebase
+                if let Ok(ref source) = std::fs::read(file_path) {
+                    let hash = blake3::hash(source).to_hex()[..16].to_string();
+                    if let Some(prev_hash) = prev.file_hashes.get(rel_path)
+                        && hash == *prev_hash
+                    {
+                        // Content unchanged despite mtime change
+                        copy_prev_data(prev, rel_path, current_mtime, &mut result);
+                        result.file_hash = Some((rel_path.to_path_buf(), hash));
+                        result.skipped = true;
+                        return result;
+                    }
+                }
+            }
+
+            // Full parse path
+            if let Some(parser) = registry.parser_for(file_path)
+                && let Ok(source) = std::fs::read(file_path)
+            {
+                if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
+                    result.symbols = symbols;
+                    result.file_mtime = Some((rel_path.to_path_buf(), current_mtime));
+                    let hash = blake3::hash(&source).to_hex()[..16].to_string();
+                    result.file_hash = Some((rel_path.to_path_buf(), hash));
+                    result.parsed = true;
+                }
+
+                if let Ok(edges) = parser.extract_calls(&source, rel_path)
+                    && !edges.is_empty()
+                {
+                    result.file_call_edges = Some((rel_path.to_path_buf(), edges.clone()));
+                    result.call_edges = edges;
+                }
+
+                if let Ok(imps) = parser.extract_imports(&source, rel_path)
+                    && !imps.is_empty()
+                {
+                    result.file_imports = Some((rel_path.to_path_buf(), imps.clone()));
+                    for imp in imps {
+                        result.imports.push((rel_path.to_path_buf(), imp));
+                    }
+                }
+            }
+
+            result
+        })
+        .collect();
+
+    // Sequential merge — single-threaded, no locks needed
+    let mut index = ProjectIndex::new(root.to_path_buf());
+    let mut all_call_edges: Vec<CallEdge> = Vec::new();
+    let mut files_parsed: usize = 0;
+    let mut files_skipped: usize = 0;
+
+    for r in results {
+        for sym in r.symbols {
+            index.insert(sym);
+        }
+        if let Some((path, mtime)) = r.file_mtime {
+            index.file_mtimes.insert(path, mtime);
+        }
+        if let Some((path, hash)) = r.file_hash {
+            index.file_hashes.insert(path, hash);
+        }
+        if let Some((path, edges)) = r.file_call_edges {
+            index.file_call_edges.insert(path, edges);
+        }
+        if let Some((path, imps)) = r.file_imports {
+            index.file_imports.insert(path, imps);
+        }
+        all_call_edges.extend(r.call_edges);
+        for (file, imp) in &r.imports {
+            for name in &imp.names {
+                index
+                    .import_names
+                    .entry(name.clone())
+                    .or_default()
+                    .push(file.clone());
             }
         }
-
-        if let Some(parser) = registry.parser_for(file_path)
-            && let Ok(source) = std::fs::read(file_path)
-        {
-            if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
-                let mut idx = index.lock().expect("index lock poisoned");
-                for symbol in symbols {
-                    idx.insert(symbol);
-                }
-                idx.file_mtimes
-                    .insert(rel_path.to_path_buf(), current_mtime);
-                // Store content hash for future incremental checks
-                let hash = blake3::hash(&source).to_hex()[..16].to_string();
-                idx.file_hashes.insert(rel_path.to_path_buf(), hash);
-                *files_parsed.lock().expect("counter lock poisoned") += 1;
-            }
-
-            if let Ok(edges) = parser.extract_calls(&source, rel_path)
-                && !edges.is_empty()
-            {
-                let mut idx = index.lock().expect("index lock poisoned");
-                idx.file_call_edges
-                    .insert(rel_path.to_path_buf(), edges.clone());
-                drop(idx);
-                all_call_edges
-                    .lock()
-                    .expect("edges lock poisoned")
-                    .extend(edges);
-            }
-
-            if let Ok(imps) = parser.extract_imports(&source, rel_path)
-                && !imps.is_empty()
-            {
-                let mut idx = index.lock().expect("index lock poisoned");
-                idx.file_imports
-                    .insert(rel_path.to_path_buf(), imps.clone());
-                drop(idx);
-                let mut all = all_imports.lock().expect("imports lock poisoned");
-                for imp in imps {
-                    all.push((rel_path.to_path_buf(), imp));
-                }
-            }
+        if r.parsed {
+            files_parsed += 1;
         }
-    });
-
-    let duration_ms = start.elapsed().as_millis() as u64;
-    let files_parsed = *files_parsed.lock().expect("counter lock poisoned");
-    let files_skipped = *files_skipped.lock().expect("counter lock poisoned");
-    let mut index = index.into_inner().expect("index lock poisoned");
-
-    // Build call graph
-    let call_edges = all_call_edges.into_inner().expect("edges lock poisoned");
-    if !call_edges.is_empty() {
-        index.call_graph = Some(CallGraph::build(&call_edges));
+        if r.skipped {
+            files_skipped += 1;
+        }
     }
 
-    // Build import name → files mapping
-    let import_data = all_imports.into_inner().expect("imports lock poisoned");
-    for (file, imp) in &import_data {
-        for name in &imp.names {
-            index
-                .import_names
-                .entry(name.clone())
-                .or_default()
-                .push(file.clone());
-        }
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    // Build call graph from all collected edges
+    if !all_call_edges.is_empty() {
+        index.call_graph = Some(CallGraph::build(&all_call_edges));
     }
 
     Ok(IndexResult {
@@ -222,4 +188,36 @@ pub fn index_project_incremental(
         files_parsed,
         files_skipped,
     })
+}
+
+/// Copy symbols, edges, and imports from a previous index for an unchanged file.
+fn copy_prev_data(
+    prev: &ProjectIndex,
+    rel_path: &Path,
+    mtime: u64,
+    result: &mut FileResult,
+) {
+    if let Some(sym_ids) = prev.file_symbols.get(rel_path) {
+        for sym_id in sym_ids {
+            if let Some(sym) = prev.symbols.get(sym_id) {
+                result.symbols.push(sym.clone());
+            }
+        }
+    }
+    result.file_mtime = Some((rel_path.to_path_buf(), mtime));
+    if let Some(hash) = prev.file_hashes.get(rel_path) {
+        result.file_hash = Some((rel_path.to_path_buf(), hash.clone()));
+    }
+    if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
+        result
+            .call_edges
+            .extend(prev_edges.clone());
+        result.file_call_edges = Some((rel_path.to_path_buf(), prev_edges.clone()));
+    }
+    if let Some(prev_imps) = prev.file_imports.get(rel_path) {
+        for imp in prev_imps {
+            result.imports.push((rel_path.to_path_buf(), imp.clone()));
+        }
+        result.file_imports = Some((rel_path.to_path_buf(), prev_imps.clone()));
+    }
 }

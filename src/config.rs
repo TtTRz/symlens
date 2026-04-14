@@ -33,7 +33,13 @@ impl Config {
             return Self::default();
         }
         match std::fs::read_to_string(&config_path) {
-            Ok(content) => toml::from_str(&content).unwrap_or_default(),
+            Ok(content) => match toml::from_str(&content) {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("warning: failed to parse symlens.toml: {e}");
+                    Self::default()
+                }
+            },
             Err(_) => Self::default(),
         }
     }

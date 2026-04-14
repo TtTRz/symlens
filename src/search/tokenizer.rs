@@ -57,11 +57,17 @@ impl TokenStream for CodeTokenStream {
 /// Split a code identifier into tokens.
 fn tokenize_code(text: &str) -> Vec<(String, usize, usize)> {
     let mut tokens = Vec::new();
+    let mut search_from = 0;
 
     // Split by whitespace first, then process each word
     for word in text.split_whitespace() {
-        let word_start = text.find(word).unwrap_or(0);
+        // Search from current position to handle duplicate words correctly
+        let word_start = text[search_from..]
+            .find(word)
+            .map(|pos| search_from + pos)
+            .unwrap_or(search_from);
         split_identifier(word, word_start, &mut tokens);
+        search_from = word_start + word.len();
     }
 
     tokens

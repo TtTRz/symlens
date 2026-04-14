@@ -2,6 +2,8 @@ use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
+use super::helpers::{node_span, node_text, parse_source};
+
 pub struct GoParser;
 
 impl LanguageParser for GoParser {
@@ -10,11 +12,7 @@ impl LanguageParser for GoParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_go::LANGUAGE.into(), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -23,11 +21,7 @@ impl LanguageParser for GoParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))?;
+        let tree = parse_source(tree_sitter_go::LANGUAGE.into(), source, file_path)?;
 
         let mut edges = Vec::new();
         collect_go_calls(tree.root_node(), source, None, &mut edges);
@@ -39,11 +33,7 @@ impl LanguageParser for GoParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_go::LANGUAGE.into(), source, Path::new(""))?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -52,11 +42,7 @@ impl LanguageParser for GoParser {
     }
 
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_go::LANGUAGE.into())?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        let tree = parse_source(tree_sitter_go::LANGUAGE.into(), source, Path::new(""))?;
 
         let mut imports = Vec::new();
         collect_go_imports(tree.root_node(), source, &mut imports);
@@ -352,26 +338,26 @@ fn collect_go_calls(
     current_fn: Option<&str>,
     edges: &mut Vec<CallEdge>,
 ) {
-    let mut fn_name = current_fn;
+    let mut fn_name: Option<String> = current_fn.map(|s| s.to_string());
 
     if (node.kind() == "function_declaration" || node.kind() == "method_declaration")
         && let Some(name_node) = node.child_by_field_name("name")
         && let Some(name) = node_text(name_node, source)
     {
-        fn_name = Some(Box::leak(name.into_boxed_str()));
+        fn_name = Some(name);
     }
 
     if node.kind() == "call_expression"
-        && let Some(caller) = fn_name
+        && let Some(ref caller) = fn_name
         && let Some(func_node) = node.child_by_field_name("function")
         && let Some(callee) = node_text(func_node, source)
     {
-        edges.push((caller.to_string(), callee));
+        edges.push((caller.clone(), callee));
     }
 
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
-        collect_go_calls(child, source, fn_name, edges);
+        collect_go_calls(child, source, fn_name.as_deref(), edges);
     }
 }
 
@@ -466,19 +452,3 @@ fn collect_go_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<
     }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
-
-fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    node.utf8_text(source).ok().map(|s| s.to_string())
-}
-
-fn node_span(node: tree_sitter::Node) -> Span {
-    let start = node.start_position();
-    let end = node.end_position();
-    Span {
-        start_line: start.row as u32 + 1,
-        end_line: end.row as u32 + 1,
-        start_col: start.column as u32,
-        end_col: end.column as u32,
-    }
-}

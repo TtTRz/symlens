@@ -5,6 +5,29 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-14
+
+### Fixed
+
+- **BFS/DFS confusion**: `transitive_callers` and `compute_transitive_callees` used `Vec::pop()` (LIFO/DFS) instead of `VecDeque::pop_front()` (FIFO/BFS) — depth-limited queries now correctly explore shallower nodes first
+- **Impact score double-counting**: `direct_callers.len() + transitive_callers.len()` counted direct callers twice (they are depth-1 in transitive results), inflating risk scores
+- **`extract_module` wrong segment**: returned `"crate"` for paths like `crate::audio::engine::AudioEngine` — now skips `crate`/`self`/`super` prefixes
+- **`Box::leak` memory leak**: all 9 `collect_*_calls` functions leaked one `&'static str` per function definition per parse — replaced with `Option<String>` ownership pattern
+- **Non-atomic index write**: `storage::save()` wrote directly to `index.bin` — crash mid-write corrupted the index. Now writes to temp file then `fs::rename()` for atomic replacement
+- **Tokenizer offset bug**: `text.find(word)` always found the first occurrence of duplicate words, corrupting tantivy position data — now tracks cumulative search offset
+- **`callers_partial` O(E*T)**: `Vec::contains()` per edge was O(T) — changed to `HashSet` for O(1) lookup
+- **CallGraph edge dedup missing**: `build()` did not deduplicate edges, inflating graph size and skewing traversal
+- **`remove_file` incomplete cleanup**: did not clean `file_call_edges`, `file_imports`, or `import_names` — stale data accumulated during incremental updates
+- **JS/JSX extension mismatch**: `TypeScriptParser::extensions()` returned `["ts", "tsx"]` but `parser_for()` also matched `"js"` / `"jsx"` — `is_supported()` rejected JS files during file walk. Now `extensions()` includes all 4
+- **Config parse error silently swallowed**: malformed `symlens.toml` fell through to default config with no warning — now prints `eprintln!` diagnostic
+- **`detect_cycle` used DFS**: same `Vec::pop()` issue as transitive callers — fixed to `VecDeque` BFS
+
+### Changed
+
+- **Parser common module**: extracted `parse_source()`, `node_text()`, `node_span()`, `node_text_first_line()` into `src/parser/helpers.rs` — eliminates ~300 lines of duplicated code across 9 language parsers
+- **Indexer parallelism**: replaced `Mutex<ProjectIndex>` + `par_iter().for_each()` with lock-free `par_iter().map().collect()` + sequential merge — removes 5 Mutexes (including 2 counter Mutexes), enables true multi-core parallel parsing
+- **README/README_CN**: added real-world benchmark comparison tables (symlens vs grep vs cat) showing token efficiency (6x-100x savings) and information quality differences
+
 ## [0.4.1] - 2026-04-14
 
 ### Fixed
