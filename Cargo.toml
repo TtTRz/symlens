@@ -1,6 +1,6 @@
 [package]
 name = "symlens"
-version = "0.3.4"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.92"
 description = "Token-efficient code intelligence CLI powered by tree-sitter — search symbols, call graphs, and impact analysis without reading entire files"
@@ -34,7 +34,7 @@ native = [
     "dep:rayon",
     "dep:toml",
 ]
-mcp = ["native", "dep:tokio", "dep:tower-lsp"]
+mcp = ["native", "dep:tokio", "dep:rmcp", "dep:schemars"]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 
 [dependencies]
@@ -87,13 +87,18 @@ anyhow = "1"
 
 # === MCP-only (optional) ===
 
+[dependencies.schemars]
+version = "1"
+optional = true
+
 [dependencies.tokio]
 version = "1"
 features = ["rt-multi-thread", "macros", "io-std"]
 optional = true
 
-[dependencies.tower-lsp]
-version = "0.20"
+[dependencies.rmcp]
+version = "1.4"
+features = ["server", "macros", "schemars", "transport-io"]
 optional = true
 
 # === WASM-only (optional) ===

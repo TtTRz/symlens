@@ -144,7 +144,7 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `native` | ✅ | CLI, filesystem, BM25 search, watch mode, incremental indexing |
-| `mcp` | — | MCP server via tower-lsp (includes `native`) |
+| `mcp` | — | MCP server via rmcp (includes `native`) |
 | `wasm` | — | WASM API via wasm-bindgen (parsing, call graphs, queries) |
 
 ## WASM API

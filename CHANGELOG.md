@@ -5,6 +5,12 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-14
+
+### Changed
+
+- **MCP server**: migrated from tower-lsp to official `rmcp` 1.4 SDK — proper MCP protocol handshake, macro-driven tool routing (`#[tool_router]` + `#[tool_handler]`), schemars auto-generated JSON schemas, standard MCP error handling
+
 ## [0.3.4] - 2026-04-14
 
 ### Added
