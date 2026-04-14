@@ -128,7 +128,7 @@ symlens mcp
 }
 ```
 
-**8 tools:** `index` · `search` · `symbol` · `outline` · `refs` · `impact` · `callers` · `callees`
+**8 tools:** `symlens_index` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees`
 
 </details>
 
