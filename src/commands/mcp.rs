@@ -263,9 +263,10 @@ pub mod server {
                         })
                         .collect();
                     if let Some(kf) = kind_filter
-                        && let Some(kind) = SymbolKind::from_str(kf) {
-                            syms.retain(|(s, _)| s.kind == kind);
-                        }
+                        && let Some(kind) = SymbolKind::from_str(kf)
+                    {
+                        syms.retain(|(s, _)| s.kind == kind);
+                    }
                     syms.truncate(limit);
                     syms
                 }
@@ -409,16 +410,17 @@ pub mod server {
                 let registry = crate::parser::registry::LanguageRegistry::new();
                 if let Some(parser) = registry.parser_for(&full_path)
                     && let Ok(source) = std::fs::read(&full_path)
-                        && let Ok(refs) = parser.find_identifiers(&source, &name_owned) {
-                            for r in refs {
-                                if r.kind != crate::parser::traits::RefKind::Definition {
-                                    results.push(json!({
-                                        "file": file_path.to_string_lossy(), "line": r.line,
-                                        "context": r.context, "kind": format!("{:?}", r.kind),
-                                    }));
-                                }
-                            }
+                    && let Ok(refs) = parser.find_identifiers(&source, &name_owned)
+                {
+                    for r in refs {
+                        if r.kind != crate::parser::traits::RefKind::Definition {
+                            results.push(json!({
+                                "file": file_path.to_string_lossy(), "line": r.line,
+                                "context": r.context, "kind": format!("{:?}", r.kind),
+                            }));
                         }
+                    }
+                }
                 results
             })
             .collect();
