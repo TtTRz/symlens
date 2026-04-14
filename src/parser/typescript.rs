@@ -12,7 +12,11 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let tree = parse_source(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), source, file_path)?;
+        let tree = parse_source(
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            source,
+            file_path,
+        )?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -28,7 +32,11 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let tree = parse_source(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), source, file_path)?;
+        let tree = parse_source(
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            source,
+            file_path,
+        )?;
         let mut edges = Vec::new();
         collect_ts_calls(tree.root_node(), source, None, &mut edges);
         Ok(edges)
@@ -39,7 +47,11 @@ impl LanguageParser for TypeScriptParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let tree = parse_source(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), source, Path::new(""))?;
+        let tree = parse_source(
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            source,
+            Path::new(""),
+        )?;
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
         collect_ts_identifiers(tree.root_node(), source, target_name, &lines, &mut refs);

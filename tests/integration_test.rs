@@ -1741,3 +1741,388 @@ mod wasm_api_tests {
         }
     }
 }
+
+// ─── End-to-end integration tests ────────────────────────────────────
+
+mod cli_integration_tests {
+    use std::path::PathBuf;
+
+    const ENGINE_RS: &str = r#"
+/// The main audio engine.
+pub struct AudioEngine {
+    sample_rate: u32,
+    channels: usize,
+}
+
+impl AudioEngine {
+    /// Create a new engine with the given sample rate.
+    pub fn new(rate: u32) -> Self {
+        AudioEngine { sample_rate: rate, channels: 2 }
+    }
+
+    /// Process an audio block.
+    pub fn process_block(&mut self, data: &mut [f32]) {
+        for sample in data.iter_mut() {
+            *sample = normalize(*sample);
+        }
+    }
+}
+
+fn normalize(value: f32) -> f32 {
+    value.clamp(-1.0, 1.0)
+}
+"#;
+
+    const UTILS_RS: &str = r#"
+/// Maximum supported channels.
+pub const MAX_CHANNELS: usize = 8;
+
+/// Clamp a value between min and max.
+pub fn clamp_value(val: f32, min: f32, max: f32) -> f32 {
+    val.clamp(min, max)
+}
+
+pub fn compute_rms(data: &[f32]) -> f32 {
+    let sum: f32 = data.iter().map(|x| x * x).sum();
+    (sum / data.len() as f32).sqrt()
+}
+"#;
+
+    const MAIN_RS: &str = r#"
+fn main() {
+    let mut engine = AudioEngine::new(44100);
+    let mut buf = vec![0.0f32; 1024];
+    engine.process_block(&mut buf);
+    let rms = compute_rms(&buf);
+    println!("rms = {}", rms);
+}
+"#;
+
+    /// Create a multi-file test project in a temp directory.
+    fn create_test_project() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let root = dir.path().to_path_buf();
+
+        // Create .git dir so find_project_root works
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+
+        std::fs::write(root.join("src/engine.rs"), ENGINE_RS).unwrap();
+        std::fs::write(root.join("src/utils.rs"), UTILS_RS).unwrap();
+        std::fs::write(root.join("src/main.rs"), MAIN_RS).unwrap();
+
+        (dir, root)
+    }
+
+    fn index_project(root: &std::path::Path) -> symlens::index::indexer::IndexResult {
+        symlens::index::indexer::index_project(root, 100_000).expect("Failed to index project")
+    }
+
+    #[test]
+    fn index_and_load_roundtrip() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+
+        assert!(result.index.symbols.len() > 0, "Should have symbols");
+        assert!(result.files_scanned >= 3, "Should scan at least 3 files");
+        assert!(result.files_parsed >= 3, "Should parse at least 3 files");
+        assert!(
+            result.index.call_graph.is_some(),
+            "Should have a call graph"
+        );
+
+        // Save and reload
+        let _cache = symlens::index::storage::save(&result.index).expect("Failed to save index");
+        let loaded = symlens::index::storage::load(&root).expect("Failed to load index");
+        let loaded = loaded.expect("Loaded index should not be None");
+
+        assert_eq!(
+            loaded.symbols.len(),
+            result.index.symbols.len(),
+            "Loaded symbol count should match"
+        );
+        assert!(
+            loaded.call_graph.is_some(),
+            "Loaded index should have call graph"
+        );
+    }
+
+    #[test]
+    fn search_finds_symbols() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+
+        let hits = result.index.search("AudioEngine", 10);
+        assert!(
+            hits.iter().any(|s| s.name == "AudioEngine"),
+            "Should find AudioEngine, got: {:?}",
+            hits.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        let hits = result.index.search("normalize", 10);
+        assert!(
+            hits.iter().any(|s| s.name == "normalize"),
+            "Should find normalize"
+        );
+
+        let hits = result.index.search("MAX_CHANNELS", 10);
+        assert!(
+            hits.iter().any(|s| s.name == "MAX_CHANNELS"),
+            "Should find MAX_CHANNELS"
+        );
+
+        let hits = result.index.search("nonexistent_xyz_123", 10);
+        assert!(hits.is_empty(), "Should not find nonexistent symbol");
+    }
+
+    #[test]
+    fn search_by_kind_filtering() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+
+        let all = result.index.search("AudioEngine", 20);
+
+        let structs: Vec<_> = all
+            .iter()
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Struct)
+            .collect();
+        assert!(
+            structs.iter().any(|s| s.name == "AudioEngine"),
+            "Should find AudioEngine as struct"
+        );
+
+        let fns: Vec<_> = all
+            .iter()
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
+            .collect();
+        assert!(
+            !fns.iter().any(|s| s.name == "AudioEngine"),
+            "AudioEngine should not be a function"
+        );
+    }
+
+    #[test]
+    fn outline_file_returns_symbols() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+
+        let engine_path = PathBuf::from("src/engine.rs");
+        let symbols = result.index.symbols_in_file(&engine_path);
+
+        assert!(
+            symbols.len() >= 3,
+            "engine.rs should have >= 3 symbols (struct + methods + fn), got {}",
+            symbols.len()
+        );
+
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "AudioEngine"
+                    && s.kind == symlens::model::symbol::SymbolKind::Struct),
+            "Should find AudioEngine struct"
+        );
+
+        let pb = symbols.iter().find(|s| s.name == "process_block");
+        assert!(pb.is_some(), "Should find process_block");
+        assert!(
+            pb.unwrap().parent.is_some(),
+            "process_block should have a parent (AudioEngine)"
+        );
+    }
+
+    #[test]
+    fn outline_project_stats() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+
+        let stats = result.index.stats();
+        assert_eq!(stats.total_files, 3, "Should have 3 files");
+        assert!(
+            stats.total_symbols >= 6,
+            "Should have >= 6 symbols, got {}",
+            stats.total_symbols
+        );
+        assert!(
+            stats.by_language.contains_key("rust"),
+            "Should detect rust language"
+        );
+    }
+
+    #[test]
+    fn callers_cross_file() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+        let graph = result
+            .index
+            .call_graph
+            .as_ref()
+            .expect("Should have call graph");
+
+        let normalize_callers = graph.callers("normalize");
+        assert!(
+            normalize_callers
+                .iter()
+                .any(|c| c.contains("process_block")),
+            "normalize should be called by process_block, got callers: {:?}",
+            normalize_callers
+        );
+
+        let pb_callers = graph.callers("process_block");
+        assert!(
+            pb_callers.iter().any(|c| c.contains("main")),
+            "process_block should be called by main, got callers: {:?}",
+            pb_callers
+        );
+    }
+
+    #[test]
+    fn callees_cross_file() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+        let graph = result
+            .index
+            .call_graph
+            .as_ref()
+            .expect("Should have call graph");
+
+        let pb_callees = graph.callees("process_block");
+        assert!(
+            pb_callees.iter().any(|c| c.contains("normalize")),
+            "process_block should call normalize, got callees: {:?}",
+            pb_callees
+        );
+
+        let main_callees = graph.callees("main");
+        assert!(!main_callees.is_empty(), "main should have callees");
+    }
+
+    #[test]
+    fn transitive_callers_depth() {
+        let (_dir, root) = create_test_project();
+        let result = index_project(&root);
+        let graph = result
+            .index
+            .call_graph
+            .as_ref()
+            .expect("Should have call graph");
+
+        let tc = graph.transitive_callers("normalize", 5);
+        let names: Vec<&str> = tc.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(
+            names.iter().any(|n| n.contains("process_block")),
+            "transitive callers of normalize should include process_block, got: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn refs_find_identifiers() {
+        let (_dir, root) = create_test_project();
+
+        let source = std::fs::read(root.join("src/engine.rs")).unwrap();
+        let parser = symlens::parser::rust::RustParser;
+        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
+            &parser, &source, "normalize",
+        )
+        .expect("Failed to find identifiers");
+
+        assert!(
+            refs.len() >= 2,
+            "Should find >= 2 refs to 'normalize' (def + call), got {}",
+            refs.len()
+        );
+
+        assert!(
+            refs.iter()
+                .any(|r| r.kind == symlens::parser::traits::RefKind::Call),
+            "Should find at least one Call ref"
+        );
+    }
+
+    #[test]
+    fn incremental_index_skips_unchanged() {
+        let (_dir, root) = create_test_project();
+
+        let result1 = index_project(&root);
+        assert!(result1.files_parsed >= 3);
+
+        let result2 = symlens::index::indexer::index_project_incremental(
+            &root,
+            100_000,
+            Some(&result1.index),
+        )
+        .expect("Incremental index failed");
+
+        assert_eq!(
+            result2.files_parsed, 0,
+            "Should not re-parse any files, got parsed={}",
+            result2.files_parsed
+        );
+        assert!(
+            result2.files_skipped >= 3,
+            "Should skip all files, got skipped={}",
+            result2.files_skipped
+        );
+        assert_eq!(
+            result2.index.symbols.len(),
+            result1.index.symbols.len(),
+            "Symbol count should be preserved"
+        );
+    }
+
+    #[test]
+    fn incremental_index_detects_change() {
+        let (_dir, root) = create_test_project();
+
+        let result1 = index_project(&root);
+
+        // Wait >1s to ensure different mtime (filesystem mtime granularity is 1 second)
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(
+            root.join("src/utils.rs"),
+            format!("{}\npub fn added_func() {{}}\n", UTILS_RS),
+        )
+        .unwrap();
+
+        let result2 = symlens::index::indexer::index_project_incremental(
+            &root,
+            100_000,
+            Some(&result1.index),
+        )
+        .expect("Incremental index failed");
+
+        assert!(
+            result2.files_parsed >= 1,
+            "Should re-parse at least 1 file, got parsed={}",
+            result2.files_parsed
+        );
+        assert!(
+            result2.files_skipped >= 1,
+            "Should skip at least 1 unchanged file, got skipped={}",
+            result2.files_skipped
+        );
+        assert!(
+            result2.index.symbols.len() > result1.index.symbols.len(),
+            "Should have more symbols after adding a function"
+        );
+    }
+
+    #[test]
+    fn index_empty_project() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+
+        let result = index_project(&root);
+        assert_eq!(
+            result.index.symbols.len(),
+            0,
+            "Empty project should have 0 symbols"
+        );
+        assert_eq!(
+            result.files_scanned, 0,
+            "Empty project should scan 0 files"
+        );
+    }
+}

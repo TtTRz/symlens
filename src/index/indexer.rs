@@ -191,12 +191,7 @@ pub fn index_project_incremental(
 }
 
 /// Copy symbols, edges, and imports from a previous index for an unchanged file.
-fn copy_prev_data(
-    prev: &ProjectIndex,
-    rel_path: &Path,
-    mtime: u64,
-    result: &mut FileResult,
-) {
+fn copy_prev_data(prev: &ProjectIndex, rel_path: &Path, mtime: u64, result: &mut FileResult) {
     if let Some(sym_ids) = prev.file_symbols.get(rel_path) {
         for sym_id in sym_ids {
             if let Some(sym) = prev.symbols.get(sym_id) {
@@ -209,9 +204,7 @@ fn copy_prev_data(
         result.file_hash = Some((rel_path.to_path_buf(), hash.clone()));
     }
     if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
-        result
-            .call_edges
-            .extend(prev_edges.clone());
+        result.call_edges.extend(prev_edges.clone());
         result.file_call_edges = Some((rel_path.to_path_buf(), prev_edges.clone()));
     }
     if let Some(prev_imps) = prev.file_imports.get(rel_path) {

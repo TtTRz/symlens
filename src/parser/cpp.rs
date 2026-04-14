@@ -1,6 +1,6 @@
+use super::helpers::{node_span, node_text, parse_source};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
-use super::helpers::{node_text, node_span, parse_source};
 use std::path::Path;
 
 pub struct CppParser;
@@ -40,7 +40,11 @@ impl LanguageParser for CppParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let tree = parse_source(tree_sitter_cpp::LANGUAGE.into(), source, std::path::Path::new(""))?;
+        let tree = parse_source(
+            tree_sitter_cpp::LANGUAGE.into(),
+            source,
+            std::path::Path::new(""),
+        )?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -697,4 +701,3 @@ fn classify_cpp_ref(node: tree_sitter::Node) -> RefKind {
         _ => RefKind::Unknown,
     }
 }
-

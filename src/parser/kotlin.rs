@@ -1,6 +1,6 @@
+use super::helpers::{node_span, node_text, node_text_first_line, parse_source};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
-use super::helpers::{node_text, node_span, parse_source, node_text_first_line};
 use std::path::Path;
 
 pub struct KotlinParser;
@@ -39,7 +39,11 @@ impl LanguageParser for KotlinParser {
         source: &[u8],
         target_name: &str,
     ) -> anyhow::Result<Vec<IdentifierRef>> {
-        let tree = parse_source(tree_sitter_kotlin_ng::LANGUAGE.into(), source, std::path::Path::new(""))?;
+        let tree = parse_source(
+            tree_sitter_kotlin_ng::LANGUAGE.into(),
+            source,
+            std::path::Path::new(""),
+        )?;
 
         let mut refs = Vec::new();
         let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
@@ -48,7 +52,11 @@ impl LanguageParser for KotlinParser {
     }
 
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let tree = parse_source(tree_sitter_kotlin_ng::LANGUAGE.into(), source, std::path::Path::new(""))?;
+        let tree = parse_source(
+            tree_sitter_kotlin_ng::LANGUAGE.into(),
+            source,
+            std::path::Path::new(""),
+        )?;
 
         let mut imports = Vec::new();
         collect_kotlin_imports(tree.root_node(), source, &mut imports);

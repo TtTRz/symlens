@@ -451,4 +451,3 @@ fn collect_go_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<
         collect_go_imports(child, source, imports);
     }
 }
-
