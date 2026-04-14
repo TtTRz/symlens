@@ -163,9 +163,7 @@ fn register_claude_md(path: &Path) -> anyhow::Result<()> {
     if path.exists() {
         let content = fs::read_to_string(path)?;
         if content.contains("# symlens") {
-            println!(
-                "  ✓ Claude Code (CLAUDE.md): already contains symlens registration"
-            );
+            println!("  ✓ Claude Code (CLAUDE.md): already contains symlens registration");
             return Ok(());
         }
         // Append
@@ -183,7 +181,10 @@ fn register_claude_md(path: &Path) -> anyhow::Result<()> {
         }
         fs::write(path, claude_code_register())?;
     }
-    println!("  ✓ Claude Code (CLAUDE.md): registered symlens at {}", path.display());
+    println!(
+        "  ✓ Claude Code (CLAUDE.md): registered symlens at {}",
+        path.display()
+    );
     Ok(())
 }
 
@@ -218,7 +219,10 @@ fn unregister_claude_md(path: &Path) -> anyhow::Result<()> {
 
     if new_content.trim().is_empty() {
         fs::remove_file(path)?;
-        println!("  ✓ Claude Code (CLAUDE.md): removed empty {}", path.display());
+        println!(
+            "  ✓ Claude Code (CLAUDE.md): removed empty {}",
+            path.display()
+        );
     } else {
         fs::write(path, new_content)?;
         println!(
