@@ -5,6 +5,17 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-04-15
+
+### Changed
+
+- **Python `extract_imports` migrated to tree-sitter**: replaced regex-based line scanning with AST traversal — now handles dotted imports (`import os.path`), aliased imports (`import numpy as np`), relative imports (`from ..pkg import Mod`), and `from x import y as z`
+- **Removed unused `child_by_field_name` wrapper** in TypeScript parser
+
+### Added
+
+- 8 Python AST import tests covering: simple, dotted, from-import, typing, relative, wildcard, aliased, from-aliased
+
 ## [0.6.0] - 2026-04-14
 
 ### Added

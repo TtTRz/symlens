@@ -52,45 +52,10 @@ impl LanguageParser for PythonParser {
     }
 
     fn extract_imports(&self, source: &[u8], _file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let source_str = std::str::from_utf8(source).unwrap_or("");
+        let tree = parse_source(self.language(), source, Path::new(""))?;
+
         let mut imports = Vec::new();
-        for line in source_str.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("from ") {
-                // from foo.bar import Baz, Qux
-                if let Some(import_pos) = trimmed.find(" import ") {
-                    let module = trimmed[5..import_pos].trim();
-                    let names: Vec<String> = trimmed[import_pos + 8..]
-                        .split(',')
-                        .map(|n| {
-                            n.trim()
-                                .split(" as ")
-                                .next()
-                                .unwrap_or("")
-                                .trim()
-                                .to_string()
-                        })
-                        .filter(|n| !n.is_empty() && n != "*")
-                        .collect();
-                    if !names.is_empty() {
-                        imports.push(ImportInfo {
-                            module_path: module.to_string(),
-                            names,
-                        });
-                    }
-                }
-            } else if let Some(rest) = trimmed.strip_prefix("import ") {
-                // import foo.bar
-                let module = rest.trim().split(" as ").next().unwrap_or("").trim();
-                let name = module.rsplit('.').next().unwrap_or(module).to_string();
-                if !name.is_empty() {
-                    imports.push(ImportInfo {
-                        module_path: module.to_string(),
-                        names: vec![name],
-                    });
-                }
-            }
-        }
+        collect_py_imports(tree.root_node(), source, &mut imports);
         Ok(imports)
     }
 
@@ -126,12 +91,13 @@ impl LanguageParser for PythonParser {
 
     fn extract_imports_from_tree(
         &self,
-        _tree: &tree_sitter::Tree,
+        tree: &tree_sitter::Tree,
         source: &[u8],
-        file_path: &Path,
+        _file_path: &Path,
     ) -> anyhow::Result<Vec<ImportInfo>> {
-        // Python imports use regex — not yet migrated to tree-sitter
-        self.extract_imports(source, file_path)
+        let mut imports = Vec::new();
+        collect_py_imports(tree.root_node(), source, &mut imports);
+        Ok(imports)
     }
 }
 
@@ -344,5 +310,101 @@ fn collect_py_calls(
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
         collect_py_calls(child, source, fn_name.as_deref(), edges);
+    }
+}
+
+// ─── Import extraction ──────────────────────────────────────────────
+
+/// Extract import statements from Python AST.
+/// Handles: `import os`, `import os.path`, `import sys as system`,
+/// `from foo.bar import Baz, Qux`, `from foo import *`,
+/// `from . import something`, `from ..package import Module`.
+fn collect_py_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<ImportInfo>) {
+    match node.kind() {
+        "import_statement" => {
+            // import os | import os.path | import sys as system
+            let mut module = String::new();
+            let mut names = Vec::new();
+            let cursor = &mut node.walk();
+            for child in node.children(cursor) {
+                if child.kind() == "dotted_name" {
+                    // The full module path
+                    if let Some(text) = node_text(child, source) {
+                        module = text.clone();
+                        // Last segment is the imported name
+                        let name = text.rsplit('.').next().unwrap_or(&text).to_string();
+                        names.push(name);
+                    }
+                } else if child.kind() == "aliased_import" {
+                    // import foo as bar
+                    if let Some(name_node) = child.child_by_field_name("name")
+                        && let Some(name) = node_text(name_node, source)
+                        && module.is_empty()
+                    {
+                        module = name.clone();
+                    }
+                    if let Some(alias_node) = child.child_by_field_name("alias")
+                        && let Some(alias) = node_text(alias_node, source)
+                    {
+                        names.push(alias);
+                    }
+                }
+            }
+            if !names.is_empty() {
+                imports.push(ImportInfo {
+                    module_path: module,
+                    names,
+                });
+            }
+        }
+        "import_from_statement" => {
+            // from foo.bar import Baz, Qux | from . import something
+            let mut module = String::new();
+            let mut names = Vec::new();
+            let cursor = &mut node.walk();
+            for child in node.children(cursor) {
+                if child.kind() == "dotted_name" {
+                    if let Some(text) = node_text(child, source) {
+                        // Could be the module path or an imported name
+                        // If module is not set yet, this is the module;
+                        // otherwise it's an imported name
+                        if module.is_empty() {
+                            module = text;
+                        } else {
+                            // from x import Y → Y is a dotted_name after "import"
+                            let name = text.rsplit('.').next().unwrap_or(&text).to_string();
+                            names.push(name);
+                        }
+                    }
+                } else if child.kind() == "relative_import" {
+                    // from . or from ..package
+                    if let Some(text) = node_text(child, source) {
+                        module = text;
+                    }
+                } else if child.kind() == "wildcard_import" {
+                    // from foo import * — skip (no specific names)
+                } else if child.kind() == "aliased_import" {
+                    // from foo import Bar as Baz
+                    if let Some(alias_node) = child.child_by_field_name("alias")
+                        && let Some(alias) = node_text(alias_node, source)
+                    {
+                        names.push(alias);
+                    }
+                }
+            }
+            if !names.is_empty() && !module.is_empty() {
+                imports.push(ImportInfo {
+                    module_path: module,
+                    names,
+                });
+            }
+        }
+        _ => {}
+    }
+
+    // Recurse into children
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_py_imports(child, source, imports);
     }
 }

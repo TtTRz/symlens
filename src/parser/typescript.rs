@@ -454,7 +454,7 @@ fn collect_ts_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<
                                 }
                                 "namespace_import" => {
                                     // import * as Foo
-                                    if let Some(alias_node) = child_by_field_name(&sub, "alias")
+                                    if let Some(alias_node) = sub.child_by_field_name("alias")
                                         && let Some(alias) = node_text(alias_node, source)
                                     {
                                         names.push(alias);
@@ -532,14 +532,6 @@ fn collect_ts_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Vec<
     for child in node.children(cursor) {
         collect_ts_imports(child, source, imports);
     }
-}
-
-/// Helper: get child by field name for any node (workaround for tree-sitter API).
-fn child_by_field_name<'a>(
-    node: &tree_sitter::Node<'a>,
-    field: &str,
-) -> Option<tree_sitter::Node<'a>> {
-    node.child_by_field_name(field)
 }
 
 fn has_export(node: tree_sitter::Node) -> bool {

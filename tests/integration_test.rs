@@ -1,4 +1,5 @@
 use std::path::Path;
+use symlens::parser::traits::LanguageParser;
 
 // ─── Parser tests ───────────────────────────────────────────────────
 
@@ -2124,4 +2125,125 @@ fn main() {
         );
         assert_eq!(result.files_scanned, 0, "Empty project should scan 0 files");
     }
+}
+
+// ─── Python AST import tests ────────────────────────────────────────
+
+#[test]
+fn py_import_simple() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = br#"
+import os
+import sys
+"#;
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert!(
+        imports.iter().any(|i| i.module_path == "os"),
+        "Should import os"
+    );
+    assert!(
+        imports.iter().any(|i| i.module_path == "sys"),
+        "Should import sys"
+    );
+}
+
+#[test]
+fn py_import_dotted() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"import os.path\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert!(
+        imports.iter().any(|i| i.module_path == "os.path"),
+        "Should import os.path"
+    );
+}
+
+#[test]
+fn py_import_from() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"from foo.bar import Baz, Qux\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert_eq!(imports.len(), 1, "Should have 1 import statement");
+    assert_eq!(imports[0].module_path, "foo.bar");
+    assert!(
+        imports[0].names.contains(&"Baz".to_string()),
+        "Should import Baz"
+    );
+    assert!(
+        imports[0].names.contains(&"Qux".to_string()),
+        "Should import Qux"
+    );
+}
+
+#[test]
+fn py_import_from_typing() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"from typing import Optional, List\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert_eq!(imports.len(), 1);
+    assert_eq!(imports[0].module_path, "typing");
+    assert!(imports[0].names.contains(&"Optional".to_string()));
+    assert!(imports[0].names.contains(&"List".to_string()));
+}
+
+#[test]
+fn py_import_relative() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"from . import something\nfrom ..package import Module\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert!(imports.len() >= 1, "Should have at least 1 import");
+    // Relative imports with module path
+    let from_pkg = imports.iter().find(|i| i.module_path.contains("package"));
+    assert!(from_pkg.is_some(), "Should find from ..package import");
+    assert!(from_pkg.unwrap().names.contains(&"Module".to_string()));
+}
+
+#[test]
+fn py_import_wildcard_skipped() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"from foo import *\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    // Wildcard imports have no specific names, should be skipped
+    assert!(
+        imports.is_empty() || !imports.iter().any(|i| i.names.is_empty()),
+        "Wildcard should not produce empty-name import"
+    );
+}
+
+#[test]
+fn py_import_aliased() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"import numpy as np\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert!(
+        imports.iter().any(|i| i.names.contains(&"np".to_string())),
+        "Should import np alias"
+    );
+}
+
+#[test]
+fn py_import_from_aliased() {
+    let parser = symlens::parser::python::PythonParser;
+    let source = b"from foo import Bar as Baz\n";
+    let imports = parser
+        .extract_imports(source, std::path::Path::new("test.py"))
+        .unwrap();
+    assert!(
+        imports.iter().any(|i| i.names.contains(&"Baz".to_string())),
+        "Should import Baz alias"
+    );
 }
