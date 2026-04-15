@@ -5,7 +5,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let root = cli.project_root.as_deref();
     let json = cli.json;
-    let color = !cli.no_color && atty_stdout();
+    let color = resolve_color(cli.no_color);
 
     match cli.command {
         Commands::Index(args) => symlens::commands::index::run(args, root),
@@ -32,6 +32,32 @@ fn main() -> anyhow::Result<()> {
             rt.block_on(symlens::commands::mcp::server::run_mcp_server())
         }
     }
+}
+
+/// Resolve color output based on: --no_color flag, NO_COLOR env, CLICOLOR_FORCE env, and isatty.
+///
+/// Precedence:
+/// 1. --no_color → disable (explicit user request)
+/// 2. NO_COLOR is set (non-empty) → disable (https://no-color.org/)
+/// 3. CLICOLOR_FORCE is set (non-empty) → enable (override pipe detection)
+/// 4. Auto-detect: enable if stdout is a terminal, disable if piped
+fn resolve_color(no_color_flag: bool) -> bool {
+    if no_color_flag {
+        return false;
+    }
+    if std::env::var("NO_COLOR")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    if std::env::var("CLICOLOR_FORCE")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    atty_stdout()
 }
 
 /// Check if stdout is a terminal (for color auto-detection).

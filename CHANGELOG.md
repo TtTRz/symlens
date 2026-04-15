@@ -5,6 +5,24 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-15
+
+### Added
+
+- **`export --format sqlite`**: SQLite export with 4 tables (`symbols`, `call_edges`, `files`, `metadata`) + indexes for common queries. Default output to `~/.symlens/indexes/symlens-<hash>.db`, supports `--output` for custom path
+- **`graph deps --json`**: JSON output for module dependency graph with `modules` and `edges` fields
+- **`graph deps --module` / `--reverse`**: query a specific module's dependencies (`--module`) or who depends on it (`--module --reverse`). Exposes `DepsGraph::dependents()` and `DepsGraph::dependencies()` to CLI
+- **NO_COLOR / CLICOLOR_FORCE support**: respects [NO_COLOR](https://no-color.org/) env var (disables color), `CLICOLOR_FORCE` (enables color even in pipes). Precedence: `--no_color` > `NO_COLOR` > `CLICOLOR_FORCE` > isatty auto-detection
+
+### Changed
+
+- **`rusqlite` dependency**: added as native-only optional dependency (bundled SQLite)
+- **`ProjectIndex::remove_file` doc**: clarified that current incremental re-index naturally excludes deleted files; method retained for future fine-grained updates
+
+### Testing
+
+- **132 tests** (was 118): added 4 DepsGraph query tests, 2 SQLite export tests, 8 color resolution tests
+
 ## [0.6.1] - 2026-04-15
 
 ### Changed

@@ -9,10 +9,20 @@ pub fn run(args: ExportArgs, root_override: Option<&str>) -> anyhow::Result<()> 
 
     match args.format.as_str() {
         "json" => export_json(&index, args.output.as_deref()),
-        _ => anyhow::bail!(
-            "Unsupported export format: '{}'. Supported: json",
-            args.format
-        ),
+        #[cfg(feature = "native")]
+        "sqlite" => export_sqlite(&index, args.output.as_deref(), &root),
+        _ => {
+            let supported = if cfg!(feature = "native") {
+                "json, sqlite"
+            } else {
+                "json"
+            };
+            anyhow::bail!(
+                "Unsupported export format: '{}'. Supported: {}",
+                args.format,
+                supported
+            )
+        }
     }
 }
 
@@ -99,4 +109,157 @@ fn export_json(
     }
 
     Ok(())
+}
+
+#[cfg(feature = "native")]
+fn export_sqlite(
+    index: &crate::model::project::ProjectIndex,
+    output_path: Option<&str>,
+    root: &std::path::Path,
+) -> anyhow::Result<()> {
+    use rusqlite::Connection;
+
+    let db_path = match output_path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            let hash = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
+            let cache_dir = dirs_cache_dir()?;
+            std::fs::create_dir_all(&cache_dir)?;
+            cache_dir.join(format!("symlens-{}.db", hash))
+        }
+    };
+
+    // Remove existing file to avoid stale data
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)?;
+    }
+
+    let conn = Connection::open(&db_path)?;
+    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
+
+    // Create tables
+    conn.execute_batch(
+        "CREATE TABLE symbols (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            qualified_name TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            file TEXT NOT NULL,
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            visibility TEXT,
+            signature TEXT,
+            doc TEXT,
+            parent TEXT
+        );
+        CREATE TABLE call_edges (
+            caller TEXT NOT NULL,
+            callee TEXT NOT NULL
+        );
+        CREATE TABLE files (
+            path TEXT PRIMARY KEY,
+            symbol_count INTEGER NOT NULL,
+            mtime INTEGER NOT NULL
+        );
+        CREATE TABLE metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );",
+    )?;
+
+    // Insert metadata
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO metadata (key, value) VALUES (?1, ?2)",
+        ("version", index.version.to_string()),
+    )?;
+    tx.execute(
+        "INSERT INTO metadata (key, value) VALUES (?1, ?2)",
+        ("root", root.to_string_lossy().as_ref()),
+    )?;
+    tx.execute(
+        "INSERT INTO metadata (key, value) VALUES (?1, ?2)",
+        ("indexed_at", index.indexed_at.to_string()),
+    )?;
+
+    // Insert symbols
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO symbols (id, name, qualified_name, kind, file, start_line, end_line, visibility, signature, doc, parent)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        )?;
+        for s in index.symbols.values() {
+            stmt.execute(rusqlite::params![
+                s.id.0,
+                s.name,
+                s.qualified_name,
+                s.kind.as_str(),
+                s.file_path.to_string_lossy().as_ref(),
+                s.span.start_line,
+                s.span.end_line,
+                format!("{:?}", s.visibility),
+                s.signature.as_deref(),
+                s.doc_comment.as_deref(),
+                s.parent.as_ref().map(|p| p.0.as_str()),
+            ])?;
+        }
+    }
+
+    // Insert call edges
+    if let Some(ref cg) = index.call_graph {
+        let mut stmt = tx.prepare("INSERT INTO call_edges (caller, callee) VALUES (?1, ?2)")?;
+        for &(from, to) in cg.all_edges() {
+            stmt.execute(rusqlite::params![&cg.nodes[from], &cg.nodes[to]])?;
+        }
+    }
+
+    // Insert files
+    {
+        let mut stmt =
+            tx.prepare("INSERT INTO files (path, symbol_count, mtime) VALUES (?1, ?2, ?3)")?;
+        for (file, ids) in &index.file_symbols {
+            let mtime = index.file_mtimes.get(file).copied().unwrap_or(0);
+            stmt.execute(rusqlite::params![
+                file.to_string_lossy().as_ref(),
+                ids.len(),
+                mtime,
+            ])?;
+        }
+    }
+
+    // Create indexes for common queries
+    tx.execute_batch(
+        "CREATE INDEX idx_symbols_name ON symbols(name);
+         CREATE INDEX idx_symbols_kind ON symbols(kind);
+         CREATE INDEX idx_symbols_file ON symbols(file);
+         CREATE INDEX idx_call_edges_caller ON call_edges(caller);
+         CREATE INDEX idx_call_edges_callee ON call_edges(callee);",
+    )?;
+
+    tx.commit()?;
+
+    let sym_count = index.symbols.len();
+    let edge_count = index
+        .call_graph
+        .as_ref()
+        .map(|cg| cg.all_edges().len())
+        .unwrap_or(0);
+    eprintln!(
+        "Exported {} symbols + {} call edges to {}",
+        sym_count,
+        edge_count,
+        db_path.display(),
+    );
+
+    Ok(())
+}
+
+#[cfg(feature = "native")]
+fn dirs_cache_dir() -> anyhow::Result<std::path::PathBuf> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| anyhow::anyhow!("Cannot determine home directory"))?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".symlens")
+        .join("indexes"))
 }

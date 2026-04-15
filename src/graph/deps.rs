@@ -27,7 +27,6 @@ impl DepsGraph {
     }
 
     /// Get files that depend on the given file (reverse deps).
-    #[allow(dead_code)]
     pub fn dependents(&self, file: &PathBuf) -> Vec<&PathBuf> {
         self.edges
             .iter()
@@ -37,7 +36,6 @@ impl DepsGraph {
     }
 
     /// Get files that the given file depends on.
-    #[allow(dead_code)]
     pub fn dependencies(&self, file: &PathBuf) -> Vec<&PathBuf> {
         self.edges
             .get(file)

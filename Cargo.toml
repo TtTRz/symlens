@@ -1,6 +1,6 @@
 [package]
 name = "symlens"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.92"
 description = "Token-efficient code intelligence CLI powered by tree-sitter — search symbols, call graphs, and impact analysis without reading entire files"
@@ -33,6 +33,7 @@ native = [
     "dep:blake3",
     "dep:rayon",
     "dep:toml",
+    "dep:rusqlite",
 ]
 mcp = ["native", "dep:tokio", "dep:rmcp", "dep:schemars"]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
@@ -82,6 +83,9 @@ blake3 = { version = "1", optional = true }
 # Parallel
 rayon = { version = "1", optional = true }
 
+# SQLite export
+rusqlite = { version = "0.34", features = ["bundled"], optional = true }
+
 # Error handling
 anyhow = "1"
 
@@ -119,6 +123,7 @@ codegen-units = 1
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3"
+rusqlite = { version = "0.34", features = ["bundled"] }
 
 [[bench]]
 name = "symlens_bench"

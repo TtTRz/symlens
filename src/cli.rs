@@ -206,6 +206,14 @@ pub struct GraphDepsArgs {
     /// Subdirectory to focus on
     pub path: Option<String>,
 
+    /// Show dependencies for a specific module (e.g. src/parser/mod.rs)
+    #[arg(long)]
+    pub module: Option<String>,
+
+    /// Show reverse dependencies (who depends on the given --module)
+    #[arg(long, requires = "module")]
+    pub reverse: bool,
+
     /// Output format (text, mermaid)
     #[arg(long, default_value = "text")]
     pub fmt: String,

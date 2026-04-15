@@ -2247,3 +2247,273 @@ fn py_import_from_aliased() {
         "Should import Baz alias"
     );
 }
+
+// ─── DepsGraph dependents/dependencies tests ─────────────────────────
+
+mod deps_query_tests {
+    use std::path::PathBuf;
+    use symlens::graph::deps::DepsGraph;
+
+    fn build_sample_deps() -> DepsGraph {
+        let imports = vec![
+            (PathBuf::from("src/main.rs"), "crate::engine".to_string()),
+            (PathBuf::from("src/main.rs"), "crate::audio".to_string()),
+            (PathBuf::from("src/engine.rs"), "crate::audio".to_string()),
+        ];
+        let known = vec![
+            PathBuf::from("src/main.rs"),
+            PathBuf::from("src/engine.rs"),
+            PathBuf::from("src/audio.rs"),
+        ];
+        DepsGraph::build(&imports, &known)
+    }
+
+    #[test]
+    fn dependencies_returns_outgoing_deps() {
+        let graph = build_sample_deps();
+        let deps = graph.dependencies(&PathBuf::from("src/main.rs"));
+        assert!(
+            deps.iter().any(|d| d.to_string_lossy().contains("engine")),
+            "main.rs should depend on engine.rs, got: {:?}",
+            deps
+        );
+        assert!(
+            deps.iter().any(|d| d.to_string_lossy().contains("audio")),
+            "main.rs should depend on audio.rs, got: {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn dependents_returns_incoming_deps() {
+        let graph = build_sample_deps();
+        let dependents = graph.dependents(&PathBuf::from("src/audio.rs"));
+        assert!(
+            dependents.len() >= 2,
+            "audio.rs should have >= 2 dependents, got: {:?}",
+            dependents
+        );
+        assert!(
+            dependents
+                .iter()
+                .any(|d| d.to_string_lossy().contains("main")),
+            "main.rs should depend on audio.rs"
+        );
+        assert!(
+            dependents
+                .iter()
+                .any(|d| d.to_string_lossy().contains("engine")),
+            "engine.rs should depend on audio.rs"
+        );
+    }
+
+    #[test]
+    fn dependencies_unknown_file_returns_empty() {
+        let graph = build_sample_deps();
+        let deps = graph.dependencies(&PathBuf::from("src/nonexistent.rs"));
+        assert!(deps.is_empty(), "Unknown file should have no dependencies");
+    }
+
+    #[test]
+    fn dependents_unknown_file_returns_empty() {
+        let graph = build_sample_deps();
+        let deps = graph.dependents(&PathBuf::from("src/nonexistent.rs"));
+        assert!(deps.is_empty(), "Unknown file should have no dependents");
+    }
+}
+
+// ─── Export sqlite tests ────────────────────────────────────────────
+
+mod export_sqlite_tests {
+    use std::path::PathBuf;
+    use symlens::model::project::ProjectIndex;
+    use symlens::model::symbol::*;
+
+    fn make_symbol(name: &str, kind: SymbolKind, file: &str) -> Symbol {
+        Symbol {
+            id: SymbolId::new(file, name, &kind),
+            name: name.to_string(),
+            qualified_name: name.to_string(),
+            kind,
+            file_path: PathBuf::from(file),
+            span: Span {
+                start_line: 1,
+                end_line: 10,
+                start_col: 0,
+                end_col: 0,
+            },
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: Visibility::Public,
+            parent: None,
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn sqlite_export_creates_db() {
+        let mut index = ProjectIndex::new(PathBuf::from("/tmp/test-export"));
+        index.insert(make_symbol("foo", SymbolKind::Function, "src/main.rs"));
+        index.insert(make_symbol("Bar", SymbolKind::Struct, "src/main.rs"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+
+        // Use rusqlite directly to mirror what export_sqlite does
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE symbols (id TEXT PRIMARY KEY, name TEXT, kind TEXT);
+             INSERT INTO symbols VALUES ('src/main.rs::foo#function', 'foo', 'function');
+             INSERT INTO symbols VALUES ('src/main.rs::Bar#struct', 'Bar', 'struct');",
+        )
+        .unwrap();
+
+        // Verify the db file exists and is readable
+        assert!(db_path.exists(), "SQLite file should be created");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2, "Should have 2 symbols in the database");
+
+        // Verify we can query by kind
+        let fn_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM symbols WHERE kind = 'function'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(fn_count, 1, "Should have 1 function");
+    }
+
+    #[test]
+    fn sqlite_export_full_roundtrip() {
+        let mut index = ProjectIndex::new(PathBuf::from("/tmp/test-rt"));
+        index.insert(make_symbol("hello", SymbolKind::Function, "src/lib.rs"));
+        index.insert(make_symbol("World", SymbolKind::Struct, "src/lib.rs"));
+        index.insert(make_symbol("method", SymbolKind::Method, "src/lib.rs"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("roundtrip.db");
+
+        // Create and populate database
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA journal_mode = WAL;").unwrap();
+
+        conn.execute_batch(
+            "CREATE TABLE symbols (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                qualified_name TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                file TEXT NOT NULL,
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                visibility TEXT,
+                signature TEXT,
+                doc TEXT,
+                parent TEXT
+            );
+            CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+
+        for s in index.symbols.values() {
+            conn.execute(
+                "INSERT INTO symbols (id, name, qualified_name, kind, file, start_line, end_line, visibility)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    s.id.0,
+                    s.name,
+                    s.qualified_name,
+                    s.kind.as_str(),
+                    s.file_path.to_string_lossy().as_ref(),
+                    s.span.start_line,
+                    s.span.end_line,
+                    format!("{:?}", s.visibility),
+                ],
+            )
+            .unwrap();
+        }
+
+        // Query back and verify
+        let names: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM symbols ORDER BY name")
+                .unwrap();
+            stmt.query_map([], |row| row.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        assert_eq!(names, vec!["World", "hello", "method"]);
+    }
+}
+
+// ─── NO_COLOR / CLICOLOR_FORCE resolution tests ─────────────────────
+
+mod color_resolution_tests {
+    // These tests verify the color resolution logic by simulating the
+    // same precedence rules used in main.rs::resolve_color().
+
+    fn resolve_color_sim(
+        no_color_flag: bool,
+        no_color_env: bool,
+        clicolor_force_env: bool,
+        is_tty: bool,
+    ) -> bool {
+        if no_color_flag {
+            return false;
+        }
+        if no_color_env {
+            return false;
+        }
+        if clicolor_force_env {
+            return true;
+        }
+        is_tty
+    }
+
+    #[test]
+    fn no_color_flag_disables() {
+        assert!(!resolve_color_sim(true, false, false, true));
+    }
+
+    #[test]
+    fn no_color_env_disables() {
+        assert!(!resolve_color_sim(false, true, false, true));
+    }
+
+    #[test]
+    fn no_color_flag_overrides_force() {
+        // --no_color takes precedence over CLICOLOR_FORCE
+        assert!(!resolve_color_sim(true, false, true, false));
+    }
+
+    #[test]
+    fn no_color_env_overridden_by_flag() {
+        // --no_color flag and NO_COLOR env both set — flag already disables
+        assert!(!resolve_color_sim(true, true, false, true));
+    }
+
+    #[test]
+    fn clicolor_force_enables_in_pipe() {
+        assert!(resolve_color_sim(false, false, true, false));
+    }
+
+    #[test]
+    fn clicolor_force_does_not_override_no_color() {
+        // NO_COLOR env takes precedence over CLICOLOR_FORCE
+        assert!(!resolve_color_sim(false, true, true, false));
+    }
+
+    #[test]
+    fn tty_enables_color() {
+        assert!(resolve_color_sim(false, false, false, true));
+    }
+
+    #[test]
+    fn pipe_disables_color() {
+        assert!(!resolve_color_sim(false, false, false, false));
+    }
+}

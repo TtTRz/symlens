@@ -90,6 +90,8 @@ symlens callees "process_block"
 symlens graph impact "Engine::run"
 symlens graph path "main" "cleanup"
 symlens graph deps --fmt mermaid
+symlens graph deps --module src/parser/mod.rs
+symlens graph deps --module src/parser/mod.rs --reverse
 ```
 
 </td></tr>
@@ -107,6 +109,7 @@ symlens blame "Engine::process_block"
 ```bash
 symlens stats
 symlens export --format json
+symlens export --format sqlite
 symlens lines src/main.rs 10 25
 symlens doctor
 symlens watch
@@ -194,7 +197,7 @@ graph LR
     C --> G[bincode Cache]
 ```
 
-Single binary · no runtime dependencies · index persists across sessions
+SymLens respects [NO_COLOR](https://no-color.org/) and `CLICOLOR_FORCE` environment variables. Colors are automatically disabled when output is piped.
 
 ---
 

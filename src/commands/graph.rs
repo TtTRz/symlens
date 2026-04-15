@@ -101,7 +101,7 @@ fn run_impact(
 fn run_deps(
     args: crate::cli::GraphDepsArgs,
     root: &std::path::Path,
-    _json: bool,
+    json: bool,
 ) -> anyhow::Result<()> {
     let index = load_index(root)?;
     let registry = LanguageRegistry::new();
@@ -128,6 +128,81 @@ fn run_deps(
     }
 
     let deps_graph = DepsGraph::build(&imports, &known_files);
+
+    // --module: query specific module's dependencies/dependents
+    if let Some(ref module) = args.module {
+        let module_path = PathBuf::from(module);
+        if args.reverse {
+            let deps = deps_graph.dependents(&module_path);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "module": module,
+                        "dependents": deps.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+                    })
+                );
+            } else if deps.is_empty() {
+                println!("No modules depend on {}", module);
+            } else {
+                println!("Modules that depend on {} ({}):", module, deps.len());
+                for dep in deps {
+                    println!("  {}", dep.to_string_lossy().replace("src/", ""));
+                }
+            }
+        } else {
+            let deps = deps_graph.dependencies(&module_path);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "module": module,
+                        "dependencies": deps.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+                    })
+                );
+            } else if deps.is_empty() {
+                println!("{} has no dependencies", module);
+            } else {
+                println!("Dependencies of {} ({}):", module, deps.len());
+                for dep in deps {
+                    println!("  {}", dep.to_string_lossy().replace("src/", ""));
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if json {
+        let edges: Vec<serde_json::Value> = deps_graph
+            .edges
+            .iter()
+            .flat_map(|(file, deps)| {
+                let from = file.to_string_lossy().into_owned();
+                deps.iter().map(move |dep| {
+                    serde_json::json!({
+                        "from": &from,
+                        "to": dep.to_string_lossy(),
+                    })
+                })
+            })
+            .collect();
+        let modules: Vec<String> = deps_graph
+            .edges
+            .keys()
+            .chain(deps_graph.edges.values().flat_map(|d| d.iter()))
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        println!(
+            "{}",
+            serde_json::json!({
+                "modules": modules,
+                "edges": edges,
+            })
+        );
+        return Ok(());
+    }
 
     if args.fmt == "mermaid" {
         println!("{}", deps_graph.to_mermaid());

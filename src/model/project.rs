@@ -93,7 +93,10 @@ impl ProjectIndex {
         self.file_symbols.entry(file).or_default().push(id);
     }
 
-    /// Remove all symbols from a file (for incremental updates).
+    /// Remove all symbols from a file (for fine-grained incremental updates).
+    /// Note: the current incremental re-index walks all files and rebuilds the index,
+    /// so deleted files are naturally excluded. This method is kept for future
+    /// partial-update scenarios where only changed files are re-indexed.
     #[allow(dead_code)]
     pub fn remove_file(&mut self, file: &PathBuf) {
         if let Some(ids) = self.file_symbols.remove(file) {

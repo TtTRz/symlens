@@ -90,6 +90,8 @@ symlens callees "process_block"
 symlens graph impact "Engine::run"
 symlens graph path "main" "cleanup"
 symlens graph deps --fmt mermaid
+symlens graph deps --module src/parser/mod.rs
+symlens graph deps --module src/parser/mod.rs --reverse
 ```
 
 </td></tr>
@@ -107,6 +109,7 @@ symlens blame "Engine::process_block"
 ```bash
 symlens stats
 symlens export --format json
+symlens export --format sqlite
 symlens lines src/main.rs 10 25
 symlens doctor
 symlens watch
@@ -194,7 +197,7 @@ graph LR
     C --> G[bincode 缓存]
 ```
 
-单一二进制 · 无运行时依赖 · 索引跨会话持久化
+SymLens 遵循 [NO_COLOR](https://no-color.org/) 和 `CLICOLOR_FORCE` 环境变量。管道输出时自动禁用颜色。
 
 ---
 
