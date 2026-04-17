@@ -1,16 +1,16 @@
 use crate::cli::ExportArgs;
-use crate::index::storage;
 
-pub fn run(args: ExportArgs, root_override: Option<&str>) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
+pub fn run(
+    args: ExportArgs,
+    root_override: Option<&str>,
+    workspace_flag: bool,
+) -> anyhow::Result<()> {
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     match args.format.as_str() {
-        "json" => export_json(&index, args.output.as_deref()),
+        "json" => export_json(&provider, args.output.as_deref()),
         #[cfg(feature = "native")]
-        "sqlite" => export_sqlite(&index, args.output.as_deref(), &root),
+        "sqlite" => export_sqlite(&provider, args.output.as_deref()),
         _ => {
             let supported = if cfg!(feature = "native") {
                 "json, sqlite"
@@ -27,14 +27,13 @@ pub fn run(args: ExportArgs, root_override: Option<&str>) -> anyhow::Result<()> 
 }
 
 fn export_json(
-    index: &crate::model::project::ProjectIndex,
+    provider: &crate::commands::IndexProvider,
     output_path: Option<&str>,
 ) -> anyhow::Result<()> {
-    let stats = index.stats();
-
-    let symbols: Vec<serde_json::Value> = index
-        .symbols
-        .values()
+    let stats = provider.stats();
+    let symbols: Vec<serde_json::Value> = provider
+        .symbols()
+        .iter()
         .map(|s| {
             let mut obj = serde_json::json!({
                 "id": s.id.0,
@@ -59,7 +58,7 @@ fn export_json(
         })
         .collect();
 
-    let call_edges: Vec<serde_json::Value> = if let Some(ref cg) = index.call_graph {
+    let call_edges: Vec<serde_json::Value> = if let Some(cg) = provider.call_graph() {
         cg.all_edges()
             .iter()
             .map(|&(from, to)| serde_json::json!({ "caller": &cg.nodes[from], "callee": &cg.nodes[to] }))
@@ -68,21 +67,27 @@ fn export_json(
         vec![]
     };
 
-    let files: Vec<serde_json::Value> = index
-        .file_symbols
+    let files: Vec<serde_json::Value> = provider
+        .file_keys()
         .iter()
-        .map(|(file, ids)| {
+        .map(|fk| {
+            let syms = provider.symbols_in_file(fk);
             serde_json::json!({
-                "file": file.to_string_lossy(),
-                "symbols": ids.len(),
-                "mtime": index.file_mtimes.get(file).unwrap_or(&0),
+                "file": fk.path.to_string_lossy(),
+                "root_id": fk.root_id,
+                "symbols": syms.len(),
             })
         })
         .collect();
 
-    let export = serde_json::json!({
-        "version": index.version,
-        "root": index.root.to_string_lossy(),
+    let root_display = provider
+        .single_root()
+        .map(|r| r.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "workspace".to_string());
+
+    let mut export = serde_json::json!({
+        "version": provider.version(),
+        "root": root_display,
         "stats": {
             "files": stats.total_files,
             "symbols": stats.total_symbols,
@@ -93,6 +98,21 @@ fn export_json(
         "call_edges": call_edges,
         "files": files,
     });
+
+    if provider.is_workspace() {
+        export["workspace"] = serde_json::json!(true);
+        let root_list: Vec<serde_json::Value> = provider
+            .roots()
+            .iter()
+            .map(|(id, path, _)| {
+                serde_json::json!({
+                    "id": id,
+                    "path": path.to_string_lossy(),
+                })
+            })
+            .collect();
+        export["roots"] = serde_json::json!(root_list);
+    }
 
     let json_str = serde_json::to_string_pretty(&export)?;
 
@@ -113,11 +133,16 @@ fn export_json(
 
 #[cfg(feature = "native")]
 fn export_sqlite(
-    index: &crate::model::project::ProjectIndex,
+    provider: &crate::commands::IndexProvider,
     output_path: Option<&str>,
-    root: &std::path::Path,
 ) -> anyhow::Result<()> {
     use rusqlite::Connection;
+
+    let root = provider.single_root().ok_or_else(|| {
+        anyhow::anyhow!(
+            "SQLite export is not supported in workspace mode. Use JSON export instead."
+        )
+    })?;
 
     let db_path = match output_path {
         Some(p) => std::path::PathBuf::from(p),
@@ -171,7 +196,7 @@ fn export_sqlite(
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "INSERT INTO metadata (key, value) VALUES (?1, ?2)",
-        ("version", index.version.to_string()),
+        ("version", provider.version().to_string()),
     )?;
     tx.execute(
         "INSERT INTO metadata (key, value) VALUES (?1, ?2)",
@@ -179,7 +204,7 @@ fn export_sqlite(
     )?;
     tx.execute(
         "INSERT INTO metadata (key, value) VALUES (?1, ?2)",
-        ("indexed_at", index.indexed_at.to_string()),
+        ("indexed_at", provider.indexed_at().to_string()),
     )?;
 
     // Insert symbols
@@ -188,7 +213,7 @@ fn export_sqlite(
             "INSERT INTO symbols (id, name, qualified_name, kind, file, start_line, end_line, visibility, signature, doc, parent)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?;
-        for s in index.symbols.values() {
+        for s in provider.symbols() {
             stmt.execute(rusqlite::params![
                 s.id.0,
                 s.name,
@@ -206,7 +231,7 @@ fn export_sqlite(
     }
 
     // Insert call edges
-    if let Some(ref cg) = index.call_graph {
+    if let Some(cg) = provider.call_graph() {
         let mut stmt = tx.prepare("INSERT INTO call_edges (caller, callee) VALUES (?1, ?2)")?;
         for &(from, to) in cg.all_edges() {
             stmt.execute(rusqlite::params![&cg.nodes[from], &cg.nodes[to]])?;
@@ -217,12 +242,14 @@ fn export_sqlite(
     {
         let mut stmt =
             tx.prepare("INSERT INTO files (path, symbol_count, mtime) VALUES (?1, ?2, ?3)")?;
-        for (file, ids) in &index.file_symbols {
-            let mtime = index.file_mtimes.get(file).copied().unwrap_or(0);
+        for fk in provider.file_keys() {
+            let syms = provider.symbols_in_file(&fk);
+            // mtime not available from IndexProvider directly for workspace mode,
+            // default to 0 for now
             stmt.execute(rusqlite::params![
-                file.to_string_lossy().as_ref(),
-                ids.len(),
-                mtime,
+                fk.path.to_string_lossy().as_ref(),
+                syms.len(),
+                0i64,
             ])?;
         }
     }
@@ -238,10 +265,9 @@ fn export_sqlite(
 
     tx.commit()?;
 
-    let sym_count = index.symbols.len();
-    let edge_count = index
-        .call_graph
-        .as_ref()
+    let sym_count = provider.symbols().len();
+    let edge_count = provider
+        .call_graph()
         .map(|cg| cg.all_edges().len())
         .unwrap_or(0);
     eprintln!(

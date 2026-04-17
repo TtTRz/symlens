@@ -7,24 +7,38 @@ fn main() -> anyhow::Result<()> {
     let json = cli.json;
     let color = resolve_color(cli.no_color);
 
+    let workspace = cli.workspace;
+
     match cli.command {
-        Commands::Index(args) => symlens::commands::index::run(args, root),
-        Commands::Search(args) => symlens::commands::search::run(args, root, json, color),
-        Commands::Symbol(args) => symlens::commands::symbol::run(args, root, json, color),
-        Commands::Outline(args) => symlens::commands::outline::run(args, root, json, color),
-        Commands::Refs(args) => symlens::commands::refs::run(args, root, json, color),
-        Commands::Callers(args) => symlens::commands::callers::run_callers(args, root, json),
-        Commands::Callees(args) => symlens::commands::callers::run_callees(args, root, json),
-        Commands::Lines(args) => symlens::commands::lines::run(args, root, color),
-        Commands::Graph(args) => symlens::commands::graph::run(args, root, json),
-        Commands::Watch(args) => symlens::commands::watch::run(args.path.as_deref().or(root)),
-        Commands::Stats(args) => symlens::commands::stats::run(args, root, json),
-        Commands::Blame(args) => symlens::commands::blame::run(args, root, json),
-        Commands::Diff(args) => symlens::commands::diff::run(args, root, json, color),
-        Commands::Export(args) => symlens::commands::export::run(args, root),
+        Commands::Index(args) => symlens::commands::index::run(args, root, workspace),
+        Commands::Search(args) => {
+            symlens::commands::search::run(args, root, workspace, json, color)
+        }
+        Commands::Symbol(args) => {
+            symlens::commands::symbol::run(args, root, workspace, json, color)
+        }
+        Commands::Outline(args) => {
+            symlens::commands::outline::run(args, root, workspace, json, color)
+        }
+        Commands::Refs(args) => symlens::commands::refs::run(args, root, workspace, json, color),
+        Commands::Callers(args) => {
+            symlens::commands::callers::run_callers(args, root, workspace, json)
+        }
+        Commands::Callees(args) => {
+            symlens::commands::callers::run_callees(args, root, workspace, json)
+        }
+        Commands::Lines(args) => symlens::commands::lines::run(args, root, workspace, color),
+        Commands::Graph(args) => symlens::commands::graph::run(args, root, workspace, json),
+        Commands::Watch(args) => {
+            symlens::commands::watch::run(args.path.as_deref().or(root), workspace)
+        }
+        Commands::Stats(args) => symlens::commands::stats::run(args, root, workspace, json),
+        Commands::Blame(args) => symlens::commands::blame::run(args, root, workspace, json),
+        Commands::Diff(args) => symlens::commands::diff::run(args, root, workspace, json, color),
+        Commands::Export(args) => symlens::commands::export::run(args, root, workspace),
         Commands::Setup(args) => symlens::commands::setup::run(args, root),
         Commands::Completions(args) => symlens::commands::completions::run(args),
-        Commands::Doctor => symlens::commands::doctor::run(root),
+        Commands::Doctor => symlens::commands::doctor::run(root, workspace),
         Commands::Init => symlens::commands::init::run(root),
         #[cfg(feature = "mcp")]
         Commands::Mcp => {

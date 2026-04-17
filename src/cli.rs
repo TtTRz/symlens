@@ -17,6 +17,10 @@ pub struct Cli {
     #[arg(long = "root", global = true)]
     pub project_root: Option<String>,
 
+    /// Enable workspace mode (auto-detected if symlens.workspace.toml exists)
+    #[arg(long, global = true)]
+    pub workspace: bool,
+
     /// Output as JSON (applies to all commands)
     #[arg(long, global = true)]
     pub json: bool,

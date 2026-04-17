@@ -1,5 +1,5 @@
 use crate::cli::RefsArgs;
-use crate::index::storage;
+use crate::model::project::FileKey;
 use crate::output::color;
 use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::RefKind;
@@ -10,40 +10,45 @@ use std::path::PathBuf;
 pub fn run(
     args: RefsArgs,
     root_override: Option<&str>,
+    workspace_flag: bool,
     json: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     // Refs v3: narrow search scope using import_names
     // If we know which files import the target name, only search those + the defining file
-    let candidate_files: Vec<PathBuf> =
-        if let Some(importing_files) = index.import_names.get(&args.name) {
-            // Files that import this name + files where it's defined
-            let mut files: HashSet<PathBuf> = importing_files.iter().cloned().collect();
+    let candidate_keys: Vec<FileKey> = {
+        let importing = provider.import_names_for(&args.name);
+        if !importing.is_empty() {
+            let mut keys: HashSet<FileKey> = importing.into_iter().collect();
             // Also include files that define a symbol with this name
-            for sym in index.symbols.values() {
+            for sym in provider.symbols() {
                 if sym.name == args.name {
-                    files.insert(sym.file_path.clone());
+                    keys.insert(FileKey::new(sym.id.root_id(), sym.file_path.clone()));
                 }
             }
-            files.into_iter().collect()
+            keys.into_iter().collect()
         } else {
             // No import info — fall back to scanning all indexed files
-            index.file_symbols.keys().cloned().collect()
-        };
+            provider.file_keys()
+        }
+    };
 
     let scope = args.scope.clone();
     let name = args.name.clone();
 
+    // Collect (root_id, rel_path) pairs for parallel resolution
+    let scan_entries: Vec<(String, PathBuf)> = candidate_keys
+        .into_iter()
+        .map(|fk| (fk.root_id, fk.path))
+        .collect();
+
     // Parallel file scanning (same pattern as indexer.rs — one registry per thread)
-    let mut all_refs: Vec<(PathBuf, crate::parser::traits::IdentifierRef)> = candidate_files
+    let mut all_refs: Vec<(PathBuf, crate::parser::traits::IdentifierRef)> = scan_entries
         .par_iter()
-        .filter(|file_path| {
-            let full_path = root.join(file_path);
+        .filter(|(root_id, file_path)| {
+            let full_path = provider.resolve_absolute(root_id, file_path);
             if !full_path.exists() {
                 return false;
             }
@@ -54,8 +59,8 @@ pub fn run(
             }
             true
         })
-        .flat_map_iter(|file_path| {
-            let full_path = root.join(file_path);
+        .flat_map_iter(|(root_id, file_path)| {
+            let full_path = provider.resolve_absolute(root_id, file_path);
             let registry = LanguageRegistry::new();
             let mut results = Vec::new();
             if let Some(parser) = registry.parser_for(&full_path)
@@ -113,8 +118,8 @@ pub fn run(
     }
 
     let total = all_refs.len();
-    let all_files = index.file_symbols.len();
-    let scanned = candidate_files.len();
+    let all_files = provider.file_count();
+    let scanned = scan_entries.len();
     let narrowed = scanned < all_files;
     let breakdown = format_breakdown(call_count, type_count, import_count, other_count);
 

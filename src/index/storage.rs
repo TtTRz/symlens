@@ -1,4 +1,5 @@
-use crate::model::project::ProjectIndex;
+use crate::model::project::{ProjectIndex, RootInfo};
+use crate::model::workspace::WorkspaceIndex;
 use crate::search::bm25::SearchEngine;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -106,4 +107,93 @@ fn dirs_or_default() -> PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+// ---------------------------------------------------------------------------
+// Workspace storage
+// ---------------------------------------------------------------------------
+
+/// Get the cache directory for a workspace.
+/// Workspace caches are stored under `ws_{hash}` to distinguish from per-root caches.
+pub fn workspace_cache_dir(workspace_hash: &str) -> PathBuf {
+    let home = dirs_or_default();
+    home.join(".symlens")
+        .join("indexes")
+        .join(format!("ws_{}", workspace_hash))
+}
+
+/// Compute a stable hash for a set of workspace roots.
+/// Sorts root hashes before hashing to ensure deterministic results.
+pub fn compute_workspace_hash(roots: &[RootInfo]) -> String {
+    let mut hashes: Vec<&str> = roots.iter().map(|r| r.hash.as_str()).collect();
+    hashes.sort();
+    let concatenated: String = hashes.join("");
+    blake3::hash(concatenated.as_bytes()).to_hex()[..16].to_string()
+}
+
+/// Save a workspace index to disk, including tantivy search index.
+pub fn save_workspace(index: &WorkspaceIndex) -> anyhow::Result<PathBuf> {
+    let dir = workspace_cache_dir(&index.workspace_hash);
+    fs::create_dir_all(&dir)?;
+
+    // Save index as bincode
+    let index_path = dir.join(INDEX_FILE);
+    let encoded = bincode::serde::encode_to_vec(index, bincode::config::standard())?;
+    // Atomic write
+    let tmp_index = dir.join("index.bin.tmp");
+    fs::write(&tmp_index, encoded)?;
+    fs::rename(&tmp_index, &index_path)?;
+
+    // Build tantivy search index
+    let search_dir = dir.join(SEARCH_DIR);
+    if search_dir.exists() {
+        fs::remove_dir_all(&search_dir)?;
+    }
+    let engine = SearchEngine::create(&search_dir)?;
+    let symbols: Vec<&_> = index.symbols.values().collect();
+    engine.index_symbols(&symbols)?;
+
+    // Save metadata as JSON
+    let root_paths: Vec<String> = index
+        .roots
+        .iter()
+        .map(|r| r.path.to_string_lossy().into_owned())
+        .collect();
+    let meta = serde_json::json!({
+        "roots": root_paths,
+        "workspace_hash": index.workspace_hash,
+        "version": index.version,
+        "indexed_at": index.indexed_at,
+        "files": index.file_symbols.len(),
+        "symbols": index.symbols.len(),
+    });
+    let tmp_meta = dir.join("meta.json.tmp");
+    fs::write(&tmp_meta, serde_json::to_string_pretty(&meta)?)?;
+    fs::rename(&tmp_meta, dir.join(META_FILE))?;
+
+    Ok(dir)
+}
+
+/// Load a workspace index from disk.
+pub fn load_workspace(roots: &[RootInfo]) -> anyhow::Result<Option<WorkspaceIndex>> {
+    let ws_hash = compute_workspace_hash(roots);
+    let index_path = workspace_cache_dir(&ws_hash).join(INDEX_FILE);
+
+    if !index_path.exists() {
+        return Ok(None);
+    }
+
+    let data = fs::read(&index_path)?;
+    let (mut index, _): (WorkspaceIndex, _) =
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
+
+    // Rebuild call graph name_to_idx and digraph (skipped by serde)
+    if let Some(ref mut cg) = index.call_graph {
+        cg.rebuild_index();
+    }
+
+    // Rebuild pre-computed search cache (skipped by serde)
+    index.rebuild_search_cache();
+
+    Ok(Some(index))
 }

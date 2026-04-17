@@ -1,27 +1,30 @@
 use crate::cli::{GraphArgs, GraphCommand};
+use crate::commands::IndexProvider;
 use crate::graph::{deps::DepsGraph, impact, path as graph_path};
-use crate::index::storage;
 use crate::parser::registry::LanguageRegistry;
 use std::path::PathBuf;
 
-pub fn run(args: GraphArgs, root_override: Option<&str>, json: bool) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
+pub fn run(
+    args: GraphArgs,
+    root_override: Option<&str>,
+    workspace_flag: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let provider = IndexProvider::load(root_override, workspace_flag)?;
     match args.command {
-        GraphCommand::Impact(a) => run_impact(a, &root, json),
-        GraphCommand::Deps(a) => run_deps(a, &root, json),
-        GraphCommand::Path(a) => run_path(a, &root, json),
+        GraphCommand::Impact(a) => run_impact(a, &provider, json),
+        GraphCommand::Deps(a) => run_deps(a, &provider, json),
+        GraphCommand::Path(a) => run_path(a, &provider, json),
     }
 }
 
 fn run_impact(
     args: crate::cli::GraphImpactArgs,
-    root: &std::path::Path,
+    provider: &IndexProvider,
     json: bool,
 ) -> anyhow::Result<()> {
-    let index = load_index(root)?;
-    let graph = index
-        .call_graph
-        .as_ref()
+    let graph = provider
+        .call_graph()
         .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `symlens index`."))?;
 
     let result = impact::analyze_impact(graph, &args.name, args.depth);
@@ -100,33 +103,33 @@ fn run_impact(
 
 fn run_deps(
     args: crate::cli::GraphDepsArgs,
-    root: &std::path::Path,
+    provider: &IndexProvider,
     json: bool,
 ) -> anyhow::Result<()> {
-    let index = load_index(root)?;
     let registry = LanguageRegistry::new();
 
     let mut imports: Vec<(PathBuf, String)> = Vec::new();
-    let known_files: Vec<PathBuf> = index.file_symbols.keys().cloned().collect();
+    let file_keys = provider.file_keys();
 
-    for file_path in &known_files {
+    for fk in &file_keys {
         if let Some(ref scope) = args.path
-            && !file_path.to_string_lossy().starts_with(scope.as_str())
+            && !fk.path.to_string_lossy().starts_with(scope.as_str())
         {
             continue;
         }
 
-        let full_path = root.join(file_path);
+        let full_path = provider.resolve_absolute(&fk.root_id, &fk.path);
         if let Some(parser) = registry.parser_for(&full_path)
             && let Ok(source) = std::fs::read(&full_path)
-            && let Ok(imps) = parser.extract_imports(&source, file_path)
+            && let Ok(imps) = parser.extract_imports(&source, &fk.path)
         {
             for imp in imps {
-                imports.push((file_path.clone(), imp.module_path));
+                imports.push((fk.path.clone(), imp.module_path));
             }
         }
     }
 
+    let known_files: Vec<PathBuf> = file_keys.iter().map(|fk| fk.path.clone()).collect();
     let deps_graph = DepsGraph::build(&imports, &known_files);
 
     // --module: query specific module's dependencies/dependents
@@ -227,13 +230,11 @@ fn run_deps(
 
 fn run_path(
     args: crate::cli::GraphPathArgs,
-    root: &std::path::Path,
+    provider: &IndexProvider,
     json: bool,
 ) -> anyhow::Result<()> {
-    let index = load_index(root)?;
-    let graph = index
-        .call_graph
-        .as_ref()
+    let graph = provider
+        .call_graph()
         .ok_or_else(|| anyhow::anyhow!("No call graph. Re-run `symlens index`."))?;
 
     match graph_path::find_path(graph, &args.from, &args.to) {
@@ -267,9 +268,4 @@ fn run_path(
     }
 
     Ok(())
-}
-
-fn load_index(root: &std::path::Path) -> anyhow::Result<crate::model::project::ProjectIndex> {
-    storage::load(root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))
 }

@@ -5,6 +5,29 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-04-17
+
+### Added
+
+- **Workspace mode (`--workspace`)**: unified indexing across multiple project roots for cross-project symbol search, call graph traversal, and impact analysis. All commands support `--workspace` flag; roots declared in `symlens.workspace.toml`
+- **`WorkspaceIndex`**: unified in-memory index merging multiple `ProjectIndex` instances with `[root_id]` prefixes for symbol disambiguation
+- **`FileKey` + `RootInfo`**: workspace-scoped file keys and root metadata (blake3-derived stable ids)
+- **`IndexProvider`**: abstraction layer — `Single(ProjectIndex)` for backward compat, `Workspace(WorkspaceIndex)` for multi-root mode
+- **`symlens_index_workspace` MCP tool**: index a workspace with multiple roots via MCP protocol; includes caching (`WORKSPACE_CACHE`)
+- **Per-root incremental indexing**: each root in a workspace has its own cache; only changed roots are re-indexed on `symlens index --workspace`
+- **`symlens.workspace.toml` config**: declare workspace roots with optional path aliases; auto-detected by `--workspace` flag
+
+### Changed
+
+- **`SymbolId` format**: extended to support `[root_id]path::Name#kind` prefix; empty `root_id` falls back to original format (backward compatible)
+- **`Config`**: added `Clone` derive; added `WorkspaceConfig` / `WorkspaceSection` structs
+- **All 12 commands**: adapted to use `IndexProvider` for transparent single-root / workspace dispatch
+- **`graph::impact`**: `extract_module()` skips `[root_id]` prefix before splitting on `::`
+
+### Testing
+
+- **156 tests** (was 138): added 18 workspace mode tests covering SymbolId prefixes, FileKey, RootInfo, WorkspaceIndex insert/search/remove, cross-root call graph, serialization roundtrip, and parent-child remap
+
 ## [0.7.0] - 2026-04-15
 
 ### Added

@@ -135,8 +135,15 @@ fn detect_cycle(graph: &CallGraph, target: &str) -> bool {
 }
 
 /// Extract module portion from a qualified name (first segment before "::").
+/// Handles both "[root_id]Module::Name" and "Module::Name" formats.
 fn extract_module(name: &str) -> Option<String> {
-    let segments: Vec<&str> = name.split("::").collect();
+    // Skip [root_id] prefix if present (workspace mode)
+    let content = if name.starts_with('[') {
+        name.find(']').map(|i| &name[i + 1..]).unwrap_or(name)
+    } else {
+        name
+    };
+    let segments: Vec<&str> = content.split("::").collect();
     // Skip Rust path prefixes that don't represent actual modules
     let skip = segments
         .iter()

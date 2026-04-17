@@ -1,20 +1,26 @@
 use crate::cli::StatsArgs;
-use crate::index::storage;
 
-pub fn run(_args: StatsArgs, root_override: Option<&str>, json: bool) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
+pub fn run(
+    _args: StatsArgs,
+    root_override: Option<&str>,
+    workspace_flag: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
+    let stats = provider.stats();
 
-    let stats = index.stats();
+    let root_display = provider
+        .single_root()
+        .map(|r| r.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "workspace".to_string());
 
     if json {
         println!(
             "{}",
             serde_json::json!({
-                "root": index.root.to_string_lossy(),
-                "version": index.version,
+                "root": root_display,
+                "version": provider.version(),
                 "files": stats.total_files,
                 "symbols": stats.total_symbols,
                 "by_language": stats.by_language,
@@ -24,8 +30,8 @@ pub fn run(_args: StatsArgs, root_override: Option<&str>, json: bool) -> anyhow:
         return Ok(());
     }
 
-    println!("Project: {}", index.root.display());
-    println!("Index version: {}", index.version);
+    println!("Project: {}", root_display);
+    println!("Index version: {}", provider.version());
     println!("Files: {}", stats.total_files);
     println!("Symbols: {}", stats.total_symbols);
     println!();

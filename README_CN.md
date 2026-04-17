@@ -22,6 +22,7 @@ cargo install symlens           # 安装
 symlens index                   # 索引项目
 symlens search "AudioEngine"    # 搜索符号
 symlens symbol "Engine::run"    # 获取签名 → 60 tokens，不再读 4000 tokens 的整个文件
+symlens index --workspace       # 多项目联合索引
 ```
 
 SymLens 用 [tree-sitter](https://tree-sitter.github.io/) 解析代码库，建立全量符号索引——函数、类、调用图、import 关系。AI 代理（或你自己）按需精准查询，不再读整个文件。
@@ -79,6 +80,7 @@ symlens search "process audio"
 symlens symbol "<id>" --source
 symlens outline --project
 symlens refs "Engine"
+symlens search "Engine" --workspace   # 跨项目搜索
 ```
 
 </td><td width="50%">
@@ -122,6 +124,30 @@ symlens init
 
 ---
 
+## 📂 Workspace 模式
+
+将多个项目根目录作为工作区统一索引，支持跨项目符号搜索、调用图遍历和影响分析。
+
+```bash
+# 创建 workspace 配置
+cat > symlens.workspace.toml << 'EOF'
+[workspace]
+roots = ["../backend", "../frontend", "../shared"]
+EOF
+
+# 索引工作区
+symlens index --workspace
+
+# 跨项目搜索和调用图
+symlens search "AuthService" --workspace
+symlens callers "process_request" --workspace
+symlens graph impact "UserModel" --workspace
+```
+
+**工作原理：** 每个 root 独立索引并拥有自己的缓存，然后合并到统一的 `WorkspaceIndex`。符号通过 `[root_id]` 前缀消除歧义（如 `[a1b2c3d4]src/main.rs::App#struct`）。保留逐 root 增量索引——只有变更的 root 会重新索引。
+
+---
+
 ## ⚡ 性能
 
 使用 [criterion](https://github.com/bheisler/criterion.rs) 在 SymLens 自身代码库上实测（55 文件，660 符号）：
@@ -156,7 +182,7 @@ symlens mcp
 }
 ```
 
-**10 个工具：** `symlens_index` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
+**11 个工具：** `symlens_index` · `symlens_index_workspace` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
 
 </details>
 

@@ -1,5 +1,5 @@
 use crate::cli::OutlineArgs;
-use crate::index::storage;
+use crate::model::project::FileKey;
 use crate::model::symbol::{Symbol, SymbolKind};
 use crate::output::color;
 use std::collections::BTreeMap;
@@ -8,21 +8,19 @@ use std::path::PathBuf;
 pub fn run(
     args: OutlineArgs,
     root_override: Option<&str>,
+    workspace_flag: bool,
     json: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     if json {
         if args.project || args.file.is_none() {
-            let stats = index.stats();
-            let files: Vec<serde_json::Value> = index
-                .file_symbols
+            let stats = provider.stats();
+            let files: Vec<serde_json::Value> = provider
+                .file_keys()
                 .iter()
-                .map(|(file, ids)| serde_json::json!({ "file": file.to_string_lossy(), "symbols": ids.len() }))
+                .map(|fk| serde_json::json!({ "file": fk.display(), "symbols": provider.symbols_in_file(fk).len() }))
                 .collect();
             println!(
                 "{}",
@@ -35,7 +33,8 @@ pub fn run(
             );
         } else if let Some(ref file) = args.file {
             let file_path = PathBuf::from(file);
-            let symbols = index.symbols_in_file(&file_path);
+            let file_key = FileKey::new("", file_path);
+            let symbols = provider.symbols_in_file(&file_key);
             let items: Vec<serde_json::Value> = symbols
                 .iter()
                 .map(|s| {
@@ -54,31 +53,32 @@ pub fn run(
     }
 
     if args.project || args.file.is_none() {
-        print_project_outline(&index, args.depth, args.summary, color_on)?;
+        print_project_outline(&provider, args.depth, args.summary, color_on)?;
     } else if let Some(ref file) = args.file {
         let file_path = PathBuf::from(file);
-        print_file_outline(&index, &file_path, color_on)?;
+        let file_key = FileKey::new("", file_path);
+        print_file_outline(&provider, &file_key, color_on)?;
     }
 
     Ok(())
 }
 
 fn print_file_outline(
-    index: &crate::model::project::ProjectIndex,
-    file: &PathBuf,
+    provider: &crate::commands::IndexProvider,
+    file_key: &FileKey,
     color_on: bool,
 ) -> anyhow::Result<()> {
-    let symbols = index.symbols_in_file(file);
+    let symbols = provider.symbols_in_file(file_key);
 
     if symbols.is_empty() {
-        println!("No symbols found in {}", file.display());
+        println!("No symbols found in {}", file_key.display());
         return Ok(());
     }
 
     println!(
         "{}",
         color::bold(
-            &format!("{} ({} symbols)", file.display(), symbols.len()),
+            &format!("{} ({} symbols)", file_key.display(), symbols.len()),
             color_on
         )
     );
@@ -119,30 +119,41 @@ fn print_file_outline(
 }
 
 fn print_project_outline(
-    index: &crate::model::project::ProjectIndex,
+    provider: &crate::commands::IndexProvider,
     max_depth: u32,
     summary: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
-    let stats = index.stats();
+    let stats = provider.stats();
+    let root_display = provider
+        .single_root()
+        .map(|r| {
+            r.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .unwrap_or_else(|| "workspace".to_string());
     println!(
         "{}",
         color::bold(
             &format!(
                 "{} ({} files, {} symbols)",
-                index.root.file_name().unwrap_or_default().to_string_lossy(),
-                stats.total_files,
-                stats.total_symbols,
+                root_display, stats.total_files, stats.total_symbols,
             ),
             color_on
         ),
     );
 
-    let mut dir_tree: BTreeMap<PathBuf, Vec<(&PathBuf, Vec<&Symbol>)>> = BTreeMap::new();
-    for file in index.file_symbols.keys() {
-        let dir = file.parent().unwrap_or(file).to_path_buf();
-        let symbols = index.symbols_in_file(file);
-        dir_tree.entry(dir).or_default().push((file, symbols));
+    let mut dir_tree: BTreeMap<PathBuf, Vec<(FileKey, Vec<&Symbol>)>> = BTreeMap::new();
+    for file_key in provider.file_keys() {
+        let dir = file_key
+            .path
+            .parent()
+            .unwrap_or(&file_key.path)
+            .to_path_buf();
+        let symbols = provider.symbols_in_file(&file_key);
+        dir_tree.entry(dir).or_default().push((file_key, symbols));
     }
 
     for (dir, files) in &dir_tree {
@@ -166,7 +177,7 @@ fn print_project_outline(
         );
 
         if !summary {
-            for (file, symbols) in files {
+            for (file_key, symbols) in files {
                 let top_names: Vec<String> = symbols
                     .iter()
                     .filter(|s| s.parent.is_none())
@@ -190,7 +201,11 @@ fn print_project_outline(
                     format!(" — {}", top_names.join(", "))
                 };
 
-                let file_name = file.file_name().unwrap_or_default().to_string_lossy();
+                let file_name = file_key
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy();
                 println!(
                     "│   ├── {}{} {}",
                     file_name,

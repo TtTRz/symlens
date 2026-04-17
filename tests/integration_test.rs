@@ -2517,3 +2517,412 @@ mod color_resolution_tests {
         assert!(!resolve_color_sim(false, false, false, false));
     }
 }
+
+// ─── Workspace mode tests ───────────────────────────────────────────
+
+mod workspace_tests {
+    use std::path::PathBuf;
+    use symlens::model::project::{FileKey, ProjectIndex, RootInfo};
+    use symlens::model::symbol::*;
+    use symlens::model::workspace::WorkspaceIndex;
+
+    // ── SymbolId root_id prefix ──────────────────────────────────────
+
+    #[test]
+    fn symbol_id_with_root_prefix() {
+        let id = SymbolId::new_with_root(
+            "a1b2c3d4",
+            "src/main.rs",
+            "Engine::run",
+            &SymbolKind::Method,
+        );
+        assert_eq!(id.0, "[a1b2c3d4]src/main.rs::Engine::run#method");
+        assert_eq!(id.root_id(), "a1b2c3d4");
+        assert_eq!(id.file(), "src/main.rs");
+        assert_eq!(id.name(), "Engine::run");
+        assert_eq!(id.kind_str(), "method");
+    }
+
+    #[test]
+    fn symbol_id_without_root_backward_compat() {
+        let id = SymbolId::new_with_root("", "src/main.rs", "Engine::run", &SymbolKind::Method);
+        // Should fall back to standard format
+        assert_eq!(id.0, "src/main.rs::Engine::run#method");
+        assert_eq!(id.root_id(), "");
+        assert_eq!(id.file(), "src/main.rs");
+        assert_eq!(id.name(), "Engine::run");
+        assert_eq!(id.kind_str(), "method");
+    }
+
+    #[test]
+    fn symbol_id_root_id_parsing() {
+        let id = SymbolId("[deadbeef]lib.rs::Foo#struct".to_string());
+        assert_eq!(id.root_id(), "deadbeef");
+        assert_eq!(id.file(), "lib.rs");
+        assert_eq!(id.name(), "Foo");
+        assert_eq!(id.kind_str(), "struct");
+    }
+
+    #[test]
+    fn symbol_id_no_root_parsing() {
+        let id = SymbolId("lib.rs::Foo#struct".to_string());
+        assert_eq!(id.root_id(), "");
+        assert_eq!(id.file(), "lib.rs");
+        assert_eq!(id.name(), "Foo");
+        assert_eq!(id.kind_str(), "struct");
+    }
+
+    // ── FileKey ──────────────────────────────────────────────────────
+
+    #[test]
+    fn file_key_with_root() {
+        let key = FileKey::new("abc123", PathBuf::from("src/main.rs"));
+        assert_eq!(key.root_id, "abc123");
+        assert_eq!(key.path, PathBuf::from("src/main.rs"));
+        assert_eq!(key.display(), "[abc123]src/main.rs");
+    }
+
+    #[test]
+    fn file_key_without_root() {
+        let key = FileKey::new("", PathBuf::from("src/main.rs"));
+        assert_eq!(key.display(), "src/main.rs");
+    }
+
+    #[test]
+    fn file_key_equality() {
+        let a = FileKey::new("abc", PathBuf::from("src/main.rs"));
+        let b = FileKey::new("abc", PathBuf::from("src/main.rs"));
+        let c = FileKey::new("def", PathBuf::from("src/main.rs"));
+        let d = FileKey::new("abc", PathBuf::from("src/lib.rs"));
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(a, d);
+    }
+
+    // ── RootInfo ─────────────────────────────────────────────────────
+
+    #[test]
+    fn root_info_derives_stable_id() {
+        let r1 = RootInfo::new(PathBuf::from("/tmp/project-a"));
+        let r2 = RootInfo::new(PathBuf::from("/tmp/project-a"));
+        let r3 = RootInfo::new(PathBuf::from("/tmp/project-b"));
+
+        // Same path -> same id
+        assert_eq!(r1.id, r2.id);
+        // Different path -> different id
+        assert_ne!(r1.id, r3.id);
+        // Id is 8 hex chars
+        assert_eq!(r1.id.len(), 8);
+        // Hash is 16 hex chars
+        assert_eq!(r1.hash.len(), 16);
+    }
+
+    // ── WorkspaceIndex insert + query ────────────────────────────────
+
+    fn make_symbol(name: &str, kind: SymbolKind, file: &str) -> Symbol {
+        Symbol {
+            id: SymbolId::new(file, name, &kind),
+            name: name.to_string(),
+            qualified_name: name.to_string(),
+            kind,
+            file_path: PathBuf::from(file),
+            span: Span {
+                start_line: 1,
+                end_line: 10,
+                start_col: 0,
+                end_col: 0,
+            },
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: Some(format!("Doc for {}", name)),
+            visibility: Visibility::Public,
+            parent: None,
+            children: vec![],
+        }
+    }
+
+    fn make_project_with_symbols(
+        root_path: &str,
+        symbols: Vec<(&str, SymbolKind, &str)>,
+    ) -> (RootInfo, ProjectIndex) {
+        let root_info = RootInfo::new(PathBuf::from(root_path));
+        let mut project = ProjectIndex::new(PathBuf::from(root_path));
+        for (name, kind, file) in symbols {
+            project.insert(make_symbol(name, kind, file));
+        }
+        (root_info, project)
+    }
+
+    #[test]
+    fn workspace_insert_and_get() {
+        let (root_info, project) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![
+                ("AudioEngine", SymbolKind::Struct, "src/engine.rs"),
+                ("process_block", SymbolKind::Method, "src/engine.rs"),
+            ],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        ws.insert_from_project(&root_info, &project);
+
+        // Symbols should be prefixed with root_id
+        assert_eq!(ws.symbols.len(), 2, "Should have 2 symbols after insert");
+
+        // Get by workspace-scoped SymbolId
+        let ws_id = SymbolId::new_with_root(
+            &root_info.id,
+            "src/engine.rs",
+            "AudioEngine",
+            &SymbolKind::Struct,
+        );
+        let sym = ws
+            .get(&ws_id)
+            .expect("Should find AudioEngine in workspace");
+        assert_eq!(sym.name, "AudioEngine");
+
+        // Root_id in SymbolId should match
+        assert_eq!(sym.id.root_id(), root_info.id);
+    }
+
+    #[test]
+    fn workspace_search_cross_root() {
+        let (root_a, project_a) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![("AudioEngine", SymbolKind::Struct, "src/engine.rs")],
+        );
+        let (root_b, project_b) = make_project_with_symbols(
+            "/tmp/ws-root-b",
+            vec![
+                ("VideoEngine", SymbolKind::Struct, "src/video.rs"),
+                ("process_audio", SymbolKind::Function, "src/audio.rs"),
+            ],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
+        ws.insert_from_project(&root_a, &project_a);
+        ws.insert_from_project(&root_b, &project_b);
+
+        // Search "engine" should find both AudioEngine and VideoEngine
+        let results = ws.search("engine", 10);
+        assert_eq!(
+            results.len(),
+            2,
+            "Should find 2 'engine' symbols across roots"
+        );
+        let names: Vec<_> = results.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"AudioEngine"));
+        assert!(names.contains(&"VideoEngine"));
+
+        // Search "audio" should find AudioEngine + process_audio
+        let results = ws.search("audio", 10);
+        assert_eq!(
+            results.len(),
+            2,
+            "Should find 2 'audio' symbols across roots"
+        );
+    }
+
+    #[test]
+    fn workspace_remove_root() {
+        let (root_a, project_a) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![("AudioEngine", SymbolKind::Struct, "src/engine.rs")],
+        );
+        let (root_b, project_b) = make_project_with_symbols(
+            "/tmp/ws-root-b",
+            vec![("VideoEngine", SymbolKind::Struct, "src/video.rs")],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
+        ws.insert_from_project(&root_a, &project_a);
+        ws.insert_from_project(&root_b, &project_b);
+
+        assert_eq!(ws.symbols.len(), 2);
+
+        // Remove root_b
+        ws.remove_root(&root_b.id);
+
+        assert_eq!(
+            ws.symbols.len(),
+            1,
+            "Should have 1 symbol after removing root_b"
+        );
+        assert!(ws.roots.iter().any(|r| r.id == root_a.id));
+        assert!(!ws.roots.iter().any(|r| r.id == root_b.id));
+
+        // Search should only find AudioEngine
+        let results = ws.search("engine", 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "AudioEngine");
+    }
+
+    #[test]
+    fn workspace_symbols_in_file() {
+        let (root_info, project) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![
+                ("foo", SymbolKind::Function, "src/a.rs"),
+                ("bar", SymbolKind::Function, "src/a.rs"),
+                ("baz", SymbolKind::Function, "src/b.rs"),
+            ],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        ws.insert_from_project(&root_info, &project);
+
+        let file_key = FileKey::new(&root_info.id, PathBuf::from("src/a.rs"));
+        let syms = ws.symbols_in_file(&file_key);
+        assert_eq!(syms.len(), 2, "Should find 2 symbols in src/a.rs");
+    }
+
+    #[test]
+    fn workspace_stats() {
+        let (root_a, project_a) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![
+                ("foo", SymbolKind::Function, "src/a.rs"),
+                ("Bar", SymbolKind::Struct, "src/a.rs"),
+            ],
+        );
+        let (root_b, project_b) = make_project_with_symbols(
+            "/tmp/ws-root-b",
+            vec![("baz", SymbolKind::Function, "lib/b.rs")],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
+        ws.insert_from_project(&root_a, &project_a);
+        ws.insert_from_project(&root_b, &project_b);
+
+        let stats = ws.stats();
+        assert_eq!(stats.total_files, 2, "Should count 2 files across roots");
+        assert_eq!(
+            stats.total_symbols, 3,
+            "Should count 3 symbols across roots"
+        );
+        assert_eq!(*stats.by_kind.get("function").unwrap(), 2);
+        assert_eq!(*stats.by_kind.get("struct").unwrap(), 1);
+    }
+
+    #[test]
+    fn workspace_call_graph_cross_root() {
+        let (root_a, project_a) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![("process_audio", SymbolKind::Function, "src/audio.rs")],
+        );
+        let (root_b, project_b) = make_project_with_symbols(
+            "/tmp/ws-root-b",
+            vec![("main", SymbolKind::Function, "src/main.rs")],
+        );
+
+        let root_a_id = root_a.id.clone();
+        let root_b_id = root_b.id.clone();
+
+        let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
+        ws.insert_from_project(&root_a, &project_a);
+        ws.insert_from_project(&root_b, &project_b);
+
+        // Add a cross-root call edge manually: main -> process_audio
+        let file_key = FileKey::new(&root_b_id, PathBuf::from("src/main.rs"));
+        ws.file_call_edges.insert(
+            file_key,
+            vec![(
+                format!("[{}]main", root_b_id),
+                format!("[{}]process_audio", root_a_id),
+            )],
+        );
+
+        ws.build_call_graph();
+
+        let graph = ws.call_graph.as_ref().expect("Should have call graph");
+        let callers = graph.callers("process_audio");
+        assert!(
+            callers.iter().any(|c| c.contains("main")),
+            "main should be a caller of process_audio across roots, got: {:?}",
+            callers,
+        );
+    }
+
+    #[test]
+    fn workspace_resolve_absolute() {
+        let root_info = RootInfo::new(PathBuf::from("/tmp/my-project"));
+        let ws = WorkspaceIndex::new(&[root_info.clone()]);
+
+        let file_key = FileKey::new(&root_info.id, PathBuf::from("src/main.rs"));
+        let abs = ws.resolve_absolute(&file_key);
+        assert_eq!(abs, Some(PathBuf::from("/tmp/my-project/src/main.rs")));
+    }
+
+    #[test]
+    fn workspace_hash_deterministic() {
+        let r1 = RootInfo::new(PathBuf::from("/tmp/project-a"));
+        let r2 = RootInfo::new(PathBuf::from("/tmp/project-b"));
+
+        let ws1 = WorkspaceIndex::new(&[r1.clone(), r2.clone()]);
+        let ws2 = WorkspaceIndex::new(&[r2.clone(), r1.clone()]);
+
+        // Hash should be the same regardless of root order
+        assert_eq!(ws1.workspace_hash, ws2.workspace_hash);
+    }
+
+    #[test]
+    fn workspace_serialization_roundtrip() {
+        let (root_info, project) = make_project_with_symbols(
+            "/tmp/ws-root-a",
+            vec![
+                ("AudioEngine", SymbolKind::Struct, "src/engine.rs"),
+                ("process_block", SymbolKind::Method, "src/engine.rs"),
+            ],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        ws.insert_from_project(&root_info, &project);
+
+        let encoded =
+            bincode::serde::encode_to_vec(&ws, bincode::config::standard()).expect("encode failed");
+        let (decoded, _): (WorkspaceIndex, _) =
+            bincode::serde::decode_from_slice(&encoded, bincode::config::standard())
+                .expect("decode failed");
+
+        assert_eq!(decoded.symbols.len(), 2);
+        assert_eq!(decoded.roots.len(), 1);
+        assert_eq!(decoded.workspace_hash, ws.workspace_hash);
+
+        // Search cache needs rebuild after deserialization
+        let mut restored = decoded;
+        restored.rebuild_search_cache();
+        let results = restored.search("AudioEngine", 10);
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn workspace_parent_child_remap() {
+        let mut project = ProjectIndex::new(PathBuf::from("/tmp/ws-parent"));
+        let mut child = make_symbol("process_block", SymbolKind::Method, "src/engine.rs");
+        let parent_id = SymbolId::new("src/engine.rs", "AudioEngine", &SymbolKind::Struct);
+        child.parent = Some(parent_id.clone());
+
+        let mut parent = make_symbol("AudioEngine", SymbolKind::Struct, "src/engine.rs");
+        parent.children = vec![child.id.clone()];
+
+        project.insert(parent);
+        project.insert(child);
+
+        let root_info = RootInfo::new(PathBuf::from("/tmp/ws-parent"));
+        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        ws.insert_from_project(&root_info, &project);
+
+        // Find the workspace-scoped process_block
+        let ws_pb_id = SymbolId::new_with_root(
+            &root_info.id,
+            "src/engine.rs",
+            "process_block",
+            &SymbolKind::Method,
+        );
+        let ws_pb = ws.get(&ws_pb_id).expect("Should find process_block");
+
+        // Parent should be remapped with root_id prefix
+        let ws_parent = ws_pb.parent.as_ref().expect("Should have parent");
+        assert_eq!(ws_parent.root_id(), root_info.id);
+        assert!(ws_parent.name().contains("AudioEngine"));
+    }
+}

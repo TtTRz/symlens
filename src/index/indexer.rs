@@ -1,6 +1,7 @@
 use crate::graph::call_graph::CallGraph;
-use crate::model::project::ProjectIndex;
+use crate::model::project::{ProjectIndex, RootInfo};
 use crate::model::symbol::Symbol;
+use crate::model::workspace::WorkspaceIndex;
 use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::{CallEdge, ImportInfo};
 use ignore::WalkBuilder;
@@ -223,4 +224,77 @@ fn copy_prev_data(prev: &ProjectIndex, rel_path: &Path, mtime: u64, result: &mut
         }
         result.file_imports = Some((rel_path.to_path_buf(), prev_imps.clone()));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace indexing
+// ---------------------------------------------------------------------------
+
+pub struct WorkspaceIndexResult {
+    pub index: WorkspaceIndex,
+    pub duration_ms: u64,
+    pub files_scanned: usize,
+    pub files_parsed: usize,
+    pub files_skipped: usize,
+}
+
+/// Index a workspace with multiple project roots.
+/// Each root is indexed independently (with per-root incremental support),
+/// then merged into a single WorkspaceIndex with `[root_id]` prefixes.
+pub fn index_workspace(
+    roots: &[RootInfo],
+    max_files_per_root: usize,
+    _prev_workspace: Option<&WorkspaceIndex>,
+) -> anyhow::Result<WorkspaceIndexResult> {
+    let start = Instant::now();
+    let mut ws = WorkspaceIndex::new(roots);
+
+    let mut total_scanned = 0usize;
+    let mut total_parsed = 0usize;
+    let mut total_skipped = 0usize;
+
+    for root_info in roots {
+        // Per-root incremental: try loading per-root cache from disk.
+        // Full workspace prev is not used for per-root incremental — each root
+        // has its own cache file on disk.
+        let prev_root_index = crate::index::storage::load(&root_info.path).ok().flatten();
+
+        let result = index_project_incremental(
+            &root_info.path,
+            max_files_per_root,
+            prev_root_index.as_ref(),
+        )?;
+
+        // Save per-root cache (enables single-root load + incremental for next workspace run)
+        if let Err(e) = crate::index::storage::save(&result.index) {
+            eprintln!(
+                "warning: failed to save per-root cache for {}: {e}",
+                root_info.path.display()
+            );
+        }
+
+        // Merge into workspace
+        ws.insert_from_project(root_info, &result.index);
+
+        total_scanned += result.files_scanned;
+        total_parsed += result.files_parsed;
+        total_skipped += result.files_skipped;
+    }
+
+    // Build unified call graph from all merged call edges
+    ws.build_call_graph();
+    ws.indexed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    Ok(WorkspaceIndexResult {
+        index: ws,
+        duration_ms,
+        files_scanned: total_scanned,
+        files_parsed: total_parsed,
+        files_skipped: total_skipped,
+    })
 }

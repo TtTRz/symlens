@@ -1,21 +1,20 @@
 use crate::cli::BlameArgs;
-use crate::index::storage;
 use std::process::Command;
 
-pub fn run(args: BlameArgs, root_override: Option<&str>, json: bool) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
+pub fn run(
+    args: BlameArgs,
+    root_override: Option<&str>,
+    workspace_flag: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     // Find the symbol (try exact match first, then partial)
-    let symbol = index
-        .symbols
-        .values()
-        .find(|s| s.id.0 == args.name || s.qualified_name == args.name || s.name == args.name)
+    let symbol = provider
+        .find_symbol(&args.name)
         .ok_or_else(|| anyhow::anyhow!("Symbol not found: {}", args.name))?;
 
-    let file_path = root.join(&symbol.file_path);
+    let file_path = provider.resolve_absolute(symbol.id.root_id(), &symbol.file_path);
     if !file_path.exists() {
         anyhow::bail!("File not found: {}", symbol.file_path.display());
     }
@@ -23,11 +22,20 @@ pub fn run(args: BlameArgs, root_override: Option<&str>, json: bool) -> anyhow::
     let start = symbol.span.start_line;
     let end = symbol.span.end_line;
 
+    // Determine git root: for single-root use that root; for workspace, find the root containing the file.
+    let git_root = provider
+        .roots()
+        .iter()
+        .find(|(_, path, _)| file_path.starts_with(path))
+        .map(|(_, path, _)| path.to_path_buf())
+        .or_else(|| provider.single_root().map(|p| p.to_path_buf()))
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine git root for blame"))?;
+
     // Run git blame on the symbol's line range
     let output = Command::new("git")
         .args([
             "-C",
-            &root.to_string_lossy(),
+            &git_root.to_string_lossy(),
             "blame",
             "--porcelain",
             &format!("-L{},{}", start, end),

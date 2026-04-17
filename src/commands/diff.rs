@@ -32,8 +32,7 @@ pub enum ChangeKind {
     Deleted,
 }
 
-/// Collect changed symbols between two git refs.
-/// This is the core logic shared by CLI and MCP.
+/// Collect changed symbols between two git refs for a single root.
 pub fn collect_changes(
     root: &std::path::Path,
     from: &str,
@@ -177,14 +176,44 @@ pub fn collect_changes(
 pub fn run(
     args: DiffArgs,
     root_override: Option<&str>,
+    workspace_flag: bool,
     json: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
-    let result = collect_changes(&root, &args.from, &args.to, args.kind.as_deref())?;
+    // Collect changes per root, then merge results
+    let mut all_changes: Vec<ChangedSymbol> = Vec::new();
+    let mut total_added = 0usize;
+    let mut total_modified = 0usize;
+    let mut total_deleted = 0usize;
 
-    if result.changes.is_empty() {
+    for (root_id, root_path, _) in provider.roots() {
+        match collect_changes(root_path, &args.from, &args.to, args.kind.as_deref()) {
+            Ok(result) => {
+                total_added += result.added_count;
+                total_modified += result.modified_count;
+                total_deleted += result.deleted_count;
+                // Prefix file paths with root_id for workspace disambiguation
+                for mut sym in result.changes {
+                    if !root_id.is_empty() {
+                        sym.file = format!("[{}]{}", root_id, sym.file);
+                    }
+                    all_changes.push(sym);
+                }
+            }
+            Err(e) => {
+                // Non-fatal: skip roots where git diff fails (e.g. not a git repo)
+                eprintln!(
+                    "Warning: diff failed for root {}: {}",
+                    root_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    if all_changes.is_empty() {
         if json {
             println!(
                 "{}",
@@ -196,10 +225,10 @@ pub fn run(
         return Ok(());
     }
 
-    let total_symbols = result.changes.len();
+    let total_symbols = all_changes.len();
 
     if json {
-        let items: Vec<serde_json::Value> = result.changes.iter().map(|s| {
+        let items: Vec<serde_json::Value> = all_changes.iter().map(|s| {
             serde_json::json!({
                 "file": s.file, "name": s.name, "kind": s.kind.as_str(),
                 "change": match s.change_kind { ChangeKind::Added => "added", ChangeKind::Modified => "modified", ChangeKind::Deleted => "deleted" },
@@ -211,7 +240,7 @@ pub fn run(
             serde_json::json!({
                 "from": args.from, "to": args.to,
                 "changes": items, "total": total_symbols,
-                "added": result.added_count, "modified": result.modified_count, "deleted": result.deleted_count,
+                "added": total_added, "modified": total_modified, "deleted": total_deleted,
             })
         );
         return Ok(());
@@ -219,7 +248,7 @@ pub fn run(
 
     // Group by file for text output
     let mut by_file: HashMap<String, Vec<&ChangedSymbol>> = HashMap::new();
-    for sym in &result.changes {
+    for sym in &all_changes {
         by_file.entry(sym.file.clone()).or_default().push(sym);
     }
 
@@ -234,9 +263,9 @@ pub fn run(
         args.to,
         total_symbols,
         total_files,
-        color::green(&format!("{}", result.added_count), color_on),
-        color::yellow(&format!("{}", result.modified_count), color_on),
-        color::red(&format!("{}", result.deleted_count), color_on),
+        color::green(&format!("{}", total_added), color_on),
+        color::yellow(&format!("{}", total_modified), color_on),
+        color::red(&format!("{}", total_deleted), color_on),
     );
     println!();
 

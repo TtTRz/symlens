@@ -1,6 +1,7 @@
 #[cfg(feature = "mcp")]
 pub mod server {
     use crate::index::{indexer, storage};
+    use crate::model::project::RootInfo;
     use crate::model::symbol::SymbolKind;
     use crate::output::json as fmt;
     use rayon::prelude::*;
@@ -19,33 +20,65 @@ pub mod server {
     use std::sync::{Arc, LazyLock, RwLock};
 
     use crate::model::project::ProjectIndex;
+    use crate::model::workspace::WorkspaceIndex;
 
     // ─── Static index cache ──────────────────────────────────────────
 
-    static INDEX_CACHE: LazyLock<RwLock<HashMap<PathBuf, Arc<ProjectIndex>>>> =
+    /// Per-root cache: key is root_hash (blake3[..16]).
+    static SINGLE_CACHE: LazyLock<RwLock<HashMap<String, Arc<ProjectIndex>>>> =
+        LazyLock::new(|| RwLock::new(HashMap::new()));
+
+    /// Workspace cache: key is workspace_hash (blake3[..16] with "ws_" prefix).
+    static WORKSPACE_CACHE: LazyLock<RwLock<HashMap<String, Arc<WorkspaceIndex>>>> =
         LazyLock::new(|| RwLock::new(HashMap::new()));
 
     fn load_or_cache(root: &std::path::Path) -> Option<Arc<ProjectIndex>> {
-        if let Some(idx) = INDEX_CACHE.read().expect("cache lock poisoned").get(root) {
+        let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
+        if let Some(idx) = SINGLE_CACHE.read().expect("cache lock poisoned").get(&key) {
             return Some(Arc::clone(idx));
         }
         if let Ok(Some(idx)) = storage::load(root) {
             let arc = Arc::new(idx);
-            INDEX_CACHE
-                .write()
-                .unwrap()
-                .insert(root.to_path_buf(), Arc::clone(&arc));
+            SINGLE_CACHE.write().unwrap().insert(key, Arc::clone(&arc));
             Some(arc)
         } else {
             None
         }
     }
 
-    fn invalidate_cache(root: &std::path::Path) {
-        INDEX_CACHE
+    fn load_or_cache_workspace(roots: &[RootInfo]) -> Option<Arc<WorkspaceIndex>> {
+        let key = storage::compute_workspace_hash(roots);
+        if let Some(idx) = WORKSPACE_CACHE
+            .read()
+            .expect("cache lock poisoned")
+            .get(&key)
+        {
+            return Some(Arc::clone(idx));
+        }
+        if let Ok(Some(idx)) = storage::load_workspace(roots) {
+            let arc = Arc::new(idx);
+            WORKSPACE_CACHE
+                .write()
+                .unwrap()
+                .insert(key, Arc::clone(&arc));
+            Some(arc)
+        } else {
+            None
+        }
+    }
+
+    fn invalidate_single(key: &str) {
+        SINGLE_CACHE
             .write()
             .expect("cache lock poisoned")
-            .remove(root);
+            .remove(key);
+    }
+
+    fn invalidate_workspace(key: &str) {
+        WORKSPACE_CACHE
+            .write()
+            .expect("cache lock poisoned")
+            .remove(key);
     }
 
     fn mcp_error(msg: impl std::fmt::Display) -> McpError {
@@ -58,6 +91,18 @@ pub mod server {
     pub struct IndexParams {
         /// Project root path
         pub path: String,
+        /// Force re-index even if cache exists
+        #[serde(default)]
+        pub force: Option<bool>,
+    }
+
+    #[derive(Debug, Deserialize, JsonSchema)]
+    pub struct IndexWorkspaceParams {
+        /// List of project root paths for workspace mode
+        pub roots: Vec<String>,
+        /// Force re-index even if cache exists
+        #[serde(default)]
+        pub force: Option<bool>,
     }
 
     #[derive(Debug, Deserialize, JsonSchema)]
@@ -181,11 +226,20 @@ pub mod server {
             Parameters(params): Parameters<IndexParams>,
         ) -> Result<String, McpError> {
             let root = PathBuf::from(&params.path);
+            let force = params.force.unwrap_or(false);
 
-            match indexer::index_project(&root, 100_000) {
+            let prev_index = if force {
+                None
+            } else {
+                storage::load(&root).ok().flatten()
+            };
+
+            match indexer::index_project_incremental(&root, 100_000, prev_index.as_ref()) {
                 Ok(result) => match storage::save(&result.index) {
                     Ok(cache_path) => {
-                        invalidate_cache(&root);
+                        let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16]
+                            .to_string();
+                        invalidate_single(&key);
                         Ok(serde_json::to_string_pretty(&json!({
                             "files": result.index.file_symbols.len(),
                             "symbols": result.index.symbols.len(),
@@ -197,6 +251,52 @@ pub mod server {
                     Err(e) => Err(mcp_error(format!("Save failed: {e}"))),
                 },
                 Err(e) => Err(mcp_error(format!("Index failed: {e}"))),
+            }
+        }
+
+        #[tool(
+            description = "Index a workspace with multiple project roots. Enables cross-project symbol search and call graph traversal."
+        )]
+        fn symlens_index_workspace(
+            &self,
+            Parameters(params): Parameters<IndexWorkspaceParams>,
+        ) -> Result<String, McpError> {
+            let roots: Vec<RootInfo> = params
+                .roots
+                .iter()
+                .filter_map(|p| PathBuf::from(p).canonicalize().ok())
+                .map(RootInfo::new)
+                .collect();
+
+            if roots.is_empty() {
+                return Err(mcp_error("No valid root paths provided"));
+            }
+
+            let force = params.force.unwrap_or(false);
+
+            let prev_workspace = if force {
+                None
+            } else {
+                load_or_cache_workspace(&roots)
+            };
+
+            match indexer::index_workspace(&roots, 100_000, prev_workspace.as_deref()) {
+                Ok(result) => match storage::save_workspace(&result.index) {
+                    Ok(cache_path) => {
+                        let key = storage::compute_workspace_hash(&roots);
+                        invalidate_workspace(&key);
+                        Ok(serde_json::to_string_pretty(&json!({
+                            "roots": roots.iter().map(|r| r.path.to_string_lossy()).collect::<Vec<_>>(),
+                            "files": result.index.file_symbols.len(),
+                            "symbols": result.index.symbols.len(),
+                            "duration_ms": result.duration_ms,
+                            "cache": cache_path.to_string_lossy(),
+                        }))
+                        .unwrap_or_default())
+                    }
+                    Err(e) => Err(mcp_error(format!("Save failed: {e}"))),
+                },
+                Err(e) => Err(mcp_error(format!("Workspace index failed: {e}"))),
             }
         }
 

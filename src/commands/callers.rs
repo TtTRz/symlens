@@ -1,17 +1,14 @@
 use crate::cli::CallersArgs;
-use crate::index::storage;
 
 pub fn run_callers(
     args: CallersArgs,
     root_override: Option<&str>,
+    workspace_flag: bool,
     json: bool,
 ) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
-    let graph = index
-        .call_graph
-        .as_ref()
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
+    let graph = provider
+        .call_graph()
         .ok_or_else(|| anyhow::anyhow!("No call graph in index. Re-run `symlens index`."))?;
 
     let callers = graph.callers(&args.name);
@@ -39,14 +36,12 @@ pub fn run_callers(
 pub fn run_callees(
     args: CallersArgs,
     root_override: Option<&str>,
+    workspace_flag: bool,
     json: bool,
 ) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
-    let graph = index
-        .call_graph
-        .as_ref()
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
+    let graph = provider
+        .call_graph()
         .ok_or_else(|| anyhow::anyhow!("No call graph in index. Re-run `symlens index`."))?;
 
     let callees = graph.callees(&args.name);

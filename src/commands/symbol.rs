@@ -1,26 +1,23 @@
 use crate::cli::SymbolArgs;
-use crate::index::storage;
 use crate::model::symbol::SymbolId;
 use crate::output::color;
 
 pub fn run(
     args: SymbolArgs,
     root_override: Option<&str>,
+    workspace_flag: bool,
     json: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
-    let root = crate::commands::resolve_root(root_override)?;
-
-    let index = storage::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No index found. Run `symlens index` first."))?;
+    let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     let id = SymbolId(args.symbol_id.clone());
-    let symbol = index
+    let symbol = provider
         .get(&id)
         .ok_or_else(|| anyhow::anyhow!("Symbol not found: {}", args.symbol_id))?;
 
     let source_text = if args.source {
-        let source_file = root.join(&symbol.file_path);
+        let source_file = provider.resolve_absolute(symbol.id.root_id(), &symbol.file_path);
         if source_file.exists() {
             let content = std::fs::read_to_string(&source_file)?;
             let lines: Vec<&str> = content.lines().collect();

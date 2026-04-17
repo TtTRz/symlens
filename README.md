@@ -22,6 +22,7 @@ cargo install symlens           # install
 symlens index                   # index your project
 symlens search "AudioEngine"    # find symbols
 symlens symbol "Engine::run"    # get just the signature → 60 tokens instead of 4000
+symlens index --workspace       # index multiple projects as a workspace
 ```
 
 SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) and builds an index of every symbol — functions, classes, call graphs, imports. Your AI agent (or you) queries exactly what it needs instead of reading entire files.
@@ -79,6 +80,7 @@ symlens search "process audio"
 symlens symbol "<id>" --source
 symlens outline --project
 symlens refs "Engine"
+symlens search "Engine" --workspace   # cross-project search
 ```
 
 </td><td width="50%">
@@ -122,6 +124,30 @@ symlens init
 
 ---
 
+## 📂 Workspace Mode
+
+Index multiple project roots as a single workspace for cross-project symbol search, call graph traversal, and impact analysis.
+
+```bash
+# Create workspace config
+cat > symlens.workspace.toml << 'EOF'
+[workspace]
+roots = ["../backend", "../frontend", "../shared"]
+EOF
+
+# Index the workspace
+symlens index --workspace
+
+# Cross-project search & call graph
+symlens search "AuthService" --workspace
+symlens callers "process_request" --workspace
+symlens graph impact "UserModel" --workspace
+```
+
+**How it works:** Each root is indexed independently with its own cache, then merged into a unified `WorkspaceIndex`. Symbols are prefixed with `[root_id]` for disambiguation (e.g., `[a1b2c3d4]src/main.rs::App#struct`). Per-root incremental indexing is preserved — only changed roots are re-indexed.
+
+---
+
 ## ⚡ Performance
 
 Benchmarked with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (55 files, 660 symbols):
@@ -156,7 +182,7 @@ symlens mcp
 }
 ```
 
-**10 tools:** `symlens_index` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
+**11 tools:** `symlens_index` · `symlens_index_workspace` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
 
 </details>
 

@@ -18,21 +18,73 @@ impl SymbolId {
         ))
     }
 
+    /// Create a workspace-aware SymbolId with an optional root_id prefix.
+    /// When root_id is empty, falls back to the standard format (backward compatible).
+    /// Workspace format: "[a1b2c3d4]path::Name#kind"
+    /// Single-root format: "path::Name#kind"
+    pub fn new_with_root(
+        root_id: &str,
+        file_path: &str,
+        qualified_name: &str,
+        kind: &SymbolKind,
+    ) -> Self {
+        if root_id.is_empty() {
+            Self::new(file_path, qualified_name, kind)
+        } else {
+            Self(format!(
+                "[{}]{}::{}#{}",
+                root_id,
+                file_path,
+                qualified_name,
+                kind.as_str()
+            ))
+        }
+    }
+
+    /// Returns the root_id portion ("a1b2c3d4") if a "[root_id]" prefix is present,
+    /// otherwise returns "" (single-root mode).
+    pub fn root_id(&self) -> &str {
+        if self.0.starts_with('[') {
+            self.0.find(']').map(|i| &self.0[1..i]).unwrap_or("")
+        } else {
+            ""
+        }
+    }
+
     /// Returns the file path portion (everything before the first "::" delimiter).
+    /// Handles both "[root_id]path::Name#kind" and "path::Name#kind" formats.
     pub fn file(&self) -> &str {
-        self.0.find("::").map(|i| &self.0[..i]).unwrap_or(&self.0)
+        let start = self.content_start();
+        let slice = &self.0[start..];
+        slice.find("::").map(|i| &slice[..i]).unwrap_or(slice)
     }
 
     /// Returns the qualified name portion (between "::" and "#").
+    /// Handles both "[root_id]path::Name#kind" and "path::Name#kind" formats.
     pub fn name(&self) -> &str {
-        let start = self.0.find("::").map(|i| i + 2).unwrap_or(0);
-        let end = self.0.rfind('#').unwrap_or(self.0.len());
-        &self.0[start..end]
+        let start = self.content_start();
+        let slice = &self.0[start..];
+        let name_start = slice.find("::").map(|i| i + 2).unwrap_or(0);
+        let name_end = slice.rfind('#').unwrap_or(slice.len());
+        &slice[name_start..name_end]
     }
 
     /// Returns the kind portion (everything after "#").
+    /// Handles both "[root_id]path::Name#kind" and "path::Name#kind" formats.
     pub fn kind_str(&self) -> &str {
-        self.0.rfind('#').map(|i| &self.0[i + 1..]).unwrap_or("")
+        let start = self.content_start();
+        let slice = &self.0[start..];
+        slice.rfind('#').map(|i| &slice[i + 1..]).unwrap_or("")
+    }
+
+    /// Returns the byte offset where the actual content starts,
+    /// skipping the "[root_id]" prefix if present.
+    fn content_start(&self) -> usize {
+        if self.0.starts_with('[') {
+            self.0.find(']').map(|i| i + 1).unwrap_or(0)
+        } else {
+            0
+        }
     }
 }
 

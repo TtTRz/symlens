@@ -3,10 +3,88 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::symbol::{Symbol, SymbolId, SymbolKind};
+use crate::config::Config;
 use crate::graph::call_graph::CallGraph;
 use crate::parser::traits::{CallEdge, ImportInfo};
 
-/// The in-memory project index — core data structure.
+/// Key for per-file data in workspace mode.
+/// In single-root mode, `root_id` is an empty string — the key behaves like a bare PathBuf.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FileKey {
+    /// Workspace root identifier (empty string for single-root backward compat).
+    /// Derived from blake3(root_path)[..8].
+    pub root_id: String,
+    /// Relative file path from the project root.
+    pub path: PathBuf,
+}
+
+impl FileKey {
+    pub fn new(root_id: &str, path: PathBuf) -> Self {
+        Self {
+            root_id: root_id.to_string(),
+            path,
+        }
+    }
+
+    /// Convert to display string: "[root_id]path" or "path" (when root_id is empty).
+    pub fn display(&self) -> String {
+        if self.root_id.is_empty() {
+            self.path.to_string_lossy().into_owned()
+        } else {
+            format!("[{}]{}", self.root_id, self.path.to_string_lossy())
+        }
+    }
+}
+
+impl fmt::Display for FileKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.display())
+    }
+}
+
+/// Metadata for a workspace root directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RootInfo {
+    /// Absolute path to the project root.
+    pub path: PathBuf,
+    /// Short stable identifier derived from blake3(root_path)[..8].
+    /// Used as a prefix in SymbolId and FileKey to disambiguate across roots.
+    pub id: String,
+    /// Full hash derived from blake3(root_path)[..16].
+    /// Same as ProjectIndex::root_hash — used for per-root cache lookup.
+    pub hash: String,
+    /// Per-root configuration loaded from symlens.toml.
+    #[serde(skip)]
+    pub config: Config,
+}
+
+impl RootInfo {
+    /// Create a RootInfo from an absolute path, computing id and hash via blake3.
+    pub fn new(path: PathBuf) -> Self {
+        let path_str = path.to_string_lossy();
+        let full_hash = blake3::hash(path_str.as_bytes()).to_hex();
+        Self {
+            path,
+            id: full_hash[..8].to_string(),
+            hash: full_hash[..16].to_string(),
+            config: Config::default(),
+        }
+    }
+
+    /// Create a RootInfo with explicit config.
+    pub fn with_config(path: PathBuf, config: Config) -> Self {
+        let path_str = path.to_string_lossy();
+        let full_hash = blake3::hash(path_str.as_bytes()).to_hex();
+        Self {
+            path,
+            id: full_hash[..8].to_string(),
+            hash: full_hash[..16].to_string(),
+            config,
+        }
+    }
+}
+
+use std::fmt;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectIndex {
     /// Project root path
