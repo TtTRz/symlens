@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentTarget {
     ClaudeCode,
+    CodeBuddy,
     OpenClaw,
     Cursor,
 }
@@ -14,6 +15,7 @@ impl AgentTarget {
     fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "claude" | "claudecode" | "claude-code" => Some(Self::ClaudeCode),
+            "codebuddy" | "code-buddy" => Some(Self::CodeBuddy),
             "openclaw" | "claw" => Some(Self::OpenClaw),
             "cursor" => Some(Self::Cursor),
             _ => None,
@@ -21,7 +23,12 @@ impl AgentTarget {
     }
 
     fn all() -> &'static [AgentTarget] {
-        &[Self::ClaudeCode, Self::OpenClaw, Self::Cursor]
+        &[
+            Self::ClaudeCode,
+            Self::CodeBuddy,
+            Self::OpenClaw,
+            Self::Cursor,
+        ]
     }
 }
 
@@ -37,6 +44,9 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
         );
         println!(
             "  claude-code  ./CLAUDE.md                         ~/.claude/skills/symlens/SKILL.md"
+        );
+        println!(
+            "  codebuddy    ./CODEBUDDY.md                      ~/.codebuddy/skills/symlens/SKILL.md"
         );
         println!("  openclaw     ~/.openclaw/skills/symlens/         (same — always user-level)");
         println!("  cursor       ./.cursor/rules/symlens.mdc        ~/.cursor/rules/symlens.mdc");
@@ -71,12 +81,14 @@ pub fn run(args: SetupArgs, root_override: Option<&str>) -> anyhow::Result<()> {
         if args.uninstall {
             match target {
                 AgentTarget::ClaudeCode => uninstall_claude_code(&root, global)?,
+                AgentTarget::CodeBuddy => uninstall_codebuddy(&root, global)?,
                 AgentTarget::OpenClaw => uninstall_openclaw()?,
                 AgentTarget::Cursor => uninstall_cursor(&root, global)?,
             }
         } else {
             match target {
                 AgentTarget::ClaudeCode => setup_claude_code(&root, global, force)?,
+                AgentTarget::CodeBuddy => setup_codebuddy(&root, global, force)?,
                 AgentTarget::OpenClaw => setup_openclaw(force)?,
                 AgentTarget::Cursor => setup_cursor(&root, global, force)?,
             }
@@ -233,6 +245,131 @@ fn unregister_claude_md(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+// ─── CodeBuddy ───────────────────────────────────────────────────────
+//   project: ./CODEBUDDY.md
+//   global:  ~/.codebuddy/CODEBUDDY.md
+
+fn setup_codebuddy(root: &Path, global: bool, force: bool) -> anyhow::Result<()> {
+    if global {
+        // Global: write as a skill → ~/.codebuddy/skills/symlens/SKILL.md
+        let home = home_dir()?;
+        let skill_dir = home.join(".codebuddy").join("skills").join("symlens");
+        fs::create_dir_all(&skill_dir)?;
+
+        let target = skill_dir.join("SKILL.md");
+        let content = claude_code_skill();
+        write_file(&target, &content, force)?;
+        println!("  ✓ CodeBuddy (global skill): wrote {}", target.display());
+
+        // Register in ~/.codebuddy/CODEBUDDY.md so the agent knows when to use it
+        let codebuddy_md = home.join(".codebuddy").join("CODEBUDDY.md");
+        register_codebuddy_agents(&codebuddy_md)?;
+
+        println!("    Use /symlens in CodeBuddy to activate");
+    } else {
+        let target = root.join("CODEBUDDY.md");
+        if target.exists() && !force {
+            let content = fs::read_to_string(&target)?;
+            if content.contains("symlens") {
+                println!(
+                    "  ✓ CodeBuddy (project): already contains symlens instructions (use --force to overwrite)"
+                );
+                return Ok(());
+            }
+            let section = claude_code_section();
+            let mut new_content = content;
+            if !new_content.ends_with('\n') {
+                new_content.push('\n');
+            }
+            new_content.push('\n');
+            new_content.push_str(&section);
+            fs::write(&target, new_content)?;
+            println!(
+                "  ✓ CodeBuddy (project): appended symlens section to {}",
+                target.display()
+            );
+            return Ok(());
+        }
+
+        let content = claude_code_section();
+        write_file(&target, &content, force)?;
+        println!("  ✓ CodeBuddy (project): wrote {}", target.display());
+    }
+    Ok(())
+}
+
+/// Append the symlens registration block to ~/.codebuddy/CODEBUDDY.md
+fn register_codebuddy_agents(path: &Path) -> anyhow::Result<()> {
+    if path.exists() {
+        let content = fs::read_to_string(path)?;
+        if content.contains("# symlens") {
+            println!("  ✓ CodeBuddy (CODEBUDDY.md): already contains symlens registration");
+            return Ok(());
+        }
+        let mut new_content = content;
+        if !new_content.ends_with('\n') {
+            new_content.push('\n');
+        }
+        new_content.push('\n');
+        new_content.push_str(&claude_code_register());
+        fs::write(path, new_content)?;
+    } else {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, claude_code_register())?;
+    }
+    println!(
+        "  ✓ CodeBuddy (CODEBUDDY.md): registered symlens at {}",
+        path.display()
+    );
+    Ok(())
+}
+
+/// Remove the symlens registration block from ~/.codebuddy/CODEBUDDY.md
+fn unregister_codebuddy_agents(path: &Path) -> anyhow::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path)?;
+    let section_start = "# symlens";
+    let Some(start_idx) = content.find(section_start) else {
+        return Ok(());
+    };
+
+    let after_section = &content[start_idx + section_start.len()..];
+    let end_offset = after_section
+        .find("\n# ")
+        .map(|i| start_idx + section_start.len() + i)
+        .unwrap_or(content.len());
+
+    let mut new_content = String::new();
+    new_content.push_str(content[..start_idx].trim_end());
+    let remainder = &content[end_offset..];
+    if !remainder.is_empty() {
+        new_content.push_str("\n\n");
+        new_content.push_str(remainder.trim_start());
+    }
+    if !new_content.is_empty() && !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+
+    if new_content.trim().is_empty() {
+        fs::remove_file(path)?;
+        println!(
+            "  ✓ CodeBuddy (CODEBUDDY.md): removed empty {}",
+            path.display()
+        );
+    } else {
+        fs::write(path, new_content)?;
+        println!(
+            "  ✓ CodeBuddy (CODEBUDDY.md): removed symlens registration from {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 // ─── OpenClaw ────────────────────────────────────────────────────────
 //   always user-level: ~/.openclaw/skills/symlens/SKILL.md
 
@@ -361,6 +498,67 @@ fn uninstall_claude_code(root: &Path, global: bool) -> anyhow::Result<()> {
             }
         } else {
             println!("  - Claude Code (project): CLAUDE.md not found");
+        }
+    }
+    Ok(())
+}
+
+fn uninstall_codebuddy(root: &Path, global: bool) -> anyhow::Result<()> {
+    if global {
+        let home = home_dir()?;
+        let skill_dir = home.join(".codebuddy").join("skills").join("symlens");
+        if skill_dir.exists() {
+            fs::remove_dir_all(&skill_dir)?;
+            println!(
+                "  ✓ CodeBuddy (global skill): removed {}",
+                skill_dir.display()
+            );
+        } else {
+            println!("  - CodeBuddy (global skill): not installed");
+        }
+
+        // Also remove registration from ~/.codebuddy/CODEBUDDY.md
+        let codebuddy_md = home.join(".codebuddy").join("CODEBUDDY.md");
+        unregister_codebuddy_agents(&codebuddy_md)?;
+    } else {
+        let target = root.join("CODEBUDDY.md");
+        if target.exists() {
+            let content = fs::read_to_string(&target)?;
+            if content.contains("## Code Navigation (SymLens)") {
+                let section_start = "## Code Navigation (SymLens)";
+                if let Some(start_idx) = content.find(section_start) {
+                    let after_section = &content[start_idx + section_start.len()..];
+                    let end_offset = after_section
+                        .find("\n## ")
+                        .map(|i| start_idx + section_start.len() + i)
+                        .unwrap_or(content.len());
+                    let mut new_content = String::new();
+                    new_content.push_str(content[..start_idx].trim_end());
+                    let remainder = &content[end_offset..];
+                    if !remainder.is_empty() {
+                        new_content.push_str("\n\n");
+                        new_content.push_str(remainder.trim_start());
+                    }
+                    new_content.push('\n');
+                    if new_content.trim().is_empty() {
+                        fs::remove_file(&target)?;
+                        println!(
+                            "  ✓ CodeBuddy (project): removed empty {}",
+                            target.display()
+                        );
+                    } else {
+                        fs::write(&target, new_content)?;
+                        println!(
+                            "  ✓ CodeBuddy (project): removed symlens section from {}",
+                            target.display()
+                        );
+                    }
+                }
+            } else {
+                println!("  - CodeBuddy (project): no symlens section found in CODEBUDDY.md");
+            }
+        } else {
+            println!("  - CodeBuddy (project): CODEBUDDY.md not found");
         }
     }
     Ok(())
