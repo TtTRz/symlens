@@ -195,18 +195,22 @@ symlens mcp
 ```bash
 # 项目级（写入项目配置）
 symlens setup claude-code                    # → ./CLAUDE.md
+symlens setup codebuddy                      # → ./CODEBUDDY.md
 symlens setup cursor                         # → .cursor/rules/symlens.mdc
 symlens setup openclaw                       # → ~/.openclaw/skills/symlens/SKILL.md
 symlens setup --all                          # 一键全部安装
 
 # 全局级（所有项目可用）
 symlens setup claude-code --global           # → ~/.claude/skills/symlens/SKILL.md（用 /symlens 激活）
+symlens setup codebuddy --global             # → ~/.codebuddy/skills/symlens/SKILL.md + ~/.codebuddy/CODEBUDDY.md 注册
 symlens setup cursor --global                # → ~/.cursor/rules/symlens.mdc
 symlens setup --all --global                 # 所有 agent，用户级
 
 # 卸载
 symlens setup --uninstall claude-code        # 移除项目级
+symlens setup --uninstall codebuddy          # 移除项目级
 symlens setup --uninstall claude-code --global  # 移除全局 skill
+symlens setup --uninstall codebuddy --global    # 移除全局 skill + 注册
 ```
 
 ---

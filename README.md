@@ -195,18 +195,22 @@ One command to teach your AI agent to use SymLens:
 ```bash
 # Project-level (writes to project config)
 symlens setup claude-code                    # → ./CLAUDE.md
+symlens setup codebuddy                      # → ./CODEBUDDY.md
 symlens setup cursor                         # → .cursor/rules/symlens.mdc
 symlens setup openclaw                       # → ~/.openclaw/skills/symlens/SKILL.md
 symlens setup --all                          # all agents at once
 
 # Global-level (available in all projects)
 symlens setup claude-code --global           # → ~/.claude/skills/symlens/SKILL.md (use /symlens to activate)
+symlens setup codebuddy --global             # → ~/.codebuddy/skills/symlens/SKILL.md + ~/.codebuddy/CODEBUDDY.md registration
 symlens setup cursor --global                # → ~/.cursor/rules/symlens.mdc
 symlens setup --all --global                 # all agents, user-level
 
 # Uninstall
 symlens setup --uninstall claude-code        # remove project-level
+symlens setup --uninstall codebuddy          # remove project-level
 symlens setup --uninstall claude-code --global  # remove global skill
+symlens setup --uninstall codebuddy --global    # remove global skill + registration
 ```
 
 ---
