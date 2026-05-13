@@ -52,7 +52,7 @@ Use grep/cat when the target is **not** a code symbol in a supported language:
 
 - **Non-code files**: `.md`, `.toml`, `.yml`, `.json`, `.env`, logs, configs
 - **String literals / comments / magic numbers**: symlens only indexes symbols (functions, types, methods)
-- **Unsupported languages**: anything outside the 9 languages listed above
+- **Unsupported languages**: anything outside the 10 languages listed above
 - **Regex pattern matching**: arbitrary text patterns across file contents
 
 > **Decision rule**: Is the target a symbol (function/struct/trait/class/method) in a supported language?
@@ -60,4 +60,4 @@ Use grep/cat when the target is **not** a code symbol in a supported language:
 
 ## Supported Languages
 
-Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin — full support for symbols, calls, refs, and imports.
+Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin · Vue — full support for symbols, calls, refs, and imports.

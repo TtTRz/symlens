@@ -18,7 +18,7 @@ SymLens indexes codebases with tree-sitter and provides token-efficient access t
 
 - **Non-code files**: `.md`, `.toml`, `.yml`, `.json`, `.env`, logs, configs
 - **String literals / comments / magic numbers**: symlens only indexes symbols, not string content
-- **Unsupported languages**: anything outside Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin
+- **Unsupported languages**: anything outside Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin, Vue
 - **Regex pattern matching**: when you need arbitrary text patterns, not symbol names
 - **Config/data files**: no AST structure to parse
 
@@ -62,4 +62,4 @@ symlens --daemon search "query"           # Query via daemon (1.5× faster)
 
 ## Supported Languages
 
-Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin — full support for symbols, calls, refs, and imports.
+Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin · Vue — full support for symbols, calls, refs, and imports.

@@ -19,7 +19,7 @@ This project has `symlens` installed for token-efficient code intelligence.
 
 - Searching **non-code files** (`.md`, `.toml`, `.yml`, `.json`, `.env`, logs)
 - Searching **string literals, comments, or magic numbers** inside code
-- Working with **unsupported languages** (symlens supports: Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin)
+- Working with **unsupported languages** (symlens supports: Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin, Vue)
 - Need **regex pattern matching** across file contents (not symbol names)
 - Reading **config/data files** that have no symbols to parse
 

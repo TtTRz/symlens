@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/crates/l/symlens)](https://github.com/TtTRz/symlens/blob/main/LICENSE)
 [![Downloads](https://img.shields.io/crates/d/symlens)](https://crates.io/crates/symlens)
 [![Rust](https://img.shields.io/badge/rust-1.92%2B-orange)](https://www.rust-lang.org)
-[![Languages](https://img.shields.io/badge/languages-9-blue)](#-能做什么)
+[![Languages](https://img.shields.io/badge/languages-10-blue)](#-能做什么)
 
 中文 | [English](./README.md)
 
@@ -28,7 +28,7 @@ symlens search "AudioEngien"    # 模糊搜索 — 容错拼写
 
 SymLens 用 [tree-sitter](https://tree-sitter.github.io/) 解析代码库，建立全量符号索引——函数、类、调用图、import 关系。AI 代理（或你自己）按需精准查询，不再读整个文件。
 
-> **9 种语言：** Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin
+> **10 种语言：** Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin · Vue
 
 ---
 

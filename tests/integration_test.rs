@@ -1732,6 +1732,7 @@ mod wasm_api_tests {
             "test.c",
             "test.cpp",
             "test.kt",
+            "test.vue",
         ];
         for file in &test_files {
             assert!(
@@ -3768,5 +3769,190 @@ mod mcp_parity_tests {
         let fk = symlens::model::project::FileKey::new("", PathBuf::from("nonexistent.rs"));
         let syms = provider.symbols_in_file(&fk);
         assert!(syms.is_empty());
+    }
+}
+
+// ─── Vue parser tests ─────────────────────────────────────────────────
+
+mod vue_tests {
+    use super::*;
+
+    fn parse_vue_fixture() -> Vec<symlens::model::symbol::Symbol> {
+        let parser = symlens::parser::vue::VueParser;
+        let source = include_bytes!("fixtures/sample.vue");
+        symlens::parser::traits::LanguageParser::extract_symbols(
+            &parser,
+            source,
+            Path::new("sample.vue"),
+        )
+        .expect("Failed to parse Vue fixture")
+    }
+
+    #[test]
+    fn vue_extracts_interface() {
+        let symbols = parse_vue_fixture();
+        let interfaces: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Interface)
+            .collect();
+        assert!(
+            interfaces.iter().any(|s| s.name == "User"),
+            "Should find User interface, got: {:?}",
+            interfaces.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn vue_extracts_type_alias() {
+        let symbols = parse_vue_fixture();
+        let types: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::TypeAlias)
+            .collect();
+        assert!(
+            types.iter().any(|s| s.name == "Status"),
+            "Should find Status type alias, got: {:?}",
+            types.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn vue_extracts_enum() {
+        let symbols = parse_vue_fixture();
+        let enums: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Enum)
+            .collect();
+        assert!(
+            enums.iter().any(|s| s.name == "Color"),
+            "Should find Color enum (from <script setup>), got: {:?}",
+            enums.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn vue_extracts_function() {
+        let symbols = parse_vue_fixture();
+        let fns: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == symlens::model::symbol::SymbolKind::Function)
+            .collect();
+        assert!(
+            fns.iter().any(|s| s.name == "setupIncrement"),
+            "Should find setupIncrement function (from <script setup>), got: {:?}",
+            fns.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn vue_line_numbers_offset() {
+        let symbols = parse_vue_fixture();
+        // setupIncrement is in the <script setup> block, which starts
+        // after the first <script> block and </template>.
+        // Its line should be well beyond line 7 (it's in the second script block).
+        let setup_inc = symbols.iter().find(|s| s.name == "setupIncrement");
+        assert!(setup_inc.is_some(), "Should find setupIncrement function");
+        let sym = setup_inc.unwrap();
+        // <script setup> starts around line 30+ in the .vue file
+        assert!(
+            sym.span.start_line > 25,
+            "setupIncrement should be at a line > 25 in the .vue file, got L{}",
+            sym.span.start_line
+        );
+    }
+
+    #[test]
+    fn vue_extracts_imports() {
+        let parser = symlens::parser::vue::VueParser;
+        let source = include_bytes!("fixtures/sample.vue");
+        let imports = symlens::parser::traits::LanguageParser::extract_imports(
+            &parser,
+            source,
+            Path::new("sample.vue"),
+        )
+        .expect("Failed to extract Vue imports");
+        assert!(!imports.is_empty(), "Should find imports in .vue file");
+        let all_names: Vec<_> = imports.iter().flat_map(|i| &i.names).collect();
+        assert!(
+            all_names.iter().any(|n| n.contains("ref")),
+            "Should import ref, got: {:?}",
+            imports
+        );
+    }
+
+    #[test]
+    fn vue_extracts_calls() {
+        let parser = symlens::parser::vue::VueParser;
+        let source = include_bytes!("fixtures/sample.vue");
+        let calls = symlens::parser::traits::LanguageParser::extract_calls(
+            &parser,
+            source,
+            Path::new("sample.vue"),
+        )
+        .expect("Failed to extract Vue calls");
+        // increment calls count.value++ (not a call), but computed() is called
+        assert!(
+            calls.iter().any(|(_, callee)| callee == "computed"),
+            "Should find call to computed, got: {:?}",
+            calls
+        );
+    }
+
+    #[test]
+    fn vue_handles_no_script() {
+        let parser = symlens::parser::vue::VueParser;
+        let source = b"<template><div>Hello</div></template><style>div { color: red; }</style>";
+        let symbols = parser
+            .extract_symbols(source, Path::new("test.vue"))
+            .expect("Should not crash on .vue with no <script>");
+        assert!(symbols.is_empty(), "Should have no symbols without <script>");
+    }
+
+    #[test]
+    fn vue_multiple_script_blocks() {
+        let parser = symlens::parser::vue::VueParser;
+        let source = br#"<script lang="ts">
+function foo(): void {}
+</script>
+<script setup lang="ts">
+function bar(): void {}
+</script>"#;
+        let symbols = parser
+            .extract_symbols(source, Path::new("test.vue"))
+            .expect("Should parse multiple script blocks");
+        let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(
+            names.contains(&"foo"),
+            "Should find foo from <script>, got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"bar"),
+            "Should find bar from <script setup>, got: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn vue_find_identifiers() {
+        let parser = symlens::parser::vue::VueParser;
+        let source = include_bytes!("fixtures/sample.vue");
+        let refs = symlens::parser::traits::LanguageParser::find_identifiers(
+            &parser,
+            source,
+            "setupIncrement",
+        )
+        .expect("Failed to find Vue identifiers");
+        assert!(
+            refs.len() >= 1,
+            "Should find at least 1 ref to 'setupIncrement', got {}",
+            refs.len()
+        );
+        // Line numbers should be offset to .vue file positions
+        assert!(
+            refs.iter().all(|r| r.line > 25),
+            "All refs should be at lines > 25 (inside <script setup> block), got: {:?}",
+            refs.iter().map(|r| r.line).collect::<Vec<_>>()
+        );
     }
 }

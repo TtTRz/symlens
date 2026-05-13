@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/crates/l/symlens)](https://github.com/TtTRz/symlens/blob/main/LICENSE)
 [![Downloads](https://img.shields.io/crates/d/symlens)](https://crates.io/crates/symlens)
 [![Rust](https://img.shields.io/badge/rust-1.92%2B-orange)](https://www.rust-lang.org)
-[![Languages](https://img.shields.io/badge/languages-9-blue)](#-what-can-it-do)
+[![Languages](https://img.shields.io/badge/languages-10-blue)](#-what-can-it-do)
 
 [中文](./README_CN.md) | English
 
@@ -28,7 +28,7 @@ symlens search "AudioEngien"    # fuzzy search — handles typos
 
 SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) and builds an index of every symbol — functions, classes, call graphs, imports. Your AI agent (or you) queries exactly what it needs instead of reading entire files.
 
-> **9 languages:** Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin
+> **10 languages:** Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin · Vue
 
 ---
 

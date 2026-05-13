@@ -11,3 +11,4 @@ pub mod rust;
 pub mod swift;
 pub mod traits;
 pub mod typescript;
+pub mod vue;

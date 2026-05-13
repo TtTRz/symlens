@@ -57,7 +57,7 @@ pub fn default_toml() -> &'static str {
 # ignore = ["vendor/**", "node_modules/**", "*.generated.go"]
 
 # Restrict indexing to specific languages (default: all supported)
-# Supported: rust, typescript, python, swift, go, dart, c, cpp, kotlin
+# Supported: rust, typescript, python, swift, go, dart, c, cpp, kotlin, vue
 # languages = ["rust", "typescript"]
 "#
 }
