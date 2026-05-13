@@ -180,10 +180,7 @@ fn extract_script_blocks(source: &[u8]) -> Vec<ScriptBlock> {
         // If content_start is at line N (1-indexed) in the .vue file,
         // then the first line of the extracted script is .vue line N,
         // and offset = N - 1.
-        let line_offset = text[..content_start]
-            .chars()
-            .filter(|&c| c == '\n')
-            .count() as u32;
+        let line_offset = text[..content_start].chars().filter(|&c| c == '\n').count() as u32;
 
         blocks.push(ScriptBlock {
             content,

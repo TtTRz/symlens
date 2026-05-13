@@ -3905,7 +3905,10 @@ mod vue_tests {
         let symbols = parser
             .extract_symbols(source, Path::new("test.vue"))
             .expect("Should not crash on .vue with no <script>");
-        assert!(symbols.is_empty(), "Should have no symbols without <script>");
+        assert!(
+            symbols.is_empty(),
+            "Should have no symbols without <script>"
+        );
     }
 
     #[test]
