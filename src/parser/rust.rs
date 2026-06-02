@@ -2,7 +2,7 @@ use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
-use super::helpers::{node_span, node_text, node_text_first_line, parse_source};
+use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
 
 pub struct RustParser;
 
@@ -598,7 +598,7 @@ fn collect_identifiers(
     }
 
     if (node.kind() == "identifier" || node.kind() == "type_identifier")
-        && node_text(node, source).as_deref() == Some(target_name)
+        && node_text_eq(node, source, target_name)
     {
         let line = node.start_position().row as u32 + 1;
         let context = lines

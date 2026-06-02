@@ -21,6 +21,11 @@ pub fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
     node.utf8_text(source).ok().map(|s| s.to_string())
 }
 
+/// Compare a node's text against a target string without allocating.
+pub fn node_text_eq(node: tree_sitter::Node, source: &[u8], target: &str) -> bool {
+    node.utf8_text(source).map_or(false, |s| s == target)
+}
+
 /// Convert a tree-sitter node position to a 1-indexed source Span.
 pub fn node_span(node: tree_sitter::Node) -> Span {
     let start = node.start_position();

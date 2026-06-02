@@ -5,6 +5,30 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-06-02
+
+### Fixed
+
+- **UTF-8 panic in diff/outline**: `&sig[..N]` byte-level slicing could panic on multi-byte characters — replaced with `char_indices()`-based safe truncation (`truncate_str`)
+- **TypeScript grammar for `.jsx`**: `.jsx` files now use TSX grammar instead of plain TypeScript grammar, producing correct AST nodes for JSX syntax
+- **`.mts`/`.cts` support**: TypeScript parser and language registry now recognize `.mts` and `.cts` extensions; `detect_language()` maps them to `"typescript"`
+- **`outline --file` in workspace mode**: hardcoded empty `root_id` caused silent failure in workspace mode — now resolves the correct `root_id` by searching the workspace index
+
+### Changed
+
+- **Zero-allocation identifier comparison**: added `node_text_eq()` to avoid heap allocation on every identifier match in `collect_*_ids` across all 9 parsers
+- **Incremental index clone reduction**: eliminated double-clone of `call_edges` and `imports` in `copy_prev_data` and the full-parse path; removed redundant `FileResult` fields (`call_edges`, `imports`)
+- **Tantivy index reuse**: `save()`/`save_workspace()` now opens the existing tantivy index instead of destroying and recreating the filesystem directory; `index_symbols()` already clears and re-adds documents
+- **Tokenizer optimizations**: eliminated `chars().collect::<Vec<char>>()` allocation and double lowercase conversion (`build lowercase → .to_lowercase()` → single pass); added single-char token filter to reduce index noise
+- **CallGraph partial-match acceleration**: added `short_name_idx` HashMap (short name → node indices) for O(1) short-name lookups instead of O(N) linear scan; `callers_partial`/`callees_partial` use fast path with fallback
+- **Color output zero-alloc**: `color.rs` functions return `Cow<'_, str>` instead of `String` — `Cow::Borrowed` when color is off, zero heap allocation
+- **Workspace hash**: `compute_workspace_hash` uses `blake3::Hasher::update()` loop instead of intermediate `String` concatenation
+- **Model dedup**: `kind_priority()` and `detect_language()` extracted from `project.rs`/`workspace.rs` into shared `model/mod.rs`
+
+### Testing
+
+- **156 tests** passing (unchanged count; all existing tests pass with the refactored code)
+
 ## [0.8.0] - 2026-04-17
 
 ### Added

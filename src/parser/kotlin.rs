@@ -1,4 +1,4 @@
-use super::helpers::{node_span, node_text, node_text_first_line, parse_source};
+use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
@@ -391,7 +391,7 @@ fn collect_kotlin_ids(
         _ => {}
     }
 
-    if node.kind() == "identifier" && node_text(node, source).as_deref() == Some(target) {
+    if node.kind() == "identifier" && node_text_eq(node, source, target) {
         let line = node.start_position().row as u32 + 1;
         let context = lines
             .get(line as usize - 1)

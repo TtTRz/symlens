@@ -27,12 +27,13 @@ pub fn save(index: &ProjectIndex) -> anyhow::Result<PathBuf> {
     fs::write(&tmp_index, encoded)?;
     fs::rename(&tmp_index, &index_path)?;
 
-    // Build tantivy search index
+    // Reuse existing tantivy index if available (index_symbols clears + re-adds)
     let search_dir = dir.join(SEARCH_DIR);
-    if search_dir.exists() {
-        fs::remove_dir_all(&search_dir)?;
-    }
-    let engine = SearchEngine::create(&search_dir)?;
+    let engine = if search_dir.exists() {
+        SearchEngine::open(&search_dir).or_else(|_| SearchEngine::create(&search_dir))?
+    } else {
+        SearchEngine::create(&search_dir)?
+    };
     let symbols: Vec<&_> = index.symbols.values().collect();
     engine.index_symbols(&symbols)?;
 
@@ -127,8 +128,11 @@ pub fn workspace_cache_dir(workspace_hash: &str) -> PathBuf {
 pub fn compute_workspace_hash(roots: &[RootInfo]) -> String {
     let mut hashes: Vec<&str> = roots.iter().map(|r| r.hash.as_str()).collect();
     hashes.sort();
-    let concatenated: String = hashes.join("");
-    blake3::hash(concatenated.as_bytes()).to_hex()[..16].to_string()
+    let mut hasher = blake3::Hasher::new();
+    for h in &hashes {
+        hasher.update(h.as_bytes());
+    }
+    hasher.finalize().to_hex()[..16].to_string()
 }
 
 /// Save a workspace index to disk, including tantivy search index.
@@ -144,12 +148,13 @@ pub fn save_workspace(index: &WorkspaceIndex) -> anyhow::Result<PathBuf> {
     fs::write(&tmp_index, encoded)?;
     fs::rename(&tmp_index, &index_path)?;
 
-    // Build tantivy search index
+    // Reuse existing tantivy index if available
     let search_dir = dir.join(SEARCH_DIR);
-    if search_dir.exists() {
-        fs::remove_dir_all(&search_dir)?;
-    }
-    let engine = SearchEngine::create(&search_dir)?;
+    let engine = if search_dir.exists() {
+        SearchEngine::open(&search_dir).or_else(|_| SearchEngine::create(&search_dir))?
+    } else {
+        SearchEngine::create(&search_dir)?
+    };
     let symbols: Vec<&_> = index.symbols.values().collect();
     engine.index_symbols(&symbols)?;
 

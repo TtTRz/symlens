@@ -1,4 +1,4 @@
-use super::helpers::{node_span, node_text, parse_source};
+use super::helpers::{node_span, node_text, node_text_eq, parse_source};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
@@ -328,7 +328,7 @@ fn collect_swift_ids(
         _ => {}
     }
 
-    if node.kind() == "simple_identifier" && node_text(node, source).as_deref() == Some(target) {
+    if node.kind() == "simple_identifier" && node_text_eq(node, source, target) {
         let line = node.start_position().row as u32 + 1;
         let context = lines
             .get(line as usize - 1)

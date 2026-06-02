@@ -2,7 +2,7 @@ use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
 
-use super::helpers::{node_span, node_text, parse_source};
+use super::helpers::{node_span, node_text, node_text_eq, parse_source};
 
 pub struct PythonParser;
 
@@ -242,7 +242,7 @@ fn collect_py_identifiers(
         _ => {}
     }
 
-    if node.kind() == "identifier" && node_text(node, source).as_deref() == Some(target_name) {
+    if node.kind() == "identifier" && node_text_eq(node, source, target_name) {
         let line = node.start_position().row as u32 + 1;
         let context = lines
             .get(line as usize - 1)

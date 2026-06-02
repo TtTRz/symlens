@@ -33,8 +33,12 @@ pub fn run(
             );
         } else if let Some(ref file) = args.file {
             let file_path = PathBuf::from(file);
-            let file_key = FileKey::new("", file_path);
-            let symbols = provider.symbols_in_file(&file_key);
+            let file_key = resolve_file_key(&provider, &file_path);
+            let symbols = if let Some(ref fk) = file_key {
+                provider.symbols_in_file(fk)
+            } else {
+                Vec::new()
+            };
             let items: Vec<serde_json::Value> = symbols
                 .iter()
                 .map(|s| {
@@ -56,8 +60,12 @@ pub fn run(
         print_project_outline(&provider, args.depth, args.summary, color_on)?;
     } else if let Some(ref file) = args.file {
         let file_path = PathBuf::from(file);
-        let file_key = FileKey::new("", file_path);
-        print_file_outline(&provider, &file_key, color_on)?;
+        let file_key = resolve_file_key(&provider, &file_path);
+        if let Some(ref fk) = file_key {
+            print_file_outline(&provider, fk, color_on)?;
+        } else {
+            println!("No symbols found in {}", file_path.display());
+        }
     }
 
     Ok(())
@@ -222,7 +230,7 @@ fn print_project_outline(
 fn print_symbol_line(prefix: &str, sym: &Symbol, color_on: bool) {
     let sig_or_name = sym.signature.as_deref().unwrap_or(&sym.name);
     let display = if sig_or_name.len() > 80 {
-        format!("{}...", &sig_or_name[..77])
+        format!("{}...", color::truncate_str(sig_or_name, 77))
     } else {
         sig_or_name.to_string()
     };
@@ -234,4 +242,21 @@ fn print_symbol_line(prefix: &str, sym: &Symbol, color_on: bool) {
         color::cyan(&format!("({})", sym.kind), color_on),
         color::dim(&format!("[L{}]", sym.span.start_line), color_on),
     );
+}
+
+/// Resolve a file path to the correct FileKey.
+/// In single-root mode, root_id is empty.
+/// In workspace mode, searches all file keys for a matching path.
+fn resolve_file_key(
+    provider: &crate::commands::IndexProvider,
+    file_path: &std::path::Path,
+) -> Option<FileKey> {
+    if !provider.is_workspace() {
+        Some(FileKey::new("", file_path.to_path_buf()))
+    } else {
+        provider
+            .file_keys()
+            .into_iter()
+            .find(|fk| fk.path == file_path)
+    }
 }

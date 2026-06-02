@@ -59,7 +59,7 @@ impl LanguageRegistry {
         let ext = path.extension()?.to_str()?;
         let idx = match ext {
             "rs" => 0,
-            "ts" | "tsx" | "js" | "jsx" => 1,
+            "ts" | "tsx" | "js" | "jsx" | "mts" | "cts" => 1,
             "py" => 2,
             "swift" => 3,
             "go" => 4,

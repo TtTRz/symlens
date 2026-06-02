@@ -64,7 +64,8 @@ pub fn run(
         println!("{}", crate::output::json::format_symbols(&results));
     } else {
         for (sym, _score) in &results {
-            let kind_str = color::cyan(&format!("({})", sym.kind), color_on);
+            let kind_fmt = format!("({})", sym.kind);
+            let kind_str = color::cyan(&kind_fmt, color_on);
             println!(
                 "{} {} {}",
                 color::bold(&sym.id.0, color_on),

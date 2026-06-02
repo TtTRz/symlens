@@ -95,15 +95,22 @@ fn reconstruct_bidir(
     forward_path
 }
 
-fn find_node(graph: &CallGraph, partial: &str) -> Option<String> {
+/// Find all candidate nodes matching a partial name.
+/// Returns multiple candidates to avoid picking the wrong node when
+/// a partial name matches several qualified symbols.
+pub fn find_nodes(graph: &CallGraph, partial: &str) -> Vec<String> {
     // Exact match first
-    if graph.nodes.contains(&partial.to_string()) {
-        return Some(partial.to_string());
+    if let Some(idx) = graph.exact_index(partial) {
+        return vec![graph.nodes[idx].clone()];
     }
-    // Partial match (ends with)
-    graph
-        .nodes
-        .iter()
-        .find(|n| n.ends_with(partial) || n.contains(partial))
-        .cloned()
+    // Use short-name index for fast partial match
+    let indices = graph.find_nodes_partial(partial);
+    if indices.is_empty() {
+        return vec![];
+    }
+    indices.iter().map(|&i| graph.nodes[i].clone()).collect()
+}
+
+fn find_node(graph: &CallGraph, partial: &str) -> Option<String> {
+    find_nodes(graph, partial).into_iter().next()
 }

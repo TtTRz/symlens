@@ -4,6 +4,7 @@ use crate::output::color;
 use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::RefKind;
 use rayon::prelude::*;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -164,14 +165,14 @@ pub fn run(
     }
 
     for (file, r) in &all_refs {
-        let kind_tag = match r.kind {
+        let kind_tag: Cow<'_, str> = match r.kind {
             RefKind::Call => color::yellow("[call]", color_on),
             RefKind::TypeRef => color::cyan("[type]", color_on),
             RefKind::Import => color::green("[import]", color_on),
-            RefKind::FieldAccess => "[field]".to_string(),
+            RefKind::FieldAccess => Cow::Borrowed("[field]"),
             RefKind::Constructor => color::yellow("[ctor]", color_on),
-            RefKind::Definition => "[def]".to_string(),
-            RefKind::Unknown => String::new(),
+            RefKind::Definition => Cow::Borrowed("[def]"),
+            RefKind::Unknown => Cow::Borrowed(""),
         };
         println!(
             "  {}:{:<6} {:<50} {}",

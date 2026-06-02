@@ -273,15 +273,15 @@ pub fn run(
         let syms = by_file.get(file).unwrap();
         println!("{} ({} changes)", color::bold(file, color_on), syms.len());
         for sym in syms {
-            let (marker, marker_fn): (&str, fn(&str, bool) -> String) = match sym.change_kind {
-                ChangeKind::Added => ("+", color::green),
-                ChangeKind::Modified => ("~", color::yellow),
-                ChangeKind::Deleted => ("-", color::red),
+            let marker_colored = match sym.change_kind {
+                ChangeKind::Added => color::green("+", color_on),
+                ChangeKind::Modified => color::yellow("~", color_on),
+                ChangeKind::Deleted => color::red("-", color_on),
             };
 
             let sig = sym.signature.as_deref().unwrap_or(&sym.name);
             let sig_display = if sig.len() > 70 {
-                format!("{}...", &sig[..67])
+                format!("{}...", color::truncate_str(sig, 67))
             } else {
                 sig.to_string()
             };
@@ -289,13 +289,13 @@ pub fn run(
             if sym.span_start > 0 {
                 println!(
                     "  {} {} {} {}",
-                    marker_fn(marker, color_on),
+                    marker_colored,
                     sig_display,
                     color::cyan(&format!("({})", sym.kind), color_on),
                     color::dim(&format!("[L{}-{}]", sym.span_start, sym.span_end), color_on),
                 );
             } else {
-                println!("  {} {}", marker_fn(marker, color_on), sig_display);
+                println!("  {} {}", marker_colored, sig_display);
             }
         }
         println!();

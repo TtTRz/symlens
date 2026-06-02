@@ -70,64 +70,71 @@ fn tokenize_code(text: &str) -> Vec<(String, usize, usize)> {
         search_from = word_start + word.len();
     }
 
+    // Filter single-char tokens to reduce index noise
+    tokens.retain(|(t, _, _)| t.len() >= 2);
     tokens
 }
 
 fn split_identifier(word: &str, base_offset: usize, tokens: &mut Vec<(String, usize, usize)>) {
-    let chars: Vec<char> = word.chars().collect();
-    if chars.is_empty() {
+    let mut chars = word.chars().peekable();
+    if chars.peek().is_none() {
         return;
     }
 
-    let mut current_start = 0;
+    let mut current_start: usize = 0;
+    let mut char_pos: usize = 0;
     let mut current = String::new();
+    let mut prev_was_upper = false;
 
-    for (i, &ch) in chars.iter().enumerate() {
+    // Helper: flush current token if non-empty.
+    let flush = |current: &mut String, start: usize, end: usize, tokens: &mut Vec<(String, usize, usize)>| {
+        if !current.is_empty() {
+            tokens.push((std::mem::take(current), start, end));
+        }
+    };
+
+    while let Some(ch) = chars.next() {
         if ch == '_' || ch == '-' || ch == '.' || ch == '/' || ch == ':' {
-            // Separator — flush current token
             if !current.is_empty() {
                 let start = base_offset + current_start;
-                let end = base_offset + i;
-                tokens.push((current.to_lowercase(), start, end));
-                current.clear();
+                let end = base_offset + char_pos;
+                flush(&mut current, start, end, tokens);
             }
-            current_start = i + 1;
+            current_start = char_pos + ch.len_utf8();
+            prev_was_upper = false;
         } else if ch.is_uppercase() && !current.is_empty() {
-            // camelCase boundary
-            // Check if this is the start of a new word or a multi-uppercase sequence
-            let prev_upper = i > 0 && chars[i - 1].is_uppercase();
-            let next_lower = i + 1 < chars.len() && chars[i + 1].is_lowercase();
+            let next_lower = chars.peek().is_some_and(|c| c.is_lowercase());
 
-            if !prev_upper || next_lower {
-                // Flush: "process" before "Audio", or "HTT" before "P" in "HTTPClient"→"http","client"
+            if !prev_was_upper || next_lower {
                 if !current.is_empty() {
                     let start = base_offset + current_start;
-                    let end = base_offset + i;
-                    tokens.push((current.to_lowercase(), start, end));
-                    current.clear();
+                    let end = base_offset + char_pos;
+                    flush(&mut current, start, end, tokens);
                 }
-                current_start = i;
+                current_start = char_pos;
             }
-            current.push(ch);
+            current.push(ch.to_ascii_lowercase());
+            prev_was_upper = true;
         } else if ch.is_alphanumeric() {
-            current.push(ch);
+            current.push(ch.to_ascii_lowercase());
+            prev_was_upper = ch.is_uppercase();
         } else {
-            // Other characters — flush
             if !current.is_empty() {
                 let start = base_offset + current_start;
-                let end = base_offset + i;
-                tokens.push((current.to_lowercase(), start, end));
-                current.clear();
+                let end = base_offset + char_pos;
+                flush(&mut current, start, end, tokens);
             }
-            current_start = i + 1;
+            current_start = char_pos + ch.len_utf8();
+            prev_was_upper = false;
         }
+        char_pos += ch.len_utf8();
     }
 
     // Flush remaining
     if !current.is_empty() {
         let start = base_offset + current_start;
-        let end = base_offset + chars.len();
-        tokens.push((current.to_lowercase(), start, end));
+        let end = base_offset + char_pos;
+        flush(&mut current, start, end, tokens);
     }
 }
 

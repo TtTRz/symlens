@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use super::symbol::{Symbol, SymbolId, SymbolKind};
+use super::symbol::{Symbol, SymbolId};
 use crate::config::Config;
 use crate::graph::call_graph::CallGraph;
 use crate::parser::traits::{CallEdge, ImportInfo};
@@ -288,31 +288,4 @@ impl ProjectIndex {
     }
 }
 
-fn kind_priority(kind: &SymbolKind) -> u8 {
-    match kind {
-        SymbolKind::Function | SymbolKind::Method => 0,
-        SymbolKind::Struct | SymbolKind::Class => 1,
-        SymbolKind::Interface => 2,
-        SymbolKind::Enum => 3,
-        SymbolKind::Constant => 4,
-        SymbolKind::TypeAlias => 5,
-        SymbolKind::Macro => 6,
-        _ => 7,
-    }
-}
-
-fn detect_language(path: &std::path::Path) -> String {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("rs") => "rust".into(),
-        Some("ts") | Some("tsx") => "typescript".into(),
-        Some("js") | Some("jsx") => "javascript".into(),
-        Some("py") => "python".into(),
-        Some("swift") => "swift".into(),
-        Some("go") => "go".into(),
-        Some("c") | Some("h") => "c".into(),
-        Some("cpp") | Some("hpp") | Some("cc") | Some("cxx") => "cpp".into(),
-        Some("java") => "java".into(),
-        Some(ext) => ext.to_string(),
-        None => "unknown".into(),
-    }
-}
+use super::{detect_language, kind_priority};

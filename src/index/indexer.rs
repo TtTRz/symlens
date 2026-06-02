@@ -23,9 +23,7 @@ struct FileResult {
     symbols: Vec<Symbol>,
     file_mtime: Option<(PathBuf, u64)>,
     file_hash: Option<(PathBuf, String)>,
-    call_edges: Vec<CallEdge>,
     file_call_edges: Option<(PathBuf, Vec<CallEdge>)>,
-    imports: Vec<(PathBuf, ImportInfo)>,
     file_imports: Option<(PathBuf, Vec<ImportInfo>)>,
     parsed: bool,
     skipped: bool,
@@ -116,16 +114,12 @@ pub fn index_project_incremental(
 
                         if !output.call_edges.is_empty() {
                             result.file_call_edges =
-                                Some((rel_path.to_path_buf(), output.call_edges.clone()));
-                            result.call_edges = output.call_edges;
+                                Some((rel_path.to_path_buf(), output.call_edges));
                         }
 
                         if !output.imports.is_empty() {
                             result.file_imports =
-                                Some((rel_path.to_path_buf(), output.imports.clone()));
-                            for imp in output.imports {
-                                result.imports.push((rel_path.to_path_buf(), imp));
-                            }
+                                Some((rel_path.to_path_buf(), output.imports));
                         }
                     }
                     Err(_) => {
@@ -162,20 +156,20 @@ pub fn index_project_incremental(
             index.file_hashes.insert(path, hash);
         }
         if let Some((path, edges)) = r.file_call_edges {
+            all_call_edges.extend(edges.iter().cloned());
             index.file_call_edges.insert(path, edges);
         }
         if let Some((path, imps)) = r.file_imports {
-            index.file_imports.insert(path, imps);
-        }
-        all_call_edges.extend(r.call_edges);
-        for (file, imp) in &r.imports {
-            for name in &imp.names {
-                index
-                    .import_names
-                    .entry(name.clone())
-                    .or_default()
-                    .push(file.clone());
+            for imp in &imps {
+                for name in &imp.names {
+                    index
+                        .import_names
+                        .entry(name.clone())
+                        .or_default()
+                        .push(path.clone());
+                }
             }
+            index.file_imports.insert(path, imps);
         }
         if r.parsed {
             files_parsed += 1;
@@ -215,13 +209,9 @@ fn copy_prev_data(prev: &ProjectIndex, rel_path: &Path, mtime: u64, result: &mut
         result.file_hash = Some((rel_path.to_path_buf(), hash.clone()));
     }
     if let Some(prev_edges) = prev.file_call_edges.get(rel_path) {
-        result.call_edges.extend(prev_edges.clone());
         result.file_call_edges = Some((rel_path.to_path_buf(), prev_edges.clone()));
     }
     if let Some(prev_imps) = prev.file_imports.get(rel_path) {
-        for imp in prev_imps {
-            result.imports.push((rel_path.to_path_buf(), imp.clone()));
-        }
         result.file_imports = Some((rel_path.to_path_buf(), prev_imps.clone()));
     }
 }

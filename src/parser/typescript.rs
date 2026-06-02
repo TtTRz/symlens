@@ -1,14 +1,24 @@
 use crate::model::symbol::*;
-use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
+use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, ParsedOutput, RefKind};
 use std::path::Path;
 
-use super::helpers::{node_span, node_text, node_text_first_line, parse_source};
+use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
 
 pub struct TypeScriptParser;
 
+/// Select the correct tree-sitter grammar based on file extension.
+/// - `.tsx`, `.jsx` use the TSX grammar (handles JSX syntax)
+/// - `.ts`, `.js`, `.mts`, `.cts` use the TypeScript grammar
+fn language_for(file_path: &Path) -> tree_sitter::Language {
+    match file_path.extension().and_then(|e| e.to_str()) {
+        Some("tsx" | "jsx") => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        _ => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+    }
+}
+
 impl LanguageParser for TypeScriptParser {
     fn extensions(&self) -> &[&str] {
-        &["ts", "tsx", "js", "jsx"]
+        &["ts", "tsx", "js", "jsx", "mts", "cts"]
     }
 
     fn language(&self) -> tree_sitter::Language {
@@ -16,7 +26,7 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_symbols(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<Symbol>> {
-        let tree = parse_source(self.language(), source, file_path)?;
+        let tree = parse_source(language_for(file_path), source, file_path)?;
 
         let mut symbols = Vec::new();
         let file_str = file_path.to_string_lossy();
@@ -32,7 +42,7 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_calls(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<CallEdge>> {
-        let tree = parse_source(self.language(), source, file_path)?;
+        let tree = parse_source(language_for(file_path), source, file_path)?;
         let mut edges = Vec::new();
         collect_ts_calls(tree.root_node(), source, None, &mut edges);
         Ok(edges)
@@ -51,7 +61,7 @@ impl LanguageParser for TypeScriptParser {
     }
 
     fn extract_imports(&self, source: &[u8], file_path: &Path) -> anyhow::Result<Vec<ImportInfo>> {
-        let tree = parse_source(self.language(), source, file_path)?;
+        let tree = parse_source(language_for(file_path), source, file_path)?;
 
         let mut imports = Vec::new();
         collect_ts_imports(tree.root_node(), source, &mut imports);
@@ -97,6 +107,20 @@ impl LanguageParser for TypeScriptParser {
         let mut imports = Vec::new();
         collect_ts_imports(tree.root_node(), source, &mut imports);
         Ok(imports)
+    }
+
+    fn extract_all(&self, source: &[u8], file_path: &Path) -> anyhow::Result<ParsedOutput> {
+        let tree = parse_source(language_for(file_path), source, file_path)?;
+
+        let symbols = self.extract_symbols_from_tree(&tree, source, file_path)?;
+        let call_edges = self.extract_calls_from_tree(&tree, source, file_path)?;
+        let imports = self.extract_imports_from_tree(&tree, source, file_path)?;
+
+        Ok(ParsedOutput {
+            symbols,
+            call_edges,
+            imports,
+        })
     }
 }
 
@@ -639,7 +663,7 @@ fn collect_ts_identifiers(
         _ => {}
     }
 
-    if node.kind() == "identifier" && node_text(node, source).as_deref() == Some(target) {
+    if node.kind() == "identifier" && node_text_eq(node, source, target) {
         let line = node.start_position().row as u32 + 1;
         let context = lines
             .get(line as usize - 1)

@@ -13,6 +13,9 @@ pub struct CallGraph {
     /// Name → node index
     #[serde(skip)]
     name_to_idx: HashMap<String, usize>,
+    /// Short name (last segment after `::`) → Vec<node indices>
+    #[serde(skip)]
+    short_name_idx: HashMap<String, Vec<usize>>,
     /// Cached petgraph DiGraph (built once, reused for all queries)
     #[serde(skip)]
     digraph: Option<DiGraph<usize, ()>>,
@@ -52,11 +55,13 @@ impl CallGraph {
         graph_edges.dedup();
 
         let (digraph, node_indices) = Self::build_digraph(&nodes, &graph_edges);
+        let short_name_idx = Self::build_short_name_idx(&nodes);
 
         CallGraph {
             nodes,
             edges: graph_edges,
             name_to_idx,
+            short_name_idx,
             digraph: Some(digraph),
             node_indices,
         }
@@ -77,15 +82,48 @@ impl CallGraph {
         (g, indices)
     }
 
+    /// Build short name → Vec<node index> index for fast partial matching.
+    /// The short name is the last segment after `::` (or the full name if no `::`).
+    fn build_short_name_idx(nodes: &[String]) -> HashMap<String, Vec<usize>> {
+        let mut idx: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, name) in nodes.iter().enumerate() {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            idx.entry(short.to_string()).or_default().push(i);
+        }
+        idx
+    }
+
+    /// Find node indices matching a partial name using the short_name_idx.
+    /// Returns matching indices for suffix/short-name lookups.
+    pub fn find_nodes_partial(&self, partial: &str) -> Vec<usize> {
+        // Fast path: exact short name match
+        if let Some(indices) = self.short_name_idx.get(partial) {
+            return indices.clone();
+        }
+        // Fallback: linear scan for substring / suffix match
+        self.nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.ends_with(partial) || n.contains(partial))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     /// Rebuild the name_to_idx and cached digraph after deserialization.
     pub fn rebuild_index(&mut self) {
         self.name_to_idx.clear();
         for (i, name) in self.nodes.iter().enumerate() {
             self.name_to_idx.insert(name.clone(), i);
         }
+        self.short_name_idx = Self::build_short_name_idx(&self.nodes);
         let (digraph, node_indices) = Self::build_digraph(&self.nodes, &self.edges);
         self.digraph = Some(digraph);
         self.node_indices = node_indices;
+    }
+
+    /// Look up exact node index by qualified name.
+    pub fn exact_index(&self, name: &str) -> Option<usize> {
+        self.name_to_idx.get(name).copied()
     }
 
     /// Get all call edges as (from_index, to_index) pairs.
@@ -124,13 +162,7 @@ impl CallGraph {
 
     /// Find callers by partial name match (e.g. "process_block" matches "AudioEngine::process_block").
     fn callers_partial(&self, partial: &str) -> Vec<&str> {
-        let targets: HashSet<usize> = self
-            .nodes
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| n.ends_with(partial) || n == &partial)
-            .map(|(i, _)| i)
-            .collect();
+        let targets: HashSet<usize> = self.find_nodes_partial(partial).into_iter().collect();
 
         let mut result = Vec::new();
         for &(from, to) in &self.edges {
@@ -144,13 +176,7 @@ impl CallGraph {
     }
 
     fn callees_partial(&self, partial: &str) -> Vec<&str> {
-        let sources: HashSet<usize> = self
-            .nodes
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| n.ends_with(partial) || n == &partial)
-            .map(|(i, _)| i)
-            .collect();
+        let sources: HashSet<usize> = self.find_nodes_partial(partial).into_iter().collect();
 
         let mut result = Vec::new();
         for &(from, to) in &self.edges {
