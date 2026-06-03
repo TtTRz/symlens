@@ -7,6 +7,11 @@ fn main() -> anyhow::Result<()> {
     let json = cli.json;
     let color = resolve_color(cli.no_color);
 
+    if cli.verbose {
+        // SAFETY: setting a new env var before any concurrent access
+        unsafe { std::env::set_var("SYMLENS_VERBOSE", "1"); }
+    }
+
     let workspace = cli.workspace;
 
     match cli.command {
@@ -22,10 +27,10 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Refs(args) => symlens::commands::refs::run(args, root, workspace, json, color),
         Commands::Callers(args) => {
-            symlens::commands::callers::run_callers(args, root, workspace, json)
+            symlens::commands::callers::run_callers(args, root, workspace, json, color)
         }
         Commands::Callees(args) => {
-            symlens::commands::callers::run_callees(args, root, workspace, json)
+            symlens::commands::callers::run_callees(args, root, workspace, json, color)
         }
         Commands::Lines(args) => symlens::commands::lines::run(args, root, workspace, color),
         Commands::Graph(args) => symlens::commands::graph::run(args, root, workspace, json),

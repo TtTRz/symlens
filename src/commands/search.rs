@@ -9,6 +9,7 @@ pub fn run(
     json: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
     let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     let results = if !provider.is_workspace() {
@@ -38,6 +39,10 @@ pub fn run(
                     });
                 }
 
+                if args.offset > 0 {
+                    let off = args.offset.min(syms.len());
+                    syms.drain(..off);
+                }
                 syms.truncate(args.limit);
                 syms
             } else {
@@ -53,7 +58,10 @@ pub fn run(
 
     if results.is_empty() {
         if json {
-            println!("[]");
+            println!(
+                "{}",
+                serde_json::json!({ "query": args.query, "results": [], "count": 0 })
+            );
         } else {
             println!("No symbols found matching \"{}\"", args.query);
         }
@@ -61,7 +69,11 @@ pub fn run(
     }
 
     if json {
-        println!("{}", crate::output::json::format_symbols(&results));
+        let items = crate::output::json::format_search_results(&results);
+        println!(
+            "{}",
+            serde_json::json!({ "query": args.query, "results": items, "count": items.len() })
+        );
     } else {
         for (sym, _score) in &results {
             let kind_fmt = format!("({})", sym.kind);
@@ -88,6 +100,11 @@ pub fn run(
             color::dim(&format!("{} results", results.len()), color_on)
         );
     }
+
+    if std::env::var("SYMLENS_VERBOSE").is_ok() && !json {
+        eprintln!("[verbose] search completed in {:?}", start.elapsed());
+    }
+
     Ok(())
 }
 

@@ -1,4 +1,7 @@
-use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
+use super::helpers::{
+    extract_doc_comment, extract_signature, find_child_by_kind, find_child_text_by_kind, node_span,
+    node_text, node_text_eq, node_text_first_line, parse_source,
+};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
@@ -258,7 +261,7 @@ fn extract_dart_class(
 ) -> Option<Symbol> {
     let name = find_child_text_by_kind(node, "identifier", source)?;
     let doc = extract_dart_doc(node, source);
-    let sig = extract_dart_class_signature(node, source);
+    let sig = extract_signature(node, source, &["class_body"]);
 
     let is_abstract = node
         .utf8_text(source)
@@ -943,18 +946,6 @@ fn collect_dart_imports(node: tree_sitter::Node, source: &[u8], imports: &mut Ve
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-fn find_child_by_kind<'a>(
-    node: tree_sitter::Node<'a>,
-    kind: &str,
-) -> Option<tree_sitter::Node<'a>> {
-    let cursor = &mut node.walk();
-    node.children(cursor).find(|&child| child.kind() == kind)
-}
-
-fn find_child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {
-    find_child_by_kind(node, kind).and_then(|n| node_text(n, source))
-}
-
 fn extract_dart_sig_text(sig_node: tree_sitter::Node, source: &[u8]) -> String {
     sig_node
         .utf8_text(source)
@@ -963,56 +954,13 @@ fn extract_dart_sig_text(sig_node: tree_sitter::Node, source: &[u8]) -> String {
         .unwrap_or_default()
 }
 
-fn extract_dart_class_signature(node: tree_sitter::Node, source: &[u8]) -> String {
-    let start = node.start_byte();
-    let mut end = node.end_byte();
-    // Stop before class body
-    if let Some(body) = find_child_by_kind(node, "class_body") {
-        end = body.start_byte();
-    }
-    let sig = &source[start..end];
-    String::from_utf8_lossy(sig)
-        .trim()
-        .lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn extract_dart_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let mut comments = Vec::new();
-    let mut sibling = node.prev_sibling();
-    while let Some(s) = sibling {
-        match s.kind() {
-            "comment" => {
-                let text = node_text(s, source)?;
-                let cleaned = text
-                    .trim_start_matches("///")
-                    .trim_start_matches("//")
-                    .trim();
-                comments.push(cleaned.to_string());
-            }
-            "documentation_block_comment" => {
-                if let Some(text) = node_text(s, source) {
-                    let cleaned = text
-                        .trim_start_matches("/**")
-                        .trim_end_matches("*/")
-                        .lines()
-                        .map(|l| l.trim().trim_start_matches('*').trim())
-                        .filter(|l| !l.is_empty())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    comments.push(cleaned);
-                }
-            }
-            _ => break,
-        }
-        sibling = s.prev_sibling();
-    }
-    if comments.is_empty() {
-        None
-    } else {
-        comments.reverse();
-        Some(comments.join("\n"))
-    }
+    extract_doc_comment(
+        node,
+        source,
+        "comment",
+        "//",
+        "documentation_block_comment",
+        "/**",
+    )
 }

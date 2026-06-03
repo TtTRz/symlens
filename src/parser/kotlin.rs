@@ -1,4 +1,7 @@
-use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
+use super::helpers::{
+    extract_doc_comment, extract_signature, find_child_by_kind, find_child_text_by_kind, node_span,
+    node_text, node_text_eq, node_text_first_line, parse_source,
+};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
@@ -129,7 +132,7 @@ fn extract_kotlin_node(
             if let Some(name) = find_child_text_by_kind(node, "identifier", source) {
                 let doc = extract_kotlin_doc(node, source);
                 let sig =
-                    extract_kotlin_signature(node, source, &["class_body", "enum_class_body"]);
+                    extract_signature(node, source, &["class_body", "enum_class_body"]);
                 let vis = extract_visibility(node, source);
 
                 symbols.push(Symbol {
@@ -167,7 +170,7 @@ fn extract_kotlin_node(
         "object_declaration" => {
             if let Some(name) = find_child_text_by_kind(node, "identifier", source) {
                 let doc = extract_kotlin_doc(node, source);
-                let sig = extract_kotlin_signature(node, source, &["class_body"]);
+                let sig = extract_signature(node, source, &["class_body"]);
                 let vis = extract_visibility(node, source);
 
                 symbols.push(Symbol {
@@ -203,7 +206,7 @@ fn extract_kotlin_node(
         "function_declaration" => {
             if let Some(name) = find_child_text_by_kind(node, "identifier", source) {
                 let doc = extract_kotlin_doc(node, source);
-                let sig = extract_kotlin_signature(node, source, &["function_body"]);
+                let sig = extract_signature(node, source, &["function_body"]);
                 let vis = extract_visibility(node, source);
 
                 let (kind, qualified) = match parent_name {
@@ -503,75 +506,6 @@ fn collect_kotlin_imports(node: tree_sitter::Node, source: &[u8], imports: &mut 
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-fn find_child_by_kind<'a>(
-    node: tree_sitter::Node<'a>,
-    kind: &str,
-) -> Option<tree_sitter::Node<'a>> {
-    let cursor = &mut node.walk();
-    node.children(cursor).find(|&child| child.kind() == kind)
-}
-
-fn find_child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {
-    find_child_by_kind(node, kind).and_then(|n| node_text(n, source))
-}
-
-fn extract_kotlin_signature(node: tree_sitter::Node, source: &[u8], body_kinds: &[&str]) -> String {
-    let start = node.start_byte();
-    let mut end = node.end_byte();
-    for kind in body_kinds {
-        if let Some(body) = find_child_by_kind(node, kind) {
-            end = body.start_byte();
-            break;
-        }
-    }
-    let sig = &source[start..end];
-    String::from_utf8_lossy(sig)
-        .trim()
-        .lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn extract_kotlin_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let mut comments = Vec::new();
-    let mut sibling = node.prev_sibling();
-    while let Some(s) = sibling {
-        match s.kind() {
-            "block_comment" => {
-                if let Some(text) = node_text(s, source) {
-                    if text.starts_with("/**") {
-                        let cleaned = text
-                            .trim_start_matches("/**")
-                            .trim_end_matches("*/")
-                            .lines()
-                            .map(|l| l.trim().trim_start_matches('*').trim())
-                            .filter(|l| !l.is_empty())
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        comments.push(cleaned);
-                    } else {
-                        break;
-                    }
-                }
-            }
-            "line_comment" => {
-                if let Some(text) = node_text(s, source) {
-                    let cleaned = text
-                        .trim_start_matches("///")
-                        .trim_start_matches("//")
-                        .trim();
-                    comments.push(cleaned.to_string());
-                }
-            }
-            _ => break,
-        }
-        sibling = s.prev_sibling();
-    }
-    if comments.is_empty() {
-        None
-    } else {
-        comments.reverse();
-        Some(comments.join("\n"))
-    }
+    extract_doc_comment(node, source, "line_comment", "//", "block_comment", "/**")
 }

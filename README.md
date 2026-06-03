@@ -20,9 +20,10 @@
 ```bash
 cargo install symlens           # install
 symlens index                   # index your project
-symlens search "AudioEngine"    # find symbols
+symlens search "AudioEngine"    # find symbols (fuzzy BM25)
 symlens symbol "Engine::run"    # get just the signature → 60 tokens instead of 4000
 symlens index --workspace       # index multiple projects as a workspace
+symlens search "AudioEngien"    # fuzzy search — handles typos
 ```
 
 SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) and builds an index of every symbol — functions, classes, call graphs, imports. Your AI agent (or you) queries exactly what it needs instead of reading entire files.
@@ -36,7 +37,7 @@ SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) 
 | | `cat` / `grep` | SymLens |
 |:--|:--|:--|
 | **Granularity** | Lines / files | Symbols (functions, classes, methods) |
-| **Search** | Regex string matching | BM25 semantic search (camelCase / snake_case aware) |
+| **Search** | Regex string matching | BM25 fuzzy search (camelCase / snake_case aware, typo-tolerant) |
 | **Call graph** | — | Who calls whom · `callers` · `callees` · `graph path` |
 | **Impact analysis** | — | `graph impact` — blast radius before you refactor |
 | **Token cost** | ~4000 tokens (whole file) | ~60 tokens (signature only) — **66x cheaper** |
@@ -92,6 +93,7 @@ symlens callees "process_block"
 symlens graph impact "Engine::run"
 symlens graph path "main" "cleanup"
 symlens graph deps --fmt mermaid
+symlens graph deps --json         # includes cycle detection
 symlens graph deps --module src/parser/mod.rs
 symlens graph deps --module src/parser/mod.rs --reverse
 ```
@@ -117,6 +119,8 @@ symlens doctor
 symlens watch
 symlens completions zsh
 symlens init
+symlens search "handler" --offset 20 --limit 10  # pagination
+symlens -v refs "Engine"        # verbose: timing & file counts
 ```
 
 </td></tr>
@@ -150,14 +154,39 @@ symlens graph impact "UserModel" --workspace
 
 ## ⚡ Performance
 
-Benchmarked with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (55 files, 660 symbols):
+Benchmarked with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (58 files, 828 symbols):
 
 ```
-Full index ··········· 17 ms
-BM25 search ·········· 89 µs
-Callers query ········ 13 ns   ← cached DiGraph, no rebuild per query
-Find call path ······· 20 µs   ← bidirectional BFS
-Parse single file ···· 437 µs
+# Indexing
+Full index ··········· 20 ms
+Build call graph ····· 405 µs
+
+# Search (in-memory, 828 symbols)
+Exact name ··········· 149 µs
+Partial name ········· 181 µs
+Doc comment ·········· 181 µs
+Miss (no results) ···· 191 µs
+
+# Call graph queries (cached petgraph)
+Callers ·············· 96 ns
+Callees ·············· 28 ns
+Transitive depth-3 ··· 1.08 µs
+Find path ············ 577 µs
+Impact analysis ······ 106 µs
+
+# Parse single file
+Rust ················· 521 µs
+TypeScript ··········· 60 µs
+Python ··············· 45 µs
+Go ··················· 82 µs
+
+# Dependency cycles (100-node graph)
+has_cycle ············ 330 ns
+detect_all_cycles ···· 261 µs
+
+# Serialization
+bincode encode ······· 182 µs
+bincode decode ······· 728 µs
 ```
 
 ---

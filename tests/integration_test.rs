@@ -2926,3 +2926,435 @@ mod workspace_tests {
         assert!(ws_parent.name().contains("AudioEngine"));
     }
 }
+
+// ─── Round 2 feature tests ──────────────────────────────────────────
+
+mod deps_cycle_tests {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
+    use symlens::graph::deps::DepsGraph;
+
+    fn pb(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn no_cycle_in_dag() {
+        let graph = DepsGraph {
+            edges: BTreeMap::from([
+                (pb("a.rs"), BTreeSet::from([pb("b.rs")])),
+                (pb("b.rs"), BTreeSet::from([pb("c.rs")])),
+            ]),
+        };
+        assert!(!graph.has_cycle_from(&pb("a.rs")));
+        assert!(graph.detect_cycles().is_empty());
+    }
+
+    #[test]
+    fn simple_cycle_detected() {
+        let graph = DepsGraph {
+            edges: BTreeMap::from([
+                (pb("a.rs"), BTreeSet::from([pb("b.rs")])),
+                (pb("b.rs"), BTreeSet::from([pb("a.rs")])),
+            ]),
+        };
+        assert!(graph.has_cycle_from(&pb("a.rs")));
+        assert!(graph.has_cycle_from(&pb("b.rs")));
+
+        let cycles = graph.detect_cycles();
+        assert_eq!(cycles.len(), 1, "Should detect one representative cycle node");
+    }
+
+    #[test]
+    fn three_node_cycle() {
+        let graph = DepsGraph {
+            edges: BTreeMap::from([
+                (pb("a.rs"), BTreeSet::from([pb("b.rs")])),
+                (pb("b.rs"), BTreeSet::from([pb("c.rs")])),
+                (pb("c.rs"), BTreeSet::from([pb("a.rs")])),
+            ]),
+        };
+        assert!(graph.has_cycle_from(&pb("a.rs")));
+        let cycles = graph.detect_cycles();
+        assert_eq!(cycles.len(), 1, "One representative node for the 3-node cycle");
+    }
+
+    #[test]
+    fn self_loop_is_cycle() {
+        let graph = DepsGraph {
+            edges: BTreeMap::from([(
+                pb("a.rs"),
+                BTreeSet::from([pb("a.rs")]),
+            )]),
+        };
+        assert!(graph.has_cycle_from(&pb("a.rs")));
+        assert_eq!(graph.detect_cycles().len(), 1);
+    }
+
+    #[test]
+    fn isolated_node_no_cycle() {
+        let graph = DepsGraph {
+            edges: BTreeMap::from([
+                (pb("a.rs"), BTreeSet::from([pb("b.rs")])),
+                (pb("c.rs"), BTreeSet::new()),
+            ]),
+        };
+        assert!(!graph.has_cycle_from(&pb("c.rs")));
+        assert!(graph.detect_cycles().is_empty());
+    }
+
+    #[test]
+    fn cycle_in_one_component_only() {
+        // a→b→a (cycle), d→e (no cycle)
+        let graph = DepsGraph {
+            edges: BTreeMap::from([
+                (pb("a.rs"), BTreeSet::from([pb("b.rs")])),
+                (pb("b.rs"), BTreeSet::from([pb("a.rs")])),
+                (pb("d.rs"), BTreeSet::from([pb("e.rs")])),
+            ]),
+        };
+        let cycles = graph.detect_cycles();
+        assert_eq!(cycles.len(), 1, "Only the a↔b component has a cycle");
+        assert!(cycles.iter().any(|p| **p == pb("a.rs")));
+    }
+}
+
+mod truncate_str_tests {
+    #[test]
+    fn ascii_shorter_than_limit() {
+        assert_eq!(symlens::output::color::truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn ascii_exact_limit() {
+        assert_eq!(symlens::output::color::truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn ascii_truncated() {
+        assert_eq!(symlens::output::color::truncate_str("hello world", 5), "hello");
+    }
+
+    #[test]
+    fn utf8_multibyte_safe() {
+        // 4 Chinese chars = 12 bytes, truncate to 2 chars
+        assert_eq!(symlens::output::color::truncate_str("你好世界", 2), "你好");
+    }
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(symlens::output::color::truncate_str("", 5), "");
+    }
+
+    #[test]
+    fn zero_limit() {
+        assert_eq!(symlens::output::color::truncate_str("hello", 0), "");
+    }
+
+    #[test]
+    fn mixed_ascii_cjk() {
+        // "ab你好" — truncate to 3 chars → "ab你"
+        assert_eq!(symlens::output::color::truncate_str("ab你好", 3), "ab你");
+    }
+}
+
+mod color_cow_tests {
+    use std::borrow::Cow;
+
+    #[test]
+    fn bold_color_off_returns_borrowed() {
+        let result = symlens::output::color::bold("test", false);
+        assert!(matches!(result, Cow::Borrowed(_)));
+        assert_eq!(&result, "test");
+    }
+
+    #[test]
+    fn bold_color_on_returns_owned() {
+        let result = symlens::output::color::bold("test", true);
+        assert!(matches!(result, Cow::Owned(_)));
+        assert!(result.contains("test"));
+        assert!(result.contains("\x1b[1m"));
+    }
+
+    #[test]
+    fn green_color_off_borrowed() {
+        let result = symlens::output::color::green("ok", false);
+        assert!(matches!(result, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn red_color_off_borrowed() {
+        let result = symlens::output::color::red("err", false);
+        assert!(matches!(result, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn yellow_color_on_owned() {
+        let result = symlens::output::color::yellow("warn", true);
+        assert!(matches!(result, Cow::Owned(_)));
+        assert!(result.contains("\x1b[33m"));
+    }
+
+    #[test]
+    fn cyan_color_on_owned() {
+        let result = symlens::output::color::cyan("info", true);
+        assert!(matches!(result, Cow::Owned(_)));
+        assert!(result.contains("\x1b[36m"));
+    }
+
+    #[test]
+    fn dim_color_off_borrowed() {
+        let result = symlens::output::color::dim("muted", false);
+        assert!(matches!(result, Cow::Borrowed(_)));
+    }
+}
+
+mod detect_language_tests {
+    use std::path::Path;
+
+    #[test]
+    fn detect_rust() {
+        assert_eq!(symlens::model::detect_language(Path::new("main.rs")), "rust");
+    }
+
+    #[test]
+    fn detect_typescript() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("app.ts")),
+            "typescript"
+        );
+    }
+
+    #[test]
+    fn detect_tsx() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("comp.tsx")),
+            "typescript"
+        );
+    }
+
+    #[test]
+    fn detect_mts() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("module.mts")),
+            "typescript"
+        );
+    }
+
+    #[test]
+    fn detect_cts() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("types.cts")),
+            "typescript"
+        );
+    }
+
+    #[test]
+    fn detect_python() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("main.py")),
+            "python"
+        );
+    }
+
+    #[test]
+    fn detect_go() {
+        assert_eq!(symlens::model::detect_language(Path::new("main.go")), "go");
+    }
+
+    #[test]
+    fn detect_c() {
+        assert_eq!(symlens::model::detect_language(Path::new("main.c")), "c");
+        assert_eq!(symlens::model::detect_language(Path::new("header.h")), "c");
+    }
+
+    #[test]
+    fn detect_cpp() {
+        assert_eq!(symlens::model::detect_language(Path::new("main.cpp")), "cpp");
+        assert_eq!(symlens::model::detect_language(Path::new("header.hpp")), "cpp");
+        assert_eq!(symlens::model::detect_language(Path::new("impl.cc")), "cpp");
+        assert_eq!(symlens::model::detect_language(Path::new("impl.cxx")), "cpp");
+    }
+
+    #[test]
+    fn detect_swift() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("App.swift")),
+            "swift"
+        );
+    }
+
+    #[test]
+    fn detect_unknown() {
+        assert_eq!(
+            symlens::model::detect_language(Path::new("README")),
+            "unknown"
+        );
+    }
+}
+
+mod helpers_tests {
+    use symlens::parser::helpers::{
+        node_text, node_text_eq, node_span, node_text_first_line, find_child_by_kind,
+        find_child_text_by_kind, last_child_by_kind, extract_signature, extract_doc_comment,
+    };
+
+    fn parse_single(source: &[u8]) -> tree_sitter::Tree {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_rust::LANGUAGE.into()).unwrap();
+        parser.parse(source, None).unwrap()
+    }
+
+    #[test]
+    fn node_text_eq_matches() {
+        let source = b"fn hello() {}";
+        let tree = parse_single(source);
+        // Root node text == entire source
+        assert!(node_text_eq(tree.root_node(), source, "fn hello() {}"));
+        assert!(!node_text_eq(tree.root_node(), source, "fn world() {}"));
+    }
+
+    #[test]
+    fn node_text_returns_content() {
+        let source = b"const X: i32 = 42;";
+        let tree = parse_single(source);
+        let text = node_text(tree.root_node(), source).unwrap();
+        assert!(text.contains("const X"));
+    }
+
+    #[test]
+    fn node_span_1_indexed() {
+        let source = b"fn foo() {}\nfn bar() {}\n";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        // Root starts at line 1
+        let span = node_span(root);
+        assert_eq!(span.start_line, 1);
+    }
+
+    #[test]
+    fn test_node_text_first_line() {
+        let source = b"fn multi(\n    x: i32,\n) -> i32 {\n    x\n}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let first = node_text_first_line(root, source);
+
+        assert!(first.starts_with("fn multi"));
+        assert!(!first.contains('\n'));
+    }
+
+    #[test]
+    fn find_child_by_kind_returns_first() {
+        let source = b"fn foo() { 1; 2; }";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let child = find_child_by_kind(root, "function_item");
+        assert!(child.is_some());
+        assert_eq!(child.unwrap().kind(), "function_item");
+    }
+
+    #[test]
+    fn find_child_by_kind_returns_none_for_missing() {
+        let source = b"fn foo() {}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        assert!(find_child_by_kind(root, "struct_item").is_none());
+    }
+
+    #[test]
+    fn test_last_child_by_kind() {
+        // Use a source with multiple direct children of the same kind on the root node
+        let source = b"fn a() {}\nfn b() {}\nfn c() {}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let last = last_child_by_kind(root, "function_item");
+        assert!(last.is_some());
+        let text = last.unwrap().utf8_text(source).unwrap();
+        assert!(text.starts_with("fn c"), "Expected last function to be 'fn c', got: {}", text);
+    }
+
+    #[test]
+    fn test_find_child_text_by_kind() {
+        let source = b"struct S { x: i32 }";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let struct_node = find_child_by_kind(root, "struct_item").unwrap();
+        let text = find_child_text_by_kind(struct_node, "type_identifier", source);
+        assert!(text.is_some());
+        assert_eq!(text.unwrap(), "S");
+    }
+
+    #[test]
+    fn extract_signature_excludes_body() {
+        let source = b"fn add(a: i32, b: i32) -> i32 {\n    a + b\n}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let fn_node = find_child_by_kind(root, "function_item").unwrap();
+        let sig = extract_signature(fn_node, source, &["block"]);
+        assert!(sig.contains("fn add"));
+        assert!(sig.contains("-> i32"));
+        assert!(!sig.contains("a + b"));
+    }
+
+    #[test]
+    fn extract_signature_multiline() {
+        let source = b"fn multi(\n    a: i32,\n    b: i32,\n) -> i32 {\n    0\n}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let fn_node = find_child_by_kind(root, "function_item").unwrap();
+        let sig = extract_signature(fn_node, source, &["block"]);
+        assert!(sig.contains("fn multi"));
+        assert!(!sig.contains('\n'), "Signature should be single-line: {:?}", sig);
+    }
+
+    #[test]
+    fn extract_doc_comment_line_comments() {
+        let source = b"/// First line\n/// Second line\nfn foo() {}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let fn_node = find_child_by_kind(root, "function_item").unwrap();
+        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        assert!(doc.is_some());
+        let doc = doc.unwrap();
+        assert!(doc.contains("First line"));
+        assert!(doc.contains("Second line"));
+    }
+
+    #[test]
+    fn extract_doc_comment_none_when_absent() {
+        let source = b"fn foo() {}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let fn_node = find_child_by_kind(root, "function_item").unwrap();
+        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        assert!(doc.is_none());
+    }
+
+    #[test]
+    fn extract_doc_comment_block() {
+        let source = b"/**\n * Block doc.\n * More info.\n */\nfn foo() {}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let fn_node = find_child_by_kind(root, "function_item").unwrap();
+        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        assert!(doc.is_some());
+        let doc = doc.unwrap();
+        assert!(doc.contains("Block doc."));
+        assert!(doc.contains("More info."));
+    }
+
+    #[test]
+    fn extract_doc_comment_stops_at_non_comment() {
+        // A regular comment (not ///) should terminate the walk
+        let source = b"// Regular comment\n/// Doc comment\nfn foo() {}";
+        let tree = parse_single(source);
+        let root = tree.root_node();
+        let fn_node = find_child_by_kind(root, "function_item").unwrap();
+        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        // Should only get "Doc comment", not "Regular comment"
+        assert!(doc.is_some());
+        assert!(!doc.as_ref().unwrap().contains("Regular"));
+        assert!(doc.as_ref().unwrap().contains("Doc comment"));
+    }
+}
+

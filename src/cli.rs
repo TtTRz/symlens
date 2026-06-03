@@ -28,6 +28,10 @@ pub struct Cli {
     /// Disable colored output
     #[arg(long, global = true)]
     pub no_color: bool,
+
+    /// Show verbose diagnostic output (index timing, cache info, file counts)
+    #[arg(long, short = 'v', global = true)]
+    pub verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -111,6 +115,10 @@ pub struct SearchArgs {
     /// Maximum number of results
     #[arg(short, long, default_value = "20")]
     pub limit: usize,
+
+    /// Skip first N results (for pagination)
+    #[arg(long, default_value = "0")]
+    pub offset: usize,
 }
 
 #[derive(clap::Args)]
@@ -167,6 +175,10 @@ pub struct RefsArgs {
     /// Max results
     #[arg(short, long, default_value = "50")]
     pub limit: usize,
+
+    /// Skip first N results (for pagination)
+    #[arg(long, default_value = "0")]
+    pub offset: usize,
 }
 
 #[derive(clap::Args)]

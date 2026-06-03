@@ -7,6 +7,8 @@
 | `--root <path>` | Project root (default: auto-detect via `.git`) |
 | `--json` | Output as JSON (all commands) |
 | `--no-color` | Disable colored output |
+| `--verbose / -v` | Show diagnostic output (timing, file counts) |
+| `--workspace` | Enable workspace mode (multi-root indexing) |
 
 ## Commands
 
@@ -25,7 +27,8 @@
 
 | Command | Description | Token Cost |
 |---------|-------------|------------|
-| `symlens search <query>` | BM25 search by name, signature, or docs | ~40/result |
+| `symlens search <query>` | BM25 search by name, signature, or docs (fuzzy-tolerant) | ~40/result |
+| `symlens search <query> --offset 20 --limit 10` | Paginate search results | ~40/result |
 | `symlens symbol <id>` | Get signature + doc comment | ~60 |
 | `symlens symbol <id> --source` | Get full source code | ~500-2000 |
 | `symlens outline <file>` | File symbol tree | ~50/file |
@@ -36,11 +39,12 @@
 
 | Command | Description | Token Cost |
 |---------|-------------|------------|
-| `symlens refs <name>` | Find references (AST-level, import-aware) | ~30/ref |
+| `symlens refs <name>` | Find references (AST-level, import-aware, parallel) | ~30/ref |
+| `symlens refs <name> --offset 10 --limit 20` | Paginate reference results | ~30/ref |
 | `symlens callers <name>` | Who calls this symbol | ~20/caller |
 | `symlens callees <name>` | What this symbol calls | ~20/callee |
 | `symlens graph impact <name>` | Blast radius analysis (risk score, cycle detection) | ~200 |
-| `symlens graph deps [--fmt mermaid]` | Module dependency graph | ~150 |
+| `symlens graph deps [--fmt mermaid]` | Module dependency graph (with cycle detection) | ~150 |
 | `symlens graph path <from> <to>` | Shortest call path between two symbols | ~50 |
 
 ### Git Integration
@@ -69,7 +73,7 @@
 | Language | Extensions | Symbol Types |
 |----------|-----------|-------------|
 | **Rust** | `.rs` | fn, struct, enum, trait, impl, const, type, macro |
-| **TypeScript** | `.ts` `.tsx` `.js` `.jsx` | function, class, interface, type, enum, const |
+| **TypeScript** | `.ts` `.tsx` `.js` `.jsx` `.mts` `.cts` | function, class, interface, type, enum, const |
 | **Python** | `.py` | function, class, method, variable |
 | **Go** | `.go` | func, method, struct, interface, type, const, var |
 | **Swift** | `.swift` | func, class, struct, enum, protocol |
@@ -80,34 +84,47 @@
 
 ## MCP Tools
 
-When running as an MCP server (`symlens mcp`), 8 tools are available:
+When running as an MCP server (`symlens mcp`), 12 tools are available:
 
 | Tool | Description |
 |------|-------------|
 | `symlens_index` | Index a project, returns symbol count and timing |
-| `symlens_search` | BM25 search with optional kind filter |
+| `symlens_index_workspace` | Index a workspace with multiple roots |
+| `symlens_search` | BM25 search with optional kind filter (fuzzy-tolerant) |
 | `symlens_symbol` | Get symbol details by ID, optional source code |
 | `symlens_outline` | File or project outline |
 | `symlens_refs` | Find references to a symbol |
 | `symlens_impact` | Blast radius analysis with risk score |
 | `symlens_callers` | Direct callers of a symbol |
 | `symlens_callees` | Direct callees of a symbol |
+| `symlens_lines` | Get source by line range |
+| `symlens_diff` | Changed symbols between git refs |
+| `symlens_stats` | Index statistics |
 
 ## Performance Benchmarks
 
-Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (55 files, 660 symbols):
+Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (58 files, 828 symbols):
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| Full project index | 17 ms | Parallel via rayon |
+| Full project index | 20 ms | Parallel via rayon |
 | Incremental index (no changes) | <1 ms | blake3 content hash |
-| BM25 search | 89 us | Pre-computed lowercase cache |
-| Callers query | 13 ns | Cached petgraph DiGraph |
-| Callees query | 116 ns | Cached petgraph DiGraph |
-| Transitive callers (depth 3) | 60 ns | BFS on cached graph |
-| Find call path | 20 us | Bidirectional BFS |
-| Parse single Rust file | 437 us | tree-sitter |
-| Release binary size | ~12 MB | LTO + strip |
+| Search (exact name) | 149 µs | Pre-computed lowercase cache |
+| Search (miss) | 191 µs | Scans all symbols |
+| Callers query | 96 ns | Cached petgraph DiGraph |
+| Callees query | 28 ns | HashMap lookup |
+| Transitive callers (depth 3) | 1.08 µs | BFS on cached graph |
+| Find call path | 577 µs | Bidirectional BFS |
+| Impact analysis | 106 µs | Callers + callees + transitive + cycle |
+| Parse single Rust file | 521 µs | tree-sitter |
+| Parse single Python file | 45 µs | tree-sitter |
+| Parse single Go file | 82 µs | tree-sitter |
+| Dep cycle check (100 nodes) | 330 ns | BFS traversal |
+| Detect all cycles (100 nodes) | 261 µs | Per-node BFS |
+| bincode encode | 182 µs | 828 symbols |
+| bincode decode | 728 µs | Rebuild search cache |
+| Build call graph | 405 µs | petgraph construction |
+| Registry lookup | 16 ns | Extension → parser HashMap |
 
 ## Comparison
 
@@ -134,9 +151,9 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 ## Project Stats
 
 - Rust 2024 edition, minimum rustc 1.92
-- ~10,000 lines across 48 source files
-- 104 tests (6 unit + 98 integration), 0 clippy warnings
-- 21 commands, 9 languages, 8 MCP tools
+- 201 tests (6 unit + 195 integration), 0 clippy warnings
+- 28 benchmarks across 7 groups
+- 21 commands, 9 languages, 12 MCP tools
 - WASM build support via `--features wasm`
 
 ## Feature Flags

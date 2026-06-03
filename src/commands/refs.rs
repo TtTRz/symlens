@@ -15,6 +15,7 @@ pub fn run(
     json: bool,
     color_on: bool,
 ) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
     let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
     // Refs v3: narrow search scope using import_names
@@ -62,16 +63,20 @@ pub fn run(
         })
         .flat_map_iter(|(root_id, file_path)| {
             let full_path = provider.resolve_absolute(root_id, file_path);
-            let registry = LanguageRegistry::new();
-            let mut results = Vec::new();
-            if let Some(parser) = registry.parser_for(&full_path)
-                && let Ok(source) = std::fs::read(&full_path)
-                && let Ok(refs) = parser.find_identifiers(&source, &name)
-            {
-                for r in refs {
-                    results.push((file_path.clone(), r));
-                }
+            thread_local! {
+                static REGISTRY: LanguageRegistry = LanguageRegistry::new();
             }
+            let mut results = Vec::new();
+            REGISTRY.with(|registry| {
+                if let Some(parser) = registry.parser_for(&full_path)
+                    && let Ok(source) = std::fs::read(&full_path)
+                    && let Ok(refs) = parser.find_identifiers(&source, &name)
+                {
+                    for r in refs {
+                        results.push((file_path.clone(), r));
+                    }
+                }
+            });
             results
         })
         .collect();
@@ -124,7 +129,11 @@ pub fn run(
     let narrowed = scanned < all_files;
     let breakdown = format_breakdown(call_count, type_count, import_count, other_count);
 
-    // Truncate
+    // Apply offset then truncate
+    if args.offset > 0 {
+        let off = args.offset.min(all_refs.len());
+        all_refs.drain(..off);
+    }
     all_refs.truncate(args.limit);
 
     if json {
@@ -180,6 +189,14 @@ pub fn run(
             r.line,
             r.context,
             kind_tag,
+        );
+    }
+
+    if std::env::var("SYMLENS_VERBOSE").is_ok() && !json {
+        eprintln!(
+            "[verbose] refs completed in {:?} (scanned {} files)",
+            start.elapsed(),
+            scan_entries.len()
         );
     }
 

@@ -36,6 +36,88 @@ pub fn resolve_root(explicit: Option<&str>) -> anyhow::Result<PathBuf> {
     Ok(crate::index::storage::find_project_root(&cwd).unwrap_or(cwd))
 }
 
+/// Internal trait for operations shared between single-root and workspace indexes.
+/// Both `ProjectIndex` and `WorkspaceIndex` implement this so that `IndexProvider`
+/// can delegate without repeating match blocks for every method.
+trait Index {
+    fn get_symbol(&self, id: &SymbolId) -> Option<&Symbol>;
+    fn call_graph(&self) -> Option<&CallGraph>;
+    fn search(&self, query: &str, limit: usize) -> Vec<&Symbol>;
+    fn stats(&self) -> crate::model::project::IndexStats;
+    fn all_symbols(&self) -> Vec<&Symbol>;
+    fn file_count(&self) -> usize;
+    fn version(&self) -> u32;
+    fn indexed_at(&self) -> u64;
+}
+
+impl Index for ProjectIndex {
+    fn get_symbol(&self, id: &SymbolId) -> Option<&Symbol> {
+        self.get(id)
+    }
+
+    fn call_graph(&self) -> Option<&CallGraph> {
+        self.call_graph.as_ref()
+    }
+
+    fn search(&self, query: &str, limit: usize) -> Vec<&Symbol> {
+        self.search(query, limit)
+    }
+
+    fn stats(&self) -> crate::model::project::IndexStats {
+        self.stats()
+    }
+
+    fn all_symbols(&self) -> Vec<&Symbol> {
+        self.symbols.values().collect()
+    }
+
+    fn file_count(&self) -> usize {
+        self.file_symbols.len()
+    }
+
+    fn version(&self) -> u32 {
+        self.version
+    }
+
+    fn indexed_at(&self) -> u64 {
+        self.indexed_at
+    }
+}
+
+impl Index for WorkspaceIndex {
+    fn get_symbol(&self, id: &SymbolId) -> Option<&Symbol> {
+        self.get(id)
+    }
+
+    fn call_graph(&self) -> Option<&CallGraph> {
+        self.call_graph.as_ref()
+    }
+
+    fn search(&self, query: &str, limit: usize) -> Vec<&Symbol> {
+        self.search(query, limit)
+    }
+
+    fn stats(&self) -> crate::model::project::IndexStats {
+        self.stats()
+    }
+
+    fn all_symbols(&self) -> Vec<&Symbol> {
+        self.symbols.values().collect()
+    }
+
+    fn file_count(&self) -> usize {
+        self.file_symbols.len()
+    }
+
+    fn version(&self) -> u32 {
+        self.version
+    }
+
+    fn indexed_at(&self) -> u64 {
+        self.indexed_at
+    }
+}
+
 /// Unified index provider that abstracts single-root and workspace modes.
 /// Commands interact with this instead of directly with ProjectIndex.
 pub enum IndexProvider {
@@ -44,6 +126,14 @@ pub enum IndexProvider {
 }
 
 impl IndexProvider {
+    /// Helper: obtain a reference to the underlying `Index` trait implementor.
+    fn as_index(&self) -> &dyn Index {
+        match self {
+            IndexProvider::Single { index, .. } => index,
+            IndexProvider::Workspace { index } => index,
+        }
+    }
+
     /// Load an index for the given root/workspace configuration.
     /// If workspace_flag is true or symlens.workspace.toml exists, use workspace mode.
     /// Otherwise, fall back to single-root mode.
@@ -121,34 +211,22 @@ impl IndexProvider {
 
     /// Get a symbol by ID.
     pub fn get(&self, id: &SymbolId) -> Option<&Symbol> {
-        match self {
-            IndexProvider::Single { index, .. } => index.get(id),
-            IndexProvider::Workspace { index } => index.get(id),
-        }
+        self.as_index().get_symbol(id)
     }
 
     /// Get the call graph, if available.
     pub fn call_graph(&self) -> Option<&CallGraph> {
-        match self {
-            IndexProvider::Single { index, .. } => index.call_graph.as_ref(),
-            IndexProvider::Workspace { index } => index.call_graph.as_ref(),
-        }
+        self.as_index().call_graph()
     }
 
     /// Search symbols by name.
     pub fn search(&self, query: &str, limit: usize) -> Vec<&Symbol> {
-        match self {
-            IndexProvider::Single { index, .. } => index.search(query, limit),
-            IndexProvider::Workspace { index } => index.search(query, limit),
-        }
+        self.as_index().search(query, limit)
     }
 
     /// Compute index statistics.
     pub fn stats(&self) -> crate::model::project::IndexStats {
-        match self {
-            IndexProvider::Single { index, .. } => index.stats(),
-            IndexProvider::Workspace { index } => index.stats(),
-        }
+        self.as_index().stats()
     }
 
     /// Get the project root path (single-root mode).
@@ -211,18 +289,12 @@ impl IndexProvider {
 
     /// Get all symbols.
     pub fn symbols(&self) -> Vec<&Symbol> {
-        match self {
-            IndexProvider::Single { index, .. } => index.symbols.values().collect(),
-            IndexProvider::Workspace { index } => index.symbols.values().collect(),
-        }
+        self.as_index().all_symbols()
     }
 
     /// Get the number of files in the index.
     pub fn file_count(&self) -> usize {
-        match self {
-            IndexProvider::Single { index, .. } => index.file_symbols.len(),
-            IndexProvider::Workspace { index } => index.file_symbols.len(),
-        }
+        self.as_index().file_count()
     }
 
     /// Whether this is a workspace provider.
@@ -232,18 +304,12 @@ impl IndexProvider {
 
     /// Get the index format version.
     pub fn version(&self) -> u32 {
-        match self {
-            IndexProvider::Single { index, .. } => index.version,
-            IndexProvider::Workspace { index } => index.version,
-        }
+        self.as_index().version()
     }
 
     /// Get the timestamp when the index was created/updated.
     pub fn indexed_at(&self) -> u64 {
-        match self {
-            IndexProvider::Single { index, .. } => index.indexed_at,
-            IndexProvider::Workspace { index } => index.indexed_at,
-        }
+        self.as_index().indexed_at()
     }
 
     /// Get workspace roots (workspace mode) or single root info.

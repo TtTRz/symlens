@@ -43,6 +43,69 @@ impl DepsGraph {
             .unwrap_or_default()
     }
 
+    /// Detect if a file is part of a dependency cycle.
+    pub fn has_cycle_from(&self, file: &PathBuf) -> bool {
+        let mut visited = BTreeSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        if let Some(deps) = self.edges.get(file) {
+            for dep in deps {
+                queue.push_back(dep.clone());
+            }
+        }
+        while let Some(current) = queue.pop_front() {
+            if &current == file {
+                return true;
+            }
+            if !visited.insert(current.clone()) {
+                continue;
+            }
+            if let Some(deps) = self.edges.get(&current) {
+                for dep in deps {
+                    if !visited.contains(dep) {
+                        queue.push_back(dep.clone());
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Find all dependency cycles, returning one representative file per cycle.
+    pub fn detect_cycles(&self) -> Vec<&PathBuf> {
+        let mut cycle_members = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        for file in self.edges.keys() {
+            if visited.contains(file) {
+                continue;
+            }
+            if self.has_cycle_from(file) {
+                cycle_members.insert(file);
+                visited.insert(file.clone());
+                // Mark all nodes reachable from this file as visited
+                let mut reach = std::collections::VecDeque::new();
+                if let Some(deps) = self.edges.get(file) {
+                    for dep in deps {
+                        reach.push_back(dep.clone());
+                    }
+                }
+                while let Some(n) = reach.pop_front() {
+                    if visited.insert(n.clone()) {
+                        if let Some(deps) = self.edges.get(&n) {
+                            for dep in deps {
+                                if !visited.contains(dep) {
+                                    reach.push_back(dep.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                visited.insert(file.clone());
+            }
+        }
+        cycle_members.into_iter().collect()
+    }
+
     /// Format as Mermaid graph.
     pub fn to_mermaid(&self) -> String {
         let mut out = String::from("graph TD\n");

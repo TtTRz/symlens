@@ -1,8 +1,9 @@
+use super::helpers::{
+    extract_doc_comment, extract_signature, node_span, node_text, node_text_eq, parse_source,
+};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
-
-use super::helpers::{node_span, node_text, node_text_eq, parse_source};
 
 pub struct GoParser;
 
@@ -149,7 +150,7 @@ fn extract_go_func(
     } else {
         Visibility::Private
     };
-    let sig = extract_go_signature(node, source);
+    let sig = extract_signature(node, source, &["block"]);
     let doc = extract_go_doc(node, source);
 
     Some(Symbol {
@@ -209,7 +210,7 @@ fn extract_go_method(
         Visibility::Private
     };
 
-    let sig = extract_go_signature(node, source);
+    let sig = extract_signature(node, source, &["block"]);
     let doc = extract_go_doc(node, source);
 
     Some(Symbol {
@@ -328,44 +329,8 @@ fn extract_go_vars(
     }
 }
 
-fn extract_go_signature(node: tree_sitter::Node, source: &[u8]) -> String {
-    let start = node.start_byte();
-    let mut end = node.end_byte();
-    let cursor = &mut node.walk();
-    for child in node.children(cursor) {
-        if child.kind() == "block" {
-            end = child.start_byte();
-            break;
-        }
-    }
-    let sig = &source[start..end];
-    String::from_utf8_lossy(sig)
-        .trim()
-        .lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn extract_go_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let mut comments = Vec::new();
-    let mut sibling = node.prev_sibling();
-    while let Some(s) = sibling {
-        if s.kind() == "comment" {
-            let text = node_text(s, source)?;
-            let cleaned = text.trim_start_matches("//").trim();
-            comments.push(cleaned.to_string());
-        } else {
-            break;
-        }
-        sibling = s.prev_sibling();
-    }
-    if comments.is_empty() {
-        None
-    } else {
-        comments.reverse();
-        Some(comments.join("\n"))
-    }
+    extract_doc_comment(node, source, "comment", "//", "comment", "/**")
 }
 
 // ─── Call extraction ────────────────────────────────────────────────

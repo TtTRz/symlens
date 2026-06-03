@@ -194,14 +194,20 @@ fn run_deps(
             .keys()
             .chain(deps_graph.edges.values().flat_map(|d| d.iter()))
             .map(|p| p.to_string_lossy().into_owned())
-            .collect::<std::collections::HashSet<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
+            .collect();
+        let cycles: Vec<String> = deps_graph
+            .detect_cycles()
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
             .collect();
         println!(
             "{}",
             serde_json::json!({
                 "modules": modules,
                 "edges": edges,
+                "cycles": cycles,
             })
         );
         return Ok(());
@@ -221,6 +227,15 @@ fn run_deps(
             for dep in deps {
                 let to = dep.with_extension("").to_string_lossy().replace("src/", "");
                 println!("  {} -> {}", from, to);
+            }
+        }
+
+        let cycles = deps_graph.detect_cycles();
+        if !cycles.is_empty() {
+            println!();
+            println!("!! CYCLE DETECTED — {} module(s) in circular dependency:", cycles.len());
+            for file in &cycles {
+                println!("  {}", file.with_extension("").to_string_lossy().replace("src/", ""));
             }
         }
     }

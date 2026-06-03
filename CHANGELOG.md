@@ -5,6 +5,39 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-06-04
+
+### Fixed
+
+- **BM25 adaptive fuzzy**: exact query tried first (fast path), fuzzy search only activates when exact match returns no results — eliminates Levenshtein automata overhead for precise queries
+- **UTF-8 truncation threshold**: `callers`/`callees` signature truncation now uses `chars().count()` instead of byte `.len()` to match `truncate_str` semantics
+- **Search pagination order**: `--offset` now applied before `--limit` truncation, preventing data loss on paginated results
+- **JSON deps determinism**: `graph deps --json` modules list now uses `BTreeSet` for consistent output order
+- **Benchmark accuracy**: `OnceLock` shared index across benchmark groups (was re-indexing per group); deterministic `hub_node()` selection instead of random `first()`
+- **Documentation**: updated `docs/commands.md` with current benchmark data (828 symbols, 28 benchmarks), MCP tools (12), new CLI flags, `.mts`/`.cts` extensions
+
+## [0.9.0] - 2026-06-03
+
+### Added
+
+- **Fuzzy BM25 search**: `query_parser.set_field_fuzzy()` enabled for `name`, `qualified_name`, and `signature` fields — handles typos and partial matches via tantivy fuzzy queries
+- **Dependency cycle detection**: `DepsGraph::has_cycle_from()` and `DepsGraph::detect_cycles()` — BFS-based cycle detection with `graph deps` output showing detected cycles (text + JSON)
+- **Pagination offset**: `--offset` flag on `search` and `refs` commands for paginating through large result sets
+- **`--verbose/-v` global flag**: enables `[verbose]` diagnostic output (index timing, file counts) across commands
+- **Shared parser helpers**: `extract_signature`, `extract_doc_comment`, `find_child_by_kind`, `last_child_by_kind`, `find_child_text_by_kind`, `node_text_eq`, `node_text_first_line` extracted into `parser/helpers.rs` — used by all 9 language parsers, eliminating ~207 lines of duplication
+
+### Changed
+
+- **Callers/Callees enhanced output**: shows file path, line number, and signature for each caller/callee (previously only showed symbol name); `color_on` parameter threaded through command chain
+- **JSON search output**: wrapped in `{ "query": ..., "results": [...], "count": N }` envelope for programmatic consumption
+- **`IndexProvider` trait**: private `trait Index` with 8 methods, `as_index()` helper — eliminates repeated `match` blocks in all 14 methods
+- **Refs parallel scanning**: `thread_local!` for per-thread `LanguageRegistry` in rayon parallel closures; verbose timing output
+- **Search verbose timing**: `search` command shows elapsed time when `SYMLENS_VERBOSE` is set
+
+### Testing
+
+- **201 tests** (was 156): added 45 new tests covering cycle detection (6), UTF-8 truncation (7), `Cow<str>` color output (7), language detection including `.mts`/`.cts` (11), and parser helpers (14)
+
 ## [0.8.1] - 2026-06-02
 
 ### Fixed

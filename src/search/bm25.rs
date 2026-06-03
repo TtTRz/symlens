@@ -165,17 +165,45 @@ impl SearchEngine {
         Ok(())
     }
 
-    /// BM25 search.
+    /// BM25 search with adaptive fuzzy strategy:
+    /// 1. Try exact (non-fuzzy) query first — fast path for precise matches
+    /// 2. Fall back to fuzzy query if exact yields no results
     pub fn search(&self, query_str: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>> {
         let searcher = self.reader.searcher();
 
-        let query = {
+        // Fast path: exact query (no Levenshtein automata overhead)
+        let results = {
             let qp = self.query_parser.read().unwrap();
-            qp.parse_query(query_str)?
+            let query = qp.parse_query(query_str)?;
+            let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
+            self.collect_results(&searcher, top_docs)?
         };
 
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
+        if !results.is_empty() {
+            return Ok(results);
+        }
 
+        // Fallback: rebuild parser with fuzzy enabled for this query
+        let fuzzy_results = {
+            let mut fuzzy_qp = QueryParser::for_index(
+                &self.index,
+                vec![self.f_name, self.f_qualified_name, self.f_signature, self.f_doc],
+            );
+            fuzzy_qp.set_field_fuzzy(self.f_name, true, 1, true);
+            fuzzy_qp.set_field_fuzzy(self.f_qualified_name, true, 1, true);
+            let query = fuzzy_qp.parse_query(query_str)?;
+            let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
+            self.collect_results(&searcher, top_docs)?
+        };
+
+        Ok(fuzzy_results)
+    }
+
+    fn collect_results(
+        &self,
+        searcher: &tantivy::Searcher,
+        top_docs: Vec<(f32, tantivy::DocAddress)>,
+    ) -> anyhow::Result<Vec<SearchResult>> {
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
@@ -188,7 +216,6 @@ impl SearchEngine {
                 });
             }
         }
-
         Ok(results)
     }
 }

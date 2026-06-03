@@ -224,7 +224,6 @@ impl ProjectIndex {
                             .as_ref()
                             .is_some_and(|doc| doc.to_lowercase().contains(&query_lower))
                 } else {
-                    // Fallback if cache not built
                     s.name.to_lowercase().contains(&query_lower)
                         || s.qualified_name.to_lowercase().contains(&query_lower)
                 }

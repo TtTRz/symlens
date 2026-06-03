@@ -1,4 +1,6 @@
-use super::helpers::{node_span, node_text, node_text_eq, parse_source};
+use super::helpers::{
+    extract_doc_comment, extract_signature, node_span, node_text, node_text_eq, parse_source,
+};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
@@ -194,7 +196,7 @@ fn extract_swift_func(
     };
 
     let vis = detect_swift_visibility(node, source);
-    let sig = extract_swift_signature(node, source);
+    let sig = extract_signature(node, source, &["function_body", "code_block"]);
 
     Some(Symbol {
         id: SymbolId::new(file_str, &qualified, &kind),
@@ -273,47 +275,8 @@ fn detect_swift_visibility(node: tree_sitter::Node, source: &[u8]) -> Visibility
     Visibility::Internal // Swift default is internal
 }
 
-fn extract_swift_signature(node: tree_sitter::Node, source: &[u8]) -> String {
-    let start = node.start_byte();
-    let mut end = node.end_byte();
-    let cursor = &mut node.walk();
-    for child in node.children(cursor) {
-        if child.kind() == "function_body" || child.kind() == "code_block" {
-            end = child.start_byte();
-            break;
-        }
-    }
-    let sig_bytes = &source[start..end];
-    String::from_utf8_lossy(sig_bytes)
-        .trim()
-        .lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn extract_swift_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let mut sibling = node.prev_sibling();
-    let mut comments = Vec::new();
-    while let Some(s) = sibling {
-        if s.kind() == "comment" {
-            let text = node_text(s, source)?;
-            if text.starts_with("///") {
-                comments.push(text.trim_start_matches("///").trim().to_string());
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-        sibling = s.prev_sibling();
-    }
-    if comments.is_empty() {
-        None
-    } else {
-        comments.reverse();
-        Some(comments.join("\n"))
-    }
+    extract_doc_comment(node, source, "comment", "///", "comment", "/**")
 }
 
 fn collect_swift_ids(

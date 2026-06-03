@@ -1,8 +1,9 @@
+use super::helpers::{
+    extract_signature, node_span, node_text, node_text_eq, node_text_first_line, parse_source,
+};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, RefKind};
 use std::path::Path;
-
-use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
 
 pub struct RustParser;
 
@@ -183,8 +184,8 @@ fn extract_function(
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
     let vis = extract_visibility(node, source);
-    let doc = extract_doc_comment(node, source);
-    let sig = extract_signature(node, source);
+    let doc = extract_rust_doc(node, source);
+    let sig = extract_signature(node, source, &["block"]);
 
     let (qualified, kind) = match parent_name {
         Some(parent) => (format!("{}::{}", parent, name), SymbolKind::Method),
@@ -217,7 +218,7 @@ fn extract_struct(
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
     let vis = extract_visibility(node, source);
-    let doc = extract_doc_comment(node, source);
+    let doc = extract_rust_doc(node, source);
 
     Some(Symbol {
         id: SymbolId::new(file_str, &name, &SymbolKind::Struct),
@@ -246,7 +247,7 @@ fn extract_enum(
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
     let vis = extract_visibility(node, source);
-    let doc = extract_doc_comment(node, source);
+    let doc = extract_rust_doc(node, source);
 
     Some(Symbol {
         id: SymbolId::new(file_str, &name, &SymbolKind::Enum),
@@ -286,7 +287,7 @@ fn extract_enum_variants(
                 file_path: file_path.to_path_buf(),
                 span: node_span(child),
                 signature: None,
-                doc_comment: extract_doc_comment(child, source),
+                doc_comment: extract_rust_doc(child, source),
                 visibility: Visibility::Public,
                 parent: Some(SymbolId::new(file_str, enum_name, &SymbolKind::Enum)),
                 children: vec![],
@@ -324,7 +325,7 @@ fn extract_fields(
                 file_path: file_path.to_path_buf(),
                 span: node_span(child),
                 signature: sig,
-                doc_comment: extract_doc_comment(child, source),
+                doc_comment: extract_rust_doc(child, source),
                 visibility: vis,
                 parent: Some(SymbolId::new(file_str, struct_name, &SymbolKind::Struct)),
                 children: vec![],
@@ -342,7 +343,7 @@ fn extract_trait(
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?;
     let vis = extract_visibility(node, source);
-    let doc = extract_doc_comment(node, source);
+    let doc = extract_rust_doc(node, source);
 
     Some(Symbol {
         id: SymbolId::new(file_str, &name, &SymbolKind::Interface),
@@ -402,7 +403,7 @@ fn extract_const(
         file_path: file_path.to_path_buf(),
         span: node_span(node),
         signature: sig,
-        doc_comment: extract_doc_comment(node, source),
+        doc_comment: extract_rust_doc(node, source),
         visibility: vis,
         parent: None,
         children: vec![],
@@ -428,7 +429,7 @@ fn extract_type_alias(
         file_path: file_path.to_path_buf(),
         span: node_span(node),
         signature: sig,
-        doc_comment: extract_doc_comment(node, source),
+        doc_comment: extract_rust_doc(node, source),
         visibility: vis,
         parent: None,
         children: vec![],
@@ -452,7 +453,7 @@ fn extract_macro(
         file_path: file_path.to_path_buf(),
         span: node_span(node),
         signature: None,
-        doc_comment: extract_doc_comment(node, source),
+        doc_comment: extract_rust_doc(node, source),
         visibility: Visibility::Public,
         parent: None,
         children: vec![],
@@ -475,7 +476,7 @@ fn extract_visibility(node: tree_sitter::Node, source: &[u8]) -> Visibility {
     Visibility::Private
 }
 
-fn extract_doc_comment(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
+fn extract_rust_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
     // Look at preceding siblings for doc comments
     let mut comments = Vec::new();
     let mut sibling = node.prev_sibling();
@@ -505,27 +506,6 @@ fn extract_doc_comment(node: tree_sitter::Node, source: &[u8]) -> Option<String>
         comments.reverse();
         Some(comments.join("\n"))
     }
-}
-
-fn extract_signature(node: tree_sitter::Node, source: &[u8]) -> String {
-    // Get text from start of function to opening brace
-    let start = node.start_byte();
-    let mut end = node.end_byte();
-
-    // Find the opening brace to truncate there
-    let cursor = &mut node.walk();
-    for child in node.children(cursor) {
-        if child.kind() == "block" {
-            end = child.start_byte();
-            break;
-        }
-    }
-
-    let sig_bytes = &source[start..end];
-    let sig = String::from_utf8_lossy(sig_bytes).trim().to_string();
-
-    // Clean up: remove trailing whitespace, normalize
-    sig.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
 }
 
 // ─── Call graph extraction ──────────────────────────────────────────

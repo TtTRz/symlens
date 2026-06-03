@@ -1,8 +1,9 @@
+use super::helpers::{
+    extract_signature, node_span, node_text, node_text_eq, node_text_first_line, parse_source,
+};
 use crate::model::symbol::*;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, ParsedOutput, RefKind};
 use std::path::Path;
-
-use super::helpers::{node_span, node_text, node_text_eq, node_text_first_line, parse_source};
 
 pub struct TypeScriptParser;
 
@@ -215,7 +216,7 @@ fn extract_ts_function(
         kind,
         file_path: file_path.to_path_buf(),
         span: node_span(node),
-        signature: Some(extract_ts_signature(node, source)),
+        signature: Some(extract_signature(node, source, &["statement_block"])),
         doc_comment: doc,
         visibility: vis,
         parent: parent_name.map(|p| SymbolId::new(file_str, p, &SymbolKind::Class)),
@@ -275,7 +276,7 @@ fn extract_ts_class_body(
                         kind: SymbolKind::Method,
                         file_path: file_path.to_path_buf(),
                         span: node_span(child),
-                        signature: Some(extract_ts_signature(child, source)),
+                        signature: Some(extract_signature(child, source, &["statement_block"])),
                         doc_comment: extract_ts_doc(child, source),
                         visibility: Visibility::Public,
                         parent: Some(SymbolId::new(file_str, class_name, &SymbolKind::Class)),
@@ -594,27 +595,6 @@ fn extract_ts_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
         }
     }
     None
-}
-
-fn extract_ts_signature(node: tree_sitter::Node, source: &[u8]) -> String {
-    let start = node.start_byte();
-    let mut end = node.end_byte();
-
-    let cursor = &mut node.walk();
-    for child in node.children(cursor) {
-        if child.kind() == "statement_block" {
-            end = child.start_byte();
-            break;
-        }
-    }
-
-    let sig_bytes = &source[start..end];
-    String::from_utf8_lossy(sig_bytes)
-        .trim()
-        .lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 // ─── Call extraction ────────────────────────────────────────────────
