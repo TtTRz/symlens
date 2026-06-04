@@ -2201,7 +2201,7 @@ fn py_import_relative() {
     let imports = parser
         .extract_imports(source, std::path::Path::new("test.py"))
         .unwrap();
-    assert!(imports.len() >= 1, "Should have at least 1 import");
+    assert!(!imports.is_empty(), "Should have at least 1 import");
     // Relative imports with module path
     let from_pkg = imports.iter().find(|i| i.module_path.contains("package"));
     assert!(from_pkg.is_some(), "Should find from ..package import");
@@ -2665,7 +2665,7 @@ mod workspace_tests {
             ],
         );
 
-        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
         ws.insert_from_project(&root_info, &project);
 
         // Symbols should be prefixed with root label (directory name)
@@ -2770,7 +2770,7 @@ mod workspace_tests {
             ],
         );
 
-        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
         ws.insert_from_project(&root_info, &project);
 
         let file_key = FileKey::new(&root_info.id, PathBuf::from("src/a.rs"));
@@ -2848,7 +2848,7 @@ mod workspace_tests {
     #[test]
     fn workspace_resolve_absolute() {
         let root_info = RootInfo::new(PathBuf::from("/tmp/my-project"));
-        let ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
 
         let file_key = FileKey::new(&root_info.id, PathBuf::from("src/main.rs"));
         let abs = ws.resolve_absolute(&file_key);
@@ -2877,7 +2877,7 @@ mod workspace_tests {
             ],
         );
 
-        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
         ws.insert_from_project(&root_info, &project);
 
         let encoded =
@@ -2911,7 +2911,7 @@ mod workspace_tests {
         project.insert(child);
 
         let root_info = RootInfo::new(PathBuf::from("/tmp/ws-parent"));
-        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
         ws.insert_from_project(&root_info, &project);
 
         // Find the workspace-scoped process_block (uses label, not hash)
@@ -2939,7 +2939,7 @@ mod workspace_tests {
         // label should be the directory name
         assert_eq!(root_info.label, "my-audio-lib");
 
-        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
         ws.insert_from_project(&root_info, &project);
 
         // SymbolId prefix should be the label, not the hash
@@ -2958,7 +2958,7 @@ mod workspace_tests {
     #[test]
     fn workspace_resolve_absolute_by_label() {
         let root_info = RootInfo::new(PathBuf::from("/tmp/my-project"));
-        let ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
 
         // Resolve by hash id (standard FileKey)
         let file_key = FileKey::new(&root_info.id, PathBuf::from("src/main.rs"));
@@ -3017,7 +3017,7 @@ mod workspace_tests {
 
         // Verify call edges are prefixed with label (directory name)
         for edges in ws.file_call_edges.values() {
-            for (caller, callee) in edges {
+            for (caller, _callee) in edges {
                 // Call edges should NOT contain hex hash chars in brackets
                 if caller.starts_with('[') {
                     let prefix = &caller[1..caller.find(']').unwrap()];
@@ -3061,7 +3061,7 @@ mod workspace_tests {
         project.insert(child2);
 
         let root_info = RootInfo::new(PathBuf::from("/tmp/ws-children"));
-        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
         ws.insert_from_project(&root_info, &project);
 
         // Find parent symbol in workspace

@@ -36,7 +36,7 @@ native = [
     "dep:rusqlite",
 ]
 mcp = ["native", "dep:tokio", "dep:rmcp", "dep:schemars"]
-wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
+wasm = ["dep:blake3", "dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 # === Always available (WASM-compatible) ===

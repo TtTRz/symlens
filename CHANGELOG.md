@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Workspace display labels**: SymbolId prefixes now use directory names (e.g., `[audio]src/main.rs`) instead of blake3 hashes (e.g., `[a1b2c3d4]`) for human-readable workspace output — call graph nodes, search results, callers/callees, outline, diff, and watch all show readable names
 - **Clippy clean**: fixed pre-existing `map_or` → `is_ok_and` and collapsible `if` warnings in `helpers.rs` and `deps.rs`
+- **WASM feature gate**: `blake3` and `Config` gated behind `native` feature — `wasm` feature now includes `blake3` dep and compiles cleanly without native-only modules
 
 ### Fixed
 
@@ -18,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`resolve_absolute` label fallback**: `WorkspaceIndex::resolve_absolute` now matches by both hash `id` and directory `label`, fixing path resolution for commands that receive label-prefixed SymbolIds
 - **`outline` hash display**: outline JSON output showed `[hash]` file prefixes — now uses `IndexProvider::file_display()` to resolve labels
 - **`watch` hash display**: workspace watch logs showed `[hash]` prefixes — now shows directory names
+- **CI clippy failures**: 10 clippy lint errors in test file (`cloned_ref_to_slice_refs`, `len_zero`, `unused_variables`)
+- **CI WASM check failure**: `blake3` and `Config` unresolved in `wasm` feature — added feature gates
 
 ### Testing
 

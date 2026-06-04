@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::symbol::{Symbol, SymbolId};
+#[cfg(feature = "native")]
 use crate::config::Config;
 use crate::graph::call_graph::CallGraph;
 use crate::parser::traits::{CallEdge, ImportInfo};
@@ -57,6 +58,7 @@ pub struct RootInfo {
     /// Same as ProjectIndex::root_hash — used for per-root cache lookup.
     pub hash: String,
     /// Per-root configuration loaded from symlens.toml.
+    #[cfg(feature = "native")]
     #[serde(skip)]
     pub config: Config,
 }
@@ -75,11 +77,13 @@ impl RootInfo {
             id: full_hash[..8].to_string(),
             label,
             hash: full_hash[..16].to_string(),
+            #[cfg(feature = "native")]
             config: Config::default(),
         }
     }
 
     /// Create a RootInfo with explicit config.
+    #[cfg(feature = "native")]
     pub fn with_config(path: PathBuf, config: Config) -> Self {
         let path_str = path.to_string_lossy();
         let full_hash = blake3::hash(path_str.as_bytes()).to_hex();
