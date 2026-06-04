@@ -20,7 +20,7 @@ pub fn run(
             let files: Vec<serde_json::Value> = provider
                 .file_keys()
                 .iter()
-                .map(|fk| serde_json::json!({ "file": fk.display(), "symbols": provider.symbols_in_file(fk).len() }))
+                .map(|fk| serde_json::json!({ "file": provider.file_display(fk), "symbols": provider.symbols_in_file(fk).len() }))
                 .collect();
             println!(
                 "{}",

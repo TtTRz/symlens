@@ -89,12 +89,10 @@ impl DepsGraph {
                     }
                 }
                 while let Some(n) = reach.pop_front() {
-                    if visited.insert(n.clone()) {
-                        if let Some(deps) = self.edges.get(&n) {
-                            for dep in deps {
-                                if !visited.contains(dep) {
-                                    reach.push_back(dep.clone());
-                                }
+                    if visited.insert(n.clone()) && let Some(deps) = self.edges.get(&n) {
+                        for dep in deps {
+                            if !visited.contains(dep) {
+                                reach.push_back(dep.clone());
                             }
                         }
                     }

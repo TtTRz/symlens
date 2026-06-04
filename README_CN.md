@@ -148,7 +148,7 @@ symlens callers "process_request" --workspace
 symlens graph impact "UserModel" --workspace
 ```
 
-**工作原理：** 每个 root 独立索引并拥有自己的缓存，然后合并到统一的 `WorkspaceIndex`。符号通过 `[root_id]` 前缀消除歧义（如 `[a1b2c3d4]src/main.rs::App#struct`）。保留逐 root 增量索引——只有变更的 root 会重新索引。
+**工作原理：** 每个 root 独立索引并拥有自己的缓存，然后合并到统一的 `WorkspaceIndex`。符号通过 root 目录名前缀消除歧义（如 `[audio]src/main.rs::App#struct`）。保留逐 root 增量索引——只有变更的 root 会重新索引。
 
 ---
 

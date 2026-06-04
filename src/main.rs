@@ -9,7 +9,9 @@ fn main() -> anyhow::Result<()> {
 
     if cli.verbose {
         // SAFETY: setting a new env var before any concurrent access
-        unsafe { std::env::set_var("SYMLENS_VERBOSE", "1"); }
+        unsafe {
+            std::env::set_var("SYMLENS_VERBOSE", "1");
+        }
     }
 
     let workspace = cli.workspace;

@@ -26,8 +26,8 @@ pub fn run(
     let git_root = provider
         .roots()
         .iter()
-        .find(|(_, path, _)| file_path.starts_with(path))
-        .map(|(_, path, _)| path.to_path_buf())
+        .find(|(_, path, _, _)| file_path.starts_with(path))
+        .map(|(_, path, _, _)| path.to_path_buf())
         .or_else(|| provider.single_root().map(|p| p.to_path_buf()))
         .ok_or_else(|| anyhow::anyhow!("Cannot determine git root for blame"))?;
 

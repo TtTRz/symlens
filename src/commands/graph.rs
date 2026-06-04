@@ -233,9 +233,17 @@ fn run_deps(
         let cycles = deps_graph.detect_cycles();
         if !cycles.is_empty() {
             println!();
-            println!("!! CYCLE DETECTED — {} module(s) in circular dependency:", cycles.len());
+            println!(
+                "!! CYCLE DETECTED — {} module(s) in circular dependency:",
+                cycles.len()
+            );
             for file in &cycles {
-                println!("  {}", file.with_extension("").to_string_lossy().replace("src/", ""));
+                println!(
+                    "  {}",
+                    file.with_extension("")
+                        .to_string_lossy()
+                        .replace("src/", "")
+                );
             }
         }
     }

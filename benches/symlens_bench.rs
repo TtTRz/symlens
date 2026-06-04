@@ -81,15 +81,27 @@ fn bench_parse(c: &mut Criterion) {
 
     group.bench_function("typescript_file", |b| {
         let parser = registry.parser_for(Path::new("sample.ts")).unwrap();
-        b.iter(|| parser.extract_symbols(ts_source, Path::new("sample.ts")).unwrap())
+        b.iter(|| {
+            parser
+                .extract_symbols(ts_source, Path::new("sample.ts"))
+                .unwrap()
+        })
     });
     group.bench_function("python_file", |b| {
         let parser = registry.parser_for(Path::new("sample.py")).unwrap();
-        b.iter(|| parser.extract_symbols(py_source, Path::new("sample.py")).unwrap())
+        b.iter(|| {
+            parser
+                .extract_symbols(py_source, Path::new("sample.py"))
+                .unwrap()
+        })
     });
     group.bench_function("go_file", |b| {
         let parser = registry.parser_for(Path::new("sample.go")).unwrap();
-        b.iter(|| parser.extract_symbols(go_source, Path::new("sample.go")).unwrap())
+        b.iter(|| {
+            parser
+                .extract_symbols(go_source, Path::new("sample.go"))
+                .unwrap()
+        })
     });
 
     group.bench_function("registry_lookup", |b| {
@@ -153,13 +165,9 @@ fn bench_call_graph(c: &mut Criterion) {
     let peer = peer_node(&data.graph, &target);
     let mut group = c.benchmark_group("call_graph");
 
-    group.bench_function("callers_exact", |b| {
-        b.iter(|| data.graph.callers(&target))
-    });
+    group.bench_function("callers_exact", |b| b.iter(|| data.graph.callers(&target)));
 
-    group.bench_function("callees_exact", |b| {
-        b.iter(|| data.graph.callees(&target))
-    });
+    group.bench_function("callees_exact", |b| b.iter(|| data.graph.callees(&target)));
 
     let short_name = target.rsplit("::").next().unwrap_or(&target);
     group.bench_function("callers_partial", |b| {
@@ -182,9 +190,7 @@ fn bench_call_graph(c: &mut Criterion) {
         b.iter(|| impact::analyze_impact(&data.graph, &target, 3))
     });
 
-    group.bench_function("build_graph", |b| {
-        b.iter(|| CallGraph::build(&data.edges))
-    });
+    group.bench_function("build_graph", |b| b.iter(|| CallGraph::build(&data.edges)));
 
     group.finish();
 }
@@ -197,9 +203,18 @@ fn bench_deps(c: &mut Criterion) {
     // Small DAG — no cycles
     let small_dag = DepsGraph {
         edges: std::collections::BTreeMap::from([
-            (PathBuf::from("a.rs"), std::collections::BTreeSet::from([PathBuf::from("b.rs")])),
-            (PathBuf::from("b.rs"), std::collections::BTreeSet::from([PathBuf::from("c.rs")])),
-            (PathBuf::from("d.rs"), std::collections::BTreeSet::from([PathBuf::from("e.rs")])),
+            (
+                PathBuf::from("a.rs"),
+                std::collections::BTreeSet::from([PathBuf::from("b.rs")]),
+            ),
+            (
+                PathBuf::from("b.rs"),
+                std::collections::BTreeSet::from([PathBuf::from("c.rs")]),
+            ),
+            (
+                PathBuf::from("d.rs"),
+                std::collections::BTreeSet::from([PathBuf::from("e.rs")]),
+            ),
         ]),
     };
     group.bench_function("has_cycle_dag", |b| {
@@ -209,9 +224,18 @@ fn bench_deps(c: &mut Criterion) {
     // Cycle present
     let cyclic = DepsGraph {
         edges: std::collections::BTreeMap::from([
-            (PathBuf::from("a.rs"), std::collections::BTreeSet::from([PathBuf::from("b.rs")])),
-            (PathBuf::from("b.rs"), std::collections::BTreeSet::from([PathBuf::from("c.rs")])),
-            (PathBuf::from("c.rs"), std::collections::BTreeSet::from([PathBuf::from("a.rs")])),
+            (
+                PathBuf::from("a.rs"),
+                std::collections::BTreeSet::from([PathBuf::from("b.rs")]),
+            ),
+            (
+                PathBuf::from("b.rs"),
+                std::collections::BTreeSet::from([PathBuf::from("c.rs")]),
+            ),
+            (
+                PathBuf::from("c.rs"),
+                std::collections::BTreeSet::from([PathBuf::from("a.rs")]),
+            ),
         ]),
     };
     group.bench_function("has_cycle_cyclic", |b| {
@@ -226,9 +250,7 @@ fn bench_deps(c: &mut Criterion) {
         let to = PathBuf::from(format!("mod_{:03}.rs", (i + 1) % 100));
         large_edges.entry(from).or_default().insert(to);
     }
-    let large_dag = DepsGraph {
-        edges: large_edges,
-    };
+    let large_dag = DepsGraph { edges: large_edges };
     group.bench_function("detect_cycles_100_nodes", |b| {
         b.iter(|| large_dag.detect_cycles())
     });
@@ -271,8 +293,7 @@ fn bench_serialization(c: &mut Criterion) {
         b.iter(|| bincode::serde::encode_to_vec(&data.index, bincode::config::standard()).unwrap())
     });
 
-    let encoded =
-        bincode::serde::encode_to_vec(&data.index, bincode::config::standard()).unwrap();
+    let encoded = bincode::serde::encode_to_vec(&data.index, bincode::config::standard()).unwrap();
 
     group.bench_function("bincode_decode", |b| {
         b.iter(|| {

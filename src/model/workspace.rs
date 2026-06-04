@@ -68,14 +68,15 @@ impl WorkspaceIndex {
     }
 
     /// Merge a single-root ProjectIndex into this workspace.
-    /// All SymbolIds and file keys are prefixed with the root's id.
-    /// Call edges are remapped to include root-scoped qualified names.
+    /// Symbols and call edges use `label` (directory name) for display.
+    /// File keys use `id` (hash) for internal deduplication.
     pub fn insert_from_project(&mut self, root_info: &RootInfo, project_index: &ProjectIndex) {
         let root_id = &root_info.id;
+        let root_label = &root_info.label;
 
-        // Insert symbols with root_id prefix
+        // Insert symbols with label prefix for display
         for symbol in project_index.symbols.values() {
-            let ws_symbol = self.remap_symbol(root_id, symbol);
+            let ws_symbol = self.remap_symbol(root_label, symbol);
             let ws_id = ws_symbol.id.clone();
             let lower_name = ws_symbol.name.to_lowercase();
             let lower_qname = ws_symbol.qualified_name.to_lowercase();
@@ -83,7 +84,7 @@ impl WorkspaceIndex {
                 .insert(ws_id.clone(), (lower_name, lower_qname));
             self.symbols.insert(ws_id.clone(), ws_symbol);
 
-            // Update file_symbols
+            // File keys use hash id for reliable dedup
             let file_key = FileKey::new(root_id, symbol.file_path.clone());
             self.file_symbols.entry(file_key).or_default().push(ws_id);
         }
@@ -98,15 +99,15 @@ impl WorkspaceIndex {
             self.file_hashes.insert(file_key, hash.clone());
         }
 
-        // Remap call edges: prefix qualified names with root_id
+        // Remap call edges: prefix with readable label
         for (rel_path, edges) in &project_index.file_call_edges {
             let file_key = FileKey::new(root_id, rel_path.clone());
             let ws_edges: Vec<CallEdge> = edges
                 .iter()
                 .map(|(caller, callee)| {
                     (
-                        format!("[{}]{}", root_id, caller),
-                        format!("[{}]{}", root_id, callee),
+                        format!("[{}]{}", root_label, caller),
+                        format!("[{}]{}", root_label, callee),
                     )
                 })
                 .collect();
@@ -128,11 +129,19 @@ impl WorkspaceIndex {
 
     /// Remove all data associated with a specific root.
     pub fn remove_root(&mut self, root_id: &str) {
-        // Remove symbols belonging to this root
+        // Find the label for this root_id (SymbolId prefixes use label, not hash)
+        let root_label = self
+            .roots
+            .iter()
+            .find(|r| r.id == root_id)
+            .map(|r| r.label.as_str())
+            .unwrap_or("");
+
+        // Remove symbols belonging to this root (match by label prefix)
         let sym_ids_to_remove: Vec<SymbolId> = self
             .symbols
             .iter()
-            .filter(|(id, _)| id.root_id() == root_id)
+            .filter(|(id, _)| !root_label.is_empty() && id.root_id() == root_label)
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -141,12 +150,12 @@ impl WorkspaceIndex {
             self.symbols.remove(id);
         }
 
-        // Remove file-level data for this root
+        // Remove file-level data for this root (FileKey uses hash id)
         self.file_symbols.retain(|k, ids| {
             if k.root_id == root_id {
                 false
             } else {
-                ids.retain(|id| id.root_id() != root_id);
+                ids.retain(|id| !root_label.is_empty() && id.root_id() != root_label);
                 !ids.is_empty()
             }
         });
@@ -166,10 +175,11 @@ impl WorkspaceIndex {
     }
 
     /// Resolve a FileKey to an absolute path on the filesystem.
+    /// Matches by `root_id` (hash) first, falls back to `label`.
     pub fn resolve_absolute(&self, file_key: &FileKey) -> Option<PathBuf> {
         self.roots
             .iter()
-            .find(|r| r.id == file_key.root_id)
+            .find(|r| r.id == file_key.root_id || r.label == file_key.root_id)
             .map(|r| r.path.join(&file_key.path))
     }
 
@@ -276,34 +286,31 @@ impl WorkspaceIndex {
     }
 
     /// Remap a Symbol from a single-root ProjectIndex to workspace form.
-    /// Prefixes SymbolId, parent, children with root_id.
-    fn remap_symbol(&self, root_id: &str, symbol: &Symbol) -> Symbol {
+    /// Prefixes SymbolId, parent, children with the root's readable label.
+    fn remap_symbol(&self, root_label: &str, symbol: &Symbol) -> Symbol {
         Symbol {
             id: SymbolId::new_with_root(
-                root_id,
+                root_label,
                 &symbol.file_path.to_string_lossy(),
                 &symbol.qualified_name,
                 &symbol.kind,
             ),
             name: symbol.name.clone(),
-            qualified_name: format!("[{}]{}", root_id, symbol.qualified_name),
+            qualified_name: format!("[{}]{}", root_label, symbol.qualified_name),
             kind: symbol.kind,
             file_path: symbol.file_path.clone(),
             span: symbol.span,
             signature: symbol.signature.clone(),
             doc_comment: symbol.doc_comment.clone(),
             visibility: symbol.visibility,
-            // Prepend root_id prefix to parent/child SymbolIds.
-            // Since SymbolId is a newtype wrapper around String, we directly
-            // prefix the inner string — this preserves the original kind tag.
             parent: symbol
                 .parent
                 .as_ref()
-                .map(|p| SymbolId(format!("[{}]{}", root_id, p.0))),
+                .map(|p| SymbolId(format!("[{}]{}", root_label, p.0))),
             children: symbol
                 .children
                 .iter()
-                .map(|c| SymbolId(format!("[{}]{}", root_id, c.0)))
+                .map(|c| SymbolId(format!("[{}]{}", root_label, c.0)))
                 .collect(),
         }
     }

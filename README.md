@@ -148,7 +148,7 @@ symlens callers "process_request" --workspace
 symlens graph impact "UserModel" --workspace
 ```
 
-**How it works:** Each root is indexed independently with its own cache, then merged into a unified `WorkspaceIndex`. Symbols are prefixed with `[root_id]` for disambiguation (e.g., `[a1b2c3d4]src/main.rs::App#struct`). Per-root incremental indexing is preserved — only changed roots are re-indexed.
+**How it works:** Each root is indexed independently with its own cache, then merged into a unified `WorkspaceIndex`. Symbols are prefixed with the root's directory name for disambiguation (e.g., `[audio]src/main.rs::App#struct`). Per-root incremental indexing is preserved — only changed roots are re-indexed.
 
 ---
 

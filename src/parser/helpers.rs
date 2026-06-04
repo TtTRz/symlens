@@ -23,7 +23,7 @@ pub fn node_text(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
 
 /// Compare a node's text against a target string without allocating.
 pub fn node_text_eq(node: tree_sitter::Node, source: &[u8], target: &str) -> bool {
-    node.utf8_text(source).map_or(false, |s| s == target)
+    node.utf8_text(source).is_ok_and(|s| s == target)
 }
 
 /// Convert a tree-sitter node position to a 1-indexed source Span.
@@ -86,11 +86,7 @@ pub fn find_child_text_by_kind(
 /// Extract a function/declaration signature by slicing source from `node.start_byte()`
 /// up to the first child whose kind is in `body_kinds` (or `node.end_byte()` if none found).
 /// Lines are trimmed and joined with a single space.
-pub fn extract_signature(
-    node: tree_sitter::Node,
-    source: &[u8],
-    body_kinds: &[&str],
-) -> String {
+pub fn extract_signature(node: tree_sitter::Node, source: &[u8], body_kinds: &[&str]) -> String {
     let start = node.start_byte();
     let mut end = node.end_byte();
     for kind in body_kinds {

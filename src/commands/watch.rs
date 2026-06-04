@@ -18,7 +18,7 @@ pub fn run(path: Option<&str>, workspace_flag: bool) -> anyhow::Result<()> {
     } else {
         // Workspace mode — watch each root independently
         eprintln!("👁  Watching {} roots for changes...", roots.len());
-        for (_, root_path, _) in &roots {
+        for (_, root_path, _, _) in &roots {
             eprintln!("   - {}", root_path.display());
         }
         eprintln!("   Press Ctrl+C to stop.");
@@ -116,30 +116,30 @@ fn watch_single_root(root: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn watch_workspace(roots: &[(&str, &std::path::Path, &str)]) -> anyhow::Result<()> {
+fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)]) -> anyhow::Result<()> {
     // Initial index for each root
     let mut prev_indices: Vec<(String, PathBuf, Option<ProjectIndex>)> = Vec::new();
-    for (root_id, root_path, _root_hash) in roots {
+    for (_root_id, root_path, _root_hash, root_label) in roots {
         match indexer::index_project(root_path, 100_000) {
             Ok(result) => {
                 eprintln!(
                     "   [{}] Indexed {} symbols in {}ms",
-                    root_id,
+                    root_label,
                     result.index.symbols.len(),
                     result.duration_ms
                 );
                 if let Err(e) = storage::save(&result.index) {
-                    eprintln!("   [{}] ⚠ Save failed: {}", root_id, e);
+                    eprintln!("   [{}] ⚠ Save failed: {}", root_label, e);
                 }
                 prev_indices.push((
-                    root_id.to_string(),
+                    root_label.to_string(),
                     root_path.to_path_buf(),
                     Some(result.index),
                 ));
             }
             Err(e) => {
-                eprintln!("   [{}] ⚠ Index failed: {}", root_id, e);
-                prev_indices.push((root_id.to_string(), root_path.to_path_buf(), None));
+                eprintln!("   [{}] ⚠ Index failed: {}", root_label, e);
+                prev_indices.push((root_label.to_string(), root_path.to_path_buf(), None));
             }
         }
     }
@@ -147,7 +147,7 @@ fn watch_workspace(roots: &[(&str, &std::path::Path, &str)]) -> anyhow::Result<(
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
     let mut watcher = notify::recommended_watcher(tx)?;
 
-    for (_, root_path, _) in roots {
+    for (_, root_path, _, _) in roots {
         watcher.watch(root_path, RecursiveMode::Recursive)?;
     }
 

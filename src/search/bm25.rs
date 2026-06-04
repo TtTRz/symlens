@@ -187,7 +187,12 @@ impl SearchEngine {
         let fuzzy_results = {
             let mut fuzzy_qp = QueryParser::for_index(
                 &self.index,
-                vec![self.f_name, self.f_qualified_name, self.f_signature, self.f_doc],
+                vec![
+                    self.f_name,
+                    self.f_qualified_name,
+                    self.f_signature,
+                    self.f_doc,
+                ],
             );
             fuzzy_qp.set_field_fuzzy(self.f_name, true, 1, true);
             fuzzy_qp.set_field_fuzzy(self.f_qualified_name, true, 1, true);

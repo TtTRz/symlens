@@ -5,6 +5,24 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-06-04
+
+### Changed
+
+- **Workspace display labels**: SymbolId prefixes now use directory names (e.g., `[audio]src/main.rs`) instead of blake3 hashes (e.g., `[a1b2c3d4]`) for human-readable workspace output — call graph nodes, search results, callers/callees, outline, diff, and watch all show readable names
+- **Clippy clean**: fixed pre-existing `map_or` → `is_ok_and` and collapsible `if` warnings in `helpers.rs` and `deps.rs`
+
+### Fixed
+
+- **`remove_root` mismatch**: SymbolId filtering in `WorkspaceIndex::remove_root` compared hash-based `root_id` against label-based SymbolId prefix — now correctly resolves label before matching
+- **`resolve_absolute` label fallback**: `WorkspaceIndex::resolve_absolute` now matches by both hash `id` and directory `label`, fixing path resolution for commands that receive label-prefixed SymbolIds
+- **`outline` hash display**: outline JSON output showed `[hash]` file prefixes — now uses `IndexProvider::file_display()` to resolve labels
+- **`watch` hash display**: workspace watch logs showed `[hash]` prefixes — now shows directory names
+
+### Testing
+
+- **207 tests** (was 201): added 6 workspace label tests covering SymbolId prefix, resolve by label, remove by label, call edge prefix, RootInfo label edge cases, and children remap
+
 ## [0.9.1] - 2026-06-04
 
 ### Fixed

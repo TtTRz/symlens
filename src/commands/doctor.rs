@@ -70,7 +70,7 @@ fn check_index(provider: &crate::commands::IndexProvider) {
 }
 
 fn check_cache(provider: &crate::commands::IndexProvider) {
-    for (_, _root_path, root_hash) in provider.roots() {
+    for (_, _root_path, root_hash, _) in provider.roots() {
         let cache_dir = storage::cache_dir(root_hash);
 
         if cache_dir.exists() {
@@ -125,7 +125,7 @@ fn check_languages(provider: &crate::commands::IndexProvider) {
     ];
     let mut found: Vec<(&str, usize)> = Vec::new();
 
-    for (_, root_path, _) in provider.roots() {
+    for (_, root_path, _, _) in provider.roots() {
         for ext in &extensions {
             let count = count_files_with_ext(root_path, ext);
             if count > 0 {
@@ -177,7 +177,7 @@ fn check_call_graph(provider: &crate::commands::IndexProvider) {
 }
 
 fn check_search(provider: &crate::commands::IndexProvider) {
-    for (_, root_path, _) in provider.roots() {
+    for (_, root_path, _, _) in provider.roots() {
         match storage::open_search(root_path) {
             Ok(Some(_)) => {
                 if provider.is_workspace() {

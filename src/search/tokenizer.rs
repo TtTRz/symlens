@@ -87,7 +87,10 @@ fn split_identifier(word: &str, base_offset: usize, tokens: &mut Vec<(String, us
     let mut prev_was_upper = false;
 
     // Helper: flush current token if non-empty.
-    let flush = |current: &mut String, start: usize, end: usize, tokens: &mut Vec<(String, usize, usize)>| {
+    let flush = |current: &mut String,
+                 start: usize,
+                 end: usize,
+                 tokens: &mut Vec<(String, usize, usize)>| {
         if !current.is_empty() {
             tokens.push((std::mem::take(current), start, end));
         }

@@ -104,9 +104,10 @@ fn export_json(
         let root_list: Vec<serde_json::Value> = provider
             .roots()
             .iter()
-            .map(|(id, path, _)| {
+            .map(|(id, path, _, label)| {
                 serde_json::json!({
                     "id": id,
+                    "label": label,
                     "path": path.to_string_lossy(),
                 })
             })

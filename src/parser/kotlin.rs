@@ -131,8 +131,7 @@ fn extract_kotlin_node(
 
             if let Some(name) = find_child_text_by_kind(node, "identifier", source) {
                 let doc = extract_kotlin_doc(node, source);
-                let sig =
-                    extract_signature(node, source, &["class_body", "enum_class_body"]);
+                let sig = extract_signature(node, source, &["class_body", "enum_class_body"]);
                 let vis = extract_visibility(node, source);
 
                 symbols.push(Symbol {

@@ -2615,6 +2615,9 @@ mod workspace_tests {
         assert_eq!(r1.id.len(), 8);
         // Hash is 16 hex chars
         assert_eq!(r1.hash.len(), 16);
+        // Label is the directory name
+        assert_eq!(r1.label, "project-a");
+        assert_eq!(r3.label, "project-b");
     }
 
     // ── WorkspaceIndex insert + query ────────────────────────────────
@@ -2665,12 +2668,12 @@ mod workspace_tests {
         let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
         ws.insert_from_project(&root_info, &project);
 
-        // Symbols should be prefixed with root_id
+        // Symbols should be prefixed with root label (directory name)
         assert_eq!(ws.symbols.len(), 2, "Should have 2 symbols after insert");
 
-        // Get by workspace-scoped SymbolId
+        // Get by workspace-scoped SymbolId (uses label, not hash)
         let ws_id = SymbolId::new_with_root(
-            &root_info.id,
+            &root_info.label,
             "src/engine.rs",
             "AudioEngine",
             &SymbolKind::Struct,
@@ -2680,8 +2683,8 @@ mod workspace_tests {
             .expect("Should find AudioEngine in workspace");
         assert_eq!(sym.name, "AudioEngine");
 
-        // Root_id in SymbolId should match
-        assert_eq!(sym.id.root_id(), root_info.id);
+        // Root label in SymbolId should match
+        assert_eq!(sym.id.root_id(), root_info.label);
     }
 
     #[test]
@@ -2814,20 +2817,20 @@ mod workspace_tests {
             vec![("main", SymbolKind::Function, "src/main.rs")],
         );
 
-        let root_a_id = root_a.id.clone();
-        let root_b_id = root_b.id.clone();
+        let root_a_label = root_a.label.clone();
+        let root_b_label = root_b.label.clone();
 
         let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
         ws.insert_from_project(&root_a, &project_a);
         ws.insert_from_project(&root_b, &project_b);
 
-        // Add a cross-root call edge manually: main -> process_audio
-        let file_key = FileKey::new(&root_b_id, PathBuf::from("src/main.rs"));
+        // Add a cross-root call edge manually: main -> process_audio (uses label prefix)
+        let file_key = FileKey::new(&root_b.id, PathBuf::from("src/main.rs"));
         ws.file_call_edges.insert(
             file_key,
             vec![(
-                format!("[{}]main", root_b_id),
-                format!("[{}]process_audio", root_a_id),
+                format!("[{}]main", root_b_label),
+                format!("[{}]process_audio", root_a_label),
             )],
         );
 
@@ -2911,19 +2914,173 @@ mod workspace_tests {
         let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
         ws.insert_from_project(&root_info, &project);
 
-        // Find the workspace-scoped process_block
+        // Find the workspace-scoped process_block (uses label, not hash)
         let ws_pb_id = SymbolId::new_with_root(
-            &root_info.id,
+            &root_info.label,
             "src/engine.rs",
             "process_block",
             &SymbolKind::Method,
         );
         let ws_pb = ws.get(&ws_pb_id).expect("Should find process_block");
 
-        // Parent should be remapped with root_id prefix
+        // Parent should be remapped with root label prefix
         let ws_parent = ws_pb.parent.as_ref().expect("Should have parent");
-        assert_eq!(ws_parent.root_id(), root_info.id);
+        assert_eq!(ws_parent.root_id(), root_info.label);
         assert!(ws_parent.name().contains("AudioEngine"));
+    }
+
+    #[test]
+    fn workspace_label_prefix_in_symbol_id() {
+        let (root_info, project) = make_project_with_symbols(
+            "/tmp/my-audio-lib",
+            vec![("AudioEngine", SymbolKind::Struct, "src/engine.rs")],
+        );
+
+        // label should be the directory name
+        assert_eq!(root_info.label, "my-audio-lib");
+
+        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        ws.insert_from_project(&root_info, &project);
+
+        // SymbolId prefix should be the label, not the hash
+        let sym = ws
+            .symbols
+            .values()
+            .find(|s| s.name == "AudioEngine")
+            .expect("should exist");
+        assert!(sym.id.0.starts_with("[my-audio-lib]"));
+        assert!(!sym.id.0.contains(&root_info.id));
+
+        // qualified_name should also use label
+        assert!(sym.qualified_name.starts_with("[my-audio-lib]"));
+    }
+
+    #[test]
+    fn workspace_resolve_absolute_by_label() {
+        let root_info = RootInfo::new(PathBuf::from("/tmp/my-project"));
+        let ws = WorkspaceIndex::new(&[root_info.clone()]);
+
+        // Resolve by hash id (standard FileKey)
+        let file_key = FileKey::new(&root_info.id, PathBuf::from("src/main.rs"));
+        let abs = ws.resolve_absolute(&file_key);
+        assert_eq!(abs, Some(PathBuf::from("/tmp/my-project/src/main.rs")));
+
+        // Resolve by label (what commands pass via sym.id.root_id())
+        let file_key_by_label = FileKey::new(&root_info.label, PathBuf::from("src/main.rs"));
+        let abs_by_label = ws.resolve_absolute(&file_key_by_label);
+        assert_eq!(
+            abs_by_label,
+            Some(PathBuf::from("/tmp/my-project/src/main.rs"))
+        );
+    }
+
+    #[test]
+    fn workspace_remove_root_uses_label_prefix() {
+        let (root_a, project_a) = make_project_with_symbols(
+            "/tmp/ws-alpha",
+            vec![("Alpha", SymbolKind::Struct, "src/a.rs")],
+        );
+        let (root_b, project_b) = make_project_with_symbols(
+            "/tmp/ws-beta",
+            vec![("Beta", SymbolKind::Struct, "src/b.rs")],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
+        ws.insert_from_project(&root_a, &project_a);
+        ws.insert_from_project(&root_b, &project_b);
+
+        assert_eq!(ws.symbols.len(), 2);
+
+        // remove_root takes hash id, but internally matches symbols by label
+        ws.remove_root(&root_b.id);
+
+        assert_eq!(ws.symbols.len(), 1);
+        let remaining = ws.symbols.values().next().unwrap();
+        assert_eq!(remaining.name, "Alpha");
+        assert_eq!(remaining.id.root_id(), "ws-alpha"); // label, not hash
+    }
+
+    #[test]
+    fn workspace_call_edges_use_label_prefix() {
+        let (root_a, project_a) = make_project_with_symbols(
+            "/tmp/ws-frontend",
+            vec![("render", SymbolKind::Function, "src/view.rs")],
+        );
+        let (root_b, project_b) = make_project_with_symbols(
+            "/tmp/ws-backend",
+            vec![("fetch_data", SymbolKind::Function, "src/api.rs")],
+        );
+
+        let mut ws = WorkspaceIndex::new(&[root_a.clone(), root_b.clone()]);
+        ws.insert_from_project(&root_a, &project_a);
+        ws.insert_from_project(&root_b, &project_b);
+
+        // Verify call edges are prefixed with label (directory name)
+        for edges in ws.file_call_edges.values() {
+            for (caller, callee) in edges {
+                // Call edges should NOT contain hex hash chars in brackets
+                if caller.starts_with('[') {
+                    let prefix = &caller[1..caller.find(']').unwrap()];
+                    // Should be a directory name, not a hash
+                    assert!(
+                        prefix == "ws-frontend" || prefix == "ws-backend",
+                        "Call edge prefix should be label, got: {}",
+                        prefix
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn root_info_label_from_path() {
+        // Normal path
+        let r1 = RootInfo::new(PathBuf::from("/home/user/my-app"));
+        assert_eq!(r1.label, "my-app");
+
+        // Trailing slash
+        let r2 = RootInfo::new(PathBuf::from("/home/user/my-app/"));
+        assert_eq!(r2.label, "my-app");
+
+        // Root path (edge case — should fall back to hash)
+        let r3 = RootInfo::new(PathBuf::from("/"));
+        assert_eq!(r3.label, r3.id);
+    }
+
+    #[test]
+    fn workspace_children_remap_with_label() {
+        let mut project = ProjectIndex::new(PathBuf::from("/tmp/ws-children"));
+        let parent = make_symbol("Parent", SymbolKind::Struct, "lib.rs");
+        let mut child1 = make_symbol("child_a", SymbolKind::Method, "lib.rs");
+        let mut child2 = make_symbol("child_b", SymbolKind::Method, "lib.rs");
+        child1.parent = Some(parent.id.clone());
+        child2.parent = Some(parent.id.clone());
+
+        project.insert(parent);
+        project.insert(child1);
+        project.insert(child2);
+
+        let root_info = RootInfo::new(PathBuf::from("/tmp/ws-children"));
+        let mut ws = WorkspaceIndex::new(&[root_info.clone()]);
+        ws.insert_from_project(&root_info, &project);
+
+        // Find parent symbol in workspace
+        let ws_parent = ws
+            .symbols
+            .values()
+            .find(|s| s.name == "Parent")
+            .expect("Parent should exist");
+        assert_eq!(ws_parent.id.root_id(), "ws-children");
+
+        // Children should be remapped with label prefix
+        for child_id in &ws_parent.children {
+            assert_eq!(
+                child_id.root_id(),
+                "ws-children",
+                "Child prefix should be label, got: {}",
+                child_id.0
+            );
+        }
     }
 }
 
@@ -2962,7 +3119,11 @@ mod deps_cycle_tests {
         assert!(graph.has_cycle_from(&pb("b.rs")));
 
         let cycles = graph.detect_cycles();
-        assert_eq!(cycles.len(), 1, "Should detect one representative cycle node");
+        assert_eq!(
+            cycles.len(),
+            1,
+            "Should detect one representative cycle node"
+        );
     }
 
     #[test]
@@ -2976,16 +3137,17 @@ mod deps_cycle_tests {
         };
         assert!(graph.has_cycle_from(&pb("a.rs")));
         let cycles = graph.detect_cycles();
-        assert_eq!(cycles.len(), 1, "One representative node for the 3-node cycle");
+        assert_eq!(
+            cycles.len(),
+            1,
+            "One representative node for the 3-node cycle"
+        );
     }
 
     #[test]
     fn self_loop_is_cycle() {
         let graph = DepsGraph {
-            edges: BTreeMap::from([(
-                pb("a.rs"),
-                BTreeSet::from([pb("a.rs")]),
-            )]),
+            edges: BTreeMap::from([(pb("a.rs"), BTreeSet::from([pb("a.rs")]))]),
         };
         assert!(graph.has_cycle_from(&pb("a.rs")));
         assert_eq!(graph.detect_cycles().len(), 1);
@@ -3032,7 +3194,10 @@ mod truncate_str_tests {
 
     #[test]
     fn ascii_truncated() {
-        assert_eq!(symlens::output::color::truncate_str("hello world", 5), "hello");
+        assert_eq!(
+            symlens::output::color::truncate_str("hello world", 5),
+            "hello"
+        );
     }
 
     #[test]
@@ -3114,7 +3279,10 @@ mod detect_language_tests {
 
     #[test]
     fn detect_rust() {
-        assert_eq!(symlens::model::detect_language(Path::new("main.rs")), "rust");
+        assert_eq!(
+            symlens::model::detect_language(Path::new("main.rs")),
+            "rust"
+        );
     }
 
     #[test]
@@ -3170,10 +3338,19 @@ mod detect_language_tests {
 
     #[test]
     fn detect_cpp() {
-        assert_eq!(symlens::model::detect_language(Path::new("main.cpp")), "cpp");
-        assert_eq!(symlens::model::detect_language(Path::new("header.hpp")), "cpp");
+        assert_eq!(
+            symlens::model::detect_language(Path::new("main.cpp")),
+            "cpp"
+        );
+        assert_eq!(
+            symlens::model::detect_language(Path::new("header.hpp")),
+            "cpp"
+        );
         assert_eq!(symlens::model::detect_language(Path::new("impl.cc")), "cpp");
-        assert_eq!(symlens::model::detect_language(Path::new("impl.cxx")), "cpp");
+        assert_eq!(
+            symlens::model::detect_language(Path::new("impl.cxx")),
+            "cpp"
+        );
     }
 
     #[test]
@@ -3195,13 +3372,15 @@ mod detect_language_tests {
 
 mod helpers_tests {
     use symlens::parser::helpers::{
-        node_text, node_text_eq, node_span, node_text_first_line, find_child_by_kind,
-        find_child_text_by_kind, last_child_by_kind, extract_signature, extract_doc_comment,
+        extract_doc_comment, extract_signature, find_child_by_kind, find_child_text_by_kind,
+        last_child_by_kind, node_span, node_text, node_text_eq, node_text_first_line,
     };
 
     fn parse_single(source: &[u8]) -> tree_sitter::Tree {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into()).unwrap();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
         parser.parse(source, None).unwrap()
     }
 
@@ -3270,7 +3449,11 @@ mod helpers_tests {
         let last = last_child_by_kind(root, "function_item");
         assert!(last.is_some());
         let text = last.unwrap().utf8_text(source).unwrap();
-        assert!(text.starts_with("fn c"), "Expected last function to be 'fn c', got: {}", text);
+        assert!(
+            text.starts_with("fn c"),
+            "Expected last function to be 'fn c', got: {}",
+            text
+        );
     }
 
     #[test]
@@ -3304,7 +3487,11 @@ mod helpers_tests {
         let fn_node = find_child_by_kind(root, "function_item").unwrap();
         let sig = extract_signature(fn_node, source, &["block"]);
         assert!(sig.contains("fn multi"));
-        assert!(!sig.contains('\n'), "Signature should be single-line: {:?}", sig);
+        assert!(
+            !sig.contains('\n'),
+            "Signature should be single-line: {:?}",
+            sig
+        );
     }
 
     #[test]
@@ -3313,7 +3500,14 @@ mod helpers_tests {
         let tree = parse_single(source);
         let root = tree.root_node();
         let fn_node = find_child_by_kind(root, "function_item").unwrap();
-        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        let doc = extract_doc_comment(
+            fn_node,
+            source,
+            "line_comment",
+            "///",
+            "block_comment",
+            "/**",
+        );
         assert!(doc.is_some());
         let doc = doc.unwrap();
         assert!(doc.contains("First line"));
@@ -3326,7 +3520,14 @@ mod helpers_tests {
         let tree = parse_single(source);
         let root = tree.root_node();
         let fn_node = find_child_by_kind(root, "function_item").unwrap();
-        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        let doc = extract_doc_comment(
+            fn_node,
+            source,
+            "line_comment",
+            "///",
+            "block_comment",
+            "/**",
+        );
         assert!(doc.is_none());
     }
 
@@ -3336,7 +3537,14 @@ mod helpers_tests {
         let tree = parse_single(source);
         let root = tree.root_node();
         let fn_node = find_child_by_kind(root, "function_item").unwrap();
-        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        let doc = extract_doc_comment(
+            fn_node,
+            source,
+            "line_comment",
+            "///",
+            "block_comment",
+            "/**",
+        );
         assert!(doc.is_some());
         let doc = doc.unwrap();
         assert!(doc.contains("Block doc."));
@@ -3350,11 +3558,17 @@ mod helpers_tests {
         let tree = parse_single(source);
         let root = tree.root_node();
         let fn_node = find_child_by_kind(root, "function_item").unwrap();
-        let doc = extract_doc_comment(fn_node, source, "line_comment", "///", "block_comment", "/**");
+        let doc = extract_doc_comment(
+            fn_node,
+            source,
+            "line_comment",
+            "///",
+            "block_comment",
+            "/**",
+        );
         // Should only get "Doc comment", not "Regular comment"
         assert!(doc.is_some());
         assert!(!doc.as_ref().unwrap().contains("Regular"));
         assert!(doc.as_ref().unwrap().contains("Doc comment"));
     }
 }
-

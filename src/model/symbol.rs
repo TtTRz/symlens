@@ -18,9 +18,9 @@ impl SymbolId {
         ))
     }
 
-    /// Create a workspace-aware SymbolId with an optional root_id prefix.
-    /// When root_id is empty, falls back to the standard format (backward compatible).
-    /// Workspace format: "[a1b2c3d4]path::Name#kind"
+    /// Create a workspace-aware SymbolId with an optional root label prefix.
+    /// When root_label is empty, falls back to the standard format (backward compatible).
+    /// Workspace format: "[label]path::Name#kind"
     /// Single-root format: "path::Name#kind"
     pub fn new_with_root(
         root_id: &str,
@@ -41,7 +41,7 @@ impl SymbolId {
         }
     }
 
-    /// Returns the root_id portion ("a1b2c3d4") if a "[root_id]" prefix is present,
+    /// Returns the root label portion (e.g. "audio") if a "[label]" prefix is present,
     /// otherwise returns "" (single-root mode).
     pub fn root_id(&self) -> &str {
         if self.0.starts_with('[') {

@@ -188,7 +188,7 @@ pub fn run(
     let mut total_modified = 0usize;
     let mut total_deleted = 0usize;
 
-    for (root_id, root_path, _) in provider.roots() {
+    for (_root_id, root_path, _, root_label) in provider.roots() {
         match collect_changes(root_path, &args.from, &args.to, args.kind.as_deref()) {
             Ok(result) => {
                 total_added += result.added_count;
@@ -196,8 +196,8 @@ pub fn run(
                 total_deleted += result.deleted_count;
                 // Prefix file paths with root_id for workspace disambiguation
                 for mut sym in result.changes {
-                    if !root_id.is_empty() {
-                        sym.file = format!("[{}]{}", root_id, sym.file);
+                    if !root_label.is_empty() {
+                        sym.file = format!("[{}]{}", root_label, sym.file);
                     }
                     all_changes.push(sym);
                 }

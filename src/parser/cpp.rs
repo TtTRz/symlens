@@ -391,7 +391,11 @@ fn extract_cpp_function(
         None => (SymbolKind::Function, name.clone(), None),
     };
 
-    let sig = extract_signature(node, source, &["compound_statement", "field_initializer_list"]);
+    let sig = extract_signature(
+        node,
+        source,
+        &["compound_statement", "field_initializer_list"],
+    );
     let doc = extract_cpp_doc(node, source);
 
     Some(Symbol {

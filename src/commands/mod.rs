@@ -238,6 +238,24 @@ impl IndexProvider {
         }
     }
 
+    /// Display a FileKey with the root's human-readable label.
+    pub fn file_display(&self, fk: &FileKey) -> String {
+        if fk.root_id.is_empty() {
+            fk.path.to_string_lossy().into_owned()
+        } else {
+            let label = match self {
+                IndexProvider::Single { .. } => "",
+                IndexProvider::Workspace { index } => index
+                    .roots
+                    .iter()
+                    .find(|r| r.id == fk.root_id)
+                    .map(|r| r.label.as_str())
+                    .unwrap_or(&fk.root_id),
+            };
+            format!("[{}]{}", label, fk.path.to_string_lossy())
+        }
+    }
+
     /// Get all file keys (for iteration).
     pub fn file_keys(&self) -> Vec<FileKey> {
         match self {
@@ -313,16 +331,23 @@ impl IndexProvider {
     }
 
     /// Get workspace roots (workspace mode) or single root info.
-    /// Returns a list of `(id, path, hash)` tuples.
-    pub fn roots(&self) -> Vec<(&str, &Path, &str)> {
+    /// Returns a list of `(id, path, hash, label)` tuples.
+    pub fn roots(&self) -> Vec<(&str, &Path, &str, &str)> {
         match self {
             IndexProvider::Single { root, index } => {
-                vec![("", root.as_path(), index.root_hash.as_str())]
+                vec![("", root.as_path(), index.root_hash.as_str(), "")]
             }
             IndexProvider::Workspace { index } => index
                 .roots
                 .iter()
-                .map(|r| (r.id.as_str(), r.path.as_path(), r.hash.as_str()))
+                .map(|r| {
+                    (
+                        r.id.as_str(),
+                        r.path.as_path(),
+                        r.hash.as_str(),
+                        r.label.as_str(),
+                    )
+                })
                 .collect(),
         }
     }

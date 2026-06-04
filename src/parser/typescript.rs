@@ -2,7 +2,9 @@ use super::helpers::{
     extract_signature, node_span, node_text, node_text_eq, node_text_first_line, parse_source,
 };
 use crate::model::symbol::*;
-use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo, LanguageParser, ParsedOutput, RefKind};
+use crate::parser::traits::{
+    CallEdge, IdentifierRef, ImportInfo, LanguageParser, ParsedOutput, RefKind,
+};
 use std::path::Path;
 
 pub struct TypeScriptParser;

@@ -118,8 +118,7 @@ pub fn index_project_incremental(
                         }
 
                         if !output.imports.is_empty() {
-                            result.file_imports =
-                                Some((rel_path.to_path_buf(), output.imports));
+                            result.file_imports = Some((rel_path.to_path_buf(), output.imports));
                         }
                     }
                     Err(_) => {

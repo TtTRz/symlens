@@ -48,8 +48,11 @@ pub struct RootInfo {
     /// Absolute path to the project root.
     pub path: PathBuf,
     /// Short stable identifier derived from blake3(root_path)[..8].
-    /// Used as a prefix in SymbolId and FileKey to disambiguate across roots.
+    /// Used for internal deduplication and cache keys.
     pub id: String,
+    /// Human-readable label derived from the directory name (e.g. "audio", "frontend").
+    /// Used as prefix in SymbolId and display output instead of the hash.
+    pub label: String,
     /// Full hash derived from blake3(root_path)[..16].
     /// Same as ProjectIndex::root_hash — used for per-root cache lookup.
     pub hash: String,
@@ -59,13 +62,18 @@ pub struct RootInfo {
 }
 
 impl RootInfo {
-    /// Create a RootInfo from an absolute path, computing id and hash via blake3.
+    /// Create a RootInfo from an absolute path, computing id, label, and hash via blake3.
     pub fn new(path: PathBuf) -> Self {
         let path_str = path.to_string_lossy();
         let full_hash = blake3::hash(path_str.as_bytes()).to_hex();
+        let label = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| full_hash[..8].to_string());
         Self {
             path,
             id: full_hash[..8].to_string(),
+            label,
             hash: full_hash[..16].to_string(),
             config: Config::default(),
         }
@@ -75,9 +83,14 @@ impl RootInfo {
     pub fn with_config(path: PathBuf, config: Config) -> Self {
         let path_str = path.to_string_lossy();
         let full_hash = blake3::hash(path_str.as_bytes()).to_hex();
+        let label = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| full_hash[..8].to_string());
         Self {
             path,
             id: full_hash[..8].to_string(),
+            label,
             hash: full_hash[..16].to_string(),
             config,
         }
