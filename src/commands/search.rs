@@ -44,10 +44,6 @@ pub fn run(
                     syms.drain(..off);
                 }
                 syms.truncate(args.limit);
-                if args.offset > 0 {
-                    let off = args.offset.min(syms.len());
-                    syms.drain(..off);
-                }
                 syms
             } else {
                 fallback_search(&provider, &args)

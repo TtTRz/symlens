@@ -100,6 +100,7 @@ impl LanguageParser for VueParser {
         let mut all_symbols = Vec::new();
         let mut all_call_edges = Vec::new();
         let mut all_imports = Vec::new();
+        let mut all_identifiers = Vec::new();
 
         for block in &blocks {
             let output = ts_parser.extract_all(block.content.as_bytes(), file_path)?;
@@ -110,12 +111,14 @@ impl LanguageParser for VueParser {
 
             all_call_edges.extend(output.call_edges);
             all_imports.extend(output.imports);
+            all_identifiers.extend(output.identifiers);
         }
 
         Ok(ParsedOutput {
             symbols: all_symbols,
             call_edges: all_call_edges,
             imports: all_imports,
+            identifiers: all_identifiers,
         })
     }
 }
