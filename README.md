@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/crates/l/symlens)](https://github.com/TtTRz/symlens/blob/main/LICENSE)
 [![Downloads](https://img.shields.io/crates/d/symlens)](https://crates.io/crates/symlens)
 [![Rust](https://img.shields.io/badge/rust-1.92%2B-orange)](https://www.rust-lang.org)
-[![Languages](https://img.shields.io/badge/languages-9-blue)](#-what-can-it-do)
+[![Languages](https://img.shields.io/badge/languages-10-blue)](#-what-can-it-do)
 
 [中文](./README_CN.md) | English
 
@@ -28,7 +28,7 @@ symlens search "AudioEngien"    # fuzzy search — handles typos
 
 SymLens parses your codebase with [tree-sitter](https://tree-sitter.github.io/) and builds an index of every symbol — functions, classes, call graphs, imports. Your AI agent (or you) queries exactly what it needs instead of reading entire files.
 
-> **9 languages:** Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin
+> **10 languages:** Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin · Vue
 
 ---
 
@@ -67,6 +67,27 @@ Measured on the SymLens codebase itself (65 files, 672 symbols):
 | Cross-file navigation | Line number | — | Symbol ID + line range |
 
 > **Key insight:** `grep` returns *matching lines*. `cat` returns *entire files*. SymLens returns *symbols with signatures and docs* — the exact granularity an AI agent needs to understand code without wasting context window.
+
+**Large TypeScript project benchmark** — real-world coding tasks:
+
+| | baseline | symlens | vs baseline |
+|:--|--:|--:|:--|
+| Pass rate | 79% | **100%** | +26.6% |
+| Avg. time | 100% | 94.8% | -5.2% |
+| Token consumption | 100% | 87.3% | -12.7% |
+| Tool calls | 100% | 91.5% | -8.5% |
+
+Only tasks passed by both:
+
+| | baseline | symlens | vs baseline |
+|:--|--:|--:|:--|
+| Avg. time | 100% | 84.1% | -15.9% |
+| Token consumption | 100% | 88.6% | -11.4% |
+| Tool calls | 100% | 87.6% | -12.4% |
+
+> Execution environment: subAgent within AI Agent runs tasks directly without system prompts.
+> - **baseline** = no prompts
+> - **symlens** = use symlens
 
 ---
 

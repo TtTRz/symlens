@@ -31,7 +31,7 @@ This project has `symlens` installed for token-efficient code navigation.
 7. **Fall back to `grep`/`cat`** when:
    - Searching non-code files (`.md`, `.toml`, `.yml`, `.json`, `.env`, logs)
    - Searching string literals, comments, or magic numbers in code
-   - Working with unsupported languages (symlens supports: Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin)
+   - Working with unsupported languages (symlens supports: Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin, Vue)
    - Need regex pattern matching across file contents (not symbol names)
 
    > **Decision rule**: Is the target a symbol (function/struct/trait/class/method) in a supported language? → Yes: `symlens` · No: `grep`/`cat`
@@ -61,4 +61,4 @@ This project has `symlens` installed for token-efficient code navigation.
 
 ## Supported Languages
 
-Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin
+Rust · TypeScript · Python · Go · Swift · Dart · C · C++ · Kotlin · Vue

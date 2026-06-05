@@ -8,6 +8,7 @@ use crate::parser::rust::RustParser;
 use crate::parser::swift::SwiftParser;
 use crate::parser::traits::LanguageParser;
 use crate::parser::typescript::TypeScriptParser;
+use crate::parser::vue::VueParser;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -39,6 +40,7 @@ impl LanguageRegistry {
         reg.register(Box::new(KotlinParser));
         reg.register(Box::new(CParser));
         reg.register(Box::new(CppParser));
+        reg.register(Box::new(VueParser));
 
         reg
     }
@@ -52,8 +54,8 @@ impl LanguageRegistry {
     }
 
     /// Get the parser for a given file path, or None if unsupported.
-    /// Fast path: static match for the 6 built-in languages.
-    /// Indices match registration order in new(): 0=Rust, 1=TS, 2=Python, 3=Swift, 4=Go, 5=Dart.
+    /// Fast path: static match for known extensions.
+    /// Indices match registration order in new(): 0=Rust, 1=TS, 2=Python, 3=Swift, 4=Go, 5=Dart, 6=Kotlin, 7=C, 8=Cpp, 9=Vue.
     /// Falls through to HashMap lookup for any dynamically registered parsers.
     pub fn parser_for(&self, path: &Path) -> Option<&dyn LanguageParser> {
         let ext = path.extension()?.to_str()?;
@@ -67,6 +69,7 @@ impl LanguageRegistry {
             "kt" | "kts" => 6,
             "c" | "h" => 7,
             "cpp" | "cc" | "cxx" | "hpp" | "hh" => 8,
+            "vue" => 9,
             _ => {
                 return self
                     .extension_map
