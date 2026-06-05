@@ -32,6 +32,8 @@ SymLens indexes codebases with tree-sitter and provides token-efficient access t
 | `symlens stats` | Index statistics |
 | `symlens export [--format json]` | Export index as JSON |
 | `symlens watch` | Auto-update index on file changes |
+| `symlens watch --serve` | Daemon mode: keep index in memory (~6ms/query) |
+| `symlens --daemon <command>` | Route any query through the daemon |
 
 ## Usage Guidelines
 
@@ -42,6 +44,7 @@ SymLens indexes codebases with tree-sitter and provides token-efficient access t
 5. **Before refactoring**: run `symlens graph impact "<symbol>"` to check blast radius.
 6. **Before reviewing changes**: run `symlens diff --from main --to HEAD`.
 7. Use `symlens symbol "<id>"` to get just the signature (~60 tokens) instead of the whole file (~4000 tokens).
+8. For high-frequency queries, use daemon mode: `symlens watch --serve &` then `symlens --daemon <command>` (1.5× faster).
 
 ## When to Use `grep`/`cat` Instead
 

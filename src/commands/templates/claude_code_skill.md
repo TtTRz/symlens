@@ -48,6 +48,8 @@ symlens diff --from <ref> --to <ref>       # Changed symbols between refs
 symlens stats                              # Index statistics
 symlens export [--format json]             # Export index as JSON
 symlens watch                              # Auto-update index
+symlens watch --serve                     # Daemon: keep index in memory (~6ms/query)
+symlens --daemon search "query"           # Query via daemon (1.5× faster)
 ```
 
 ## Critical Rules
@@ -56,6 +58,7 @@ symlens watch                              # Auto-update index
 2. **ALWAYS** run `symlens diff --from main --to HEAD` before reviewing a PR
 3. Run `symlens index` if you get "index not found" errors
 4. Use `--source` flag only when you actually need the implementation, not just the signature
+5. For high-frequency queries, use daemon mode: `symlens watch --serve &` then `symlens --daemon <command>`
 
 ## Supported Languages
 

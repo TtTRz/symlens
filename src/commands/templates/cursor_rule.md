@@ -54,6 +54,8 @@ This project has `symlens` installed for token-efficient code navigation.
 | Changed symbols | `symlens diff --from <ref> --to <ref>` |
 | Index stats | `symlens stats` |
 | Export index | `symlens export [--format json]` |
+| Daemon mode | `symlens watch --serve` |
+| Query via daemon | `symlens --daemon <command>` |
 
 ## Supported Languages
 

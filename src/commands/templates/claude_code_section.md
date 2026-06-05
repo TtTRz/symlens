@@ -29,3 +29,12 @@ This project has `symlens` installed for token-efficient code intelligence.
 > → Yes: use `symlens` · No: use `grep`/`cat`
 
 Run `symlens index` if you get "index not found" errors.
+
+### Daemon mode (faster queries)
+
+For high-frequency queries (e.g. AI agents), start a daemon to keep the index in memory:
+
+```bash
+symlens watch --serve &           # start daemon (~6ms/query)
+symlens --daemon search "query"   # any query command works with --daemon
+```
