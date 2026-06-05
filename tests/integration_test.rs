@@ -3572,3 +3572,134 @@ mod helpers_tests {
         assert!(doc.as_ref().unwrap().contains("Doc comment"));
     }
 }
+
+// ─── ParsedOutput identifiers tests ───────────────────────────────────
+
+#[test]
+fn parsed_output_includes_identifiers() {
+    use std::path::Path;
+    use symlens::parser::registry::LanguageRegistry;
+
+    let registry = LanguageRegistry::new();
+    let parser = registry.parser_for(Path::new("test.rs")).unwrap();
+    let source = b"fn main() { let x = foo(); }";
+    let output = parser.extract_all(source, Path::new("test.rs")).unwrap();
+    assert!(
+        !output.identifiers.is_empty(),
+        "extract_all should return identifiers"
+    );
+    let names: Vec<&str> = output.identifiers.iter().map(|r| r.name.as_str()).collect();
+    assert!(names.contains(&"main"), "should contain 'main' identifier");
+    assert!(names.contains(&"foo"), "should contain 'foo' identifier");
+}
+
+#[test]
+fn index_contains_file_identifiers() {
+    let root = std::env::current_dir().unwrap();
+    let result = symlens::index::indexer::index_project(&root, 100_000).unwrap();
+    let index = result.index;
+
+    assert!(
+        !index.file_identifiers.is_empty(),
+        "index should contain file_identifiers"
+    );
+    assert!(
+        !index.identifier_index.is_empty(),
+        "index should contain identifier_index"
+    );
+
+    let sym_files = index.identifier_index.get("CallGraph");
+    assert!(
+        sym_files.is_some(),
+        "identifier_index should contain 'CallGraph'"
+    );
+    assert!(!sym_files.unwrap().is_empty());
+}
+
+#[test]
+fn workspace_contains_identifiers() {
+    use symlens::model::project::RootInfo;
+    use symlens::model::workspace::WorkspaceIndex;
+
+    let root_info = RootInfo::new(std::env::current_dir().unwrap());
+    let root = std::env::current_dir().unwrap();
+    let result = symlens::index::indexer::index_project(&root, 100_000).unwrap();
+
+    let mut ws = WorkspaceIndex::new(std::slice::from_ref(&root_info));
+    ws.insert_from_project(&root_info, &result.index);
+
+    assert!(
+        !ws.file_identifiers.is_empty(),
+        "workspace should have file_identifiers"
+    );
+    assert!(
+        !ws.identifier_index.is_empty(),
+        "workspace should have identifier_index"
+    );
+
+    // Verify remove_root cleans up identifiers
+    let id = root_info.id.clone();
+    ws.remove_root(&id);
+    assert!(
+        ws.file_identifiers.is_empty(),
+        "file_identifiers should be empty after remove_root"
+    );
+    assert!(
+        ws.identifier_index.is_empty(),
+        "identifier_index should be empty after remove_root"
+    );
+}
+
+// ─── Serde roundtrip: caches survive serialization ──────────────────
+
+#[test]
+fn index_serde_roundtrip_preserves_caches() {
+    use symlens::model::project::ProjectIndex;
+
+    let root = std::env::current_dir().unwrap();
+    let result = symlens::index::indexer::index_project(&root, 100_000).unwrap();
+    let original = result.index;
+
+    let encoded = bincode::serde::encode_to_vec(&original, bincode::config::standard()).unwrap();
+    let (decoded, _): (ProjectIndex, _) =
+        bincode::serde::decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+
+    assert!(
+        decoded.has_search_cache(),
+        "search_cache should survive serde roundtrip"
+    );
+    if let Some(cg) = &decoded.call_graph {
+        assert!(
+            cg.has_name_index(),
+            "call_graph name_to_idx should survive serde roundtrip"
+        );
+    }
+}
+
+// ─── Refs uses pre-computed identifier index ────────────────────────
+
+#[test]
+fn refs_uses_precomputed_identifiers() {
+    let root = std::env::current_dir().unwrap();
+    let result = symlens::index::indexer::index_project(&root, 100_000).unwrap();
+    let index = result.index;
+
+    let files = index
+        .identifier_index
+        .get("CallGraph")
+        .expect("should find CallGraph in identifier_index");
+    assert!(!files.is_empty());
+
+    for file in files {
+        let idents = index
+            .file_identifiers
+            .get(file)
+            .expect("should have identifiers for file");
+        let cg_refs: Vec<_> = idents.iter().filter(|r| r.name == "CallGraph").collect();
+        assert!(
+            !cg_refs.is_empty(),
+            "should have CallGraph refs in {}",
+            file.display()
+        );
+    }
+}

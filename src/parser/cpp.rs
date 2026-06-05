@@ -130,6 +130,17 @@ impl LanguageParser for CppParser {
         // #include uses text-based scan, not tree-sitter
         self.extract_imports(source, file_path)
     }
+
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<crate::parser::traits::IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_cpp_ids(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
 }
 
 // ─── Symbol extraction ─────────────────────────────────────────────
@@ -624,6 +635,49 @@ fn collect_cpp_calls(
 
 // ─── Identifier references ──────────────────────────────────────────
 
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_cpp_ids(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "comment" | "string_literal" | "raw_string_literal" | "char_literal" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier"
+        || node.kind() == "type_identifier"
+        || node.kind() == "field_identifier"
+        || node.kind() == "namespace_identifier"
+    {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_cpp_ref(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_cpp_ids(child, source, lines, refs);
+    }
+}
+
 fn collect_cpp_ids(
     node: tree_sitter::Node,
     source: &[u8],
@@ -650,6 +704,7 @@ fn collect_cpp_ids(
             .to_string();
         let kind = classify_cpp_ref(node);
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,

@@ -112,17 +112,30 @@ impl LanguageParser for TypeScriptParser {
         Ok(imports)
     }
 
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<crate::parser::traits::IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_ts_identifiers(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
+
     fn extract_all(&self, source: &[u8], file_path: &Path) -> anyhow::Result<ParsedOutput> {
         let tree = parse_source(language_for(file_path), source, file_path)?;
 
         let symbols = self.extract_symbols_from_tree(&tree, source, file_path)?;
         let call_edges = self.extract_calls_from_tree(&tree, source, file_path)?;
         let imports = self.extract_imports_from_tree(&tree, source, file_path)?;
+        let identifiers = self.extract_identifiers_from_tree(&tree, source)?;
 
         Ok(ParsedOutput {
             symbols,
             call_edges,
             imports,
+            identifiers,
         })
     }
 }
@@ -633,6 +646,77 @@ fn collect_ts_calls(
 
 // ─── Identifier references ──────────────────────────────────────────
 
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_ts_identifiers(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "comment" | "string" | "template_string" | "template_substitution" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier" || node.kind() == "type_identifier" {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_ts_ref(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_ts_identifiers(child, source, lines, refs);
+    }
+}
+
+fn classify_ts_ref(node: tree_sitter::Node) -> RefKind {
+    let parent = match node.parent() {
+        Some(p) => p,
+        None => return RefKind::Unknown,
+    };
+    match parent.kind() {
+        "call_expression" => RefKind::Call,
+        "import_specifier" | "import_clause" | "import_statement" => RefKind::Import,
+        "type_annotation" | "type_identifier" | "generic_type" => RefKind::TypeRef,
+        "function_declaration" | "class_declaration" | "method_definition" => {
+            if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                RefKind::Definition
+            } else {
+                RefKind::Unknown
+            }
+        }
+        "member_expression" => {
+            if let Some(gp) = parent.parent() {
+                if gp.kind() == "call_expression" {
+                    RefKind::Call
+                } else {
+                    RefKind::FieldAccess
+                }
+            } else {
+                RefKind::FieldAccess
+            }
+        }
+        "new_expression" => RefKind::Constructor,
+        _ => RefKind::Unknown,
+    }
+}
+
 fn collect_ts_identifiers(
     node: tree_sitter::Node,
     source: &[u8],
@@ -682,6 +766,7 @@ fn collect_ts_identifiers(
             RefKind::Unknown
         };
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,
@@ -691,5 +776,26 @@ fn collect_ts_identifiers(
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
         collect_ts_identifiers(child, source, target, lines, refs);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parser::registry::LanguageRegistry;
+    use std::path::Path;
+
+    #[test]
+    fn typescript_extract_all_identifiers() {
+        let registry = LanguageRegistry::new();
+        let parser = registry.parser_for(Path::new("test.ts")).unwrap();
+        let source = b"class Foo { bar(): string { return baz(); } }";
+        let output = parser.extract_all(source, Path::new("test.ts")).unwrap();
+        assert!(
+            !output.identifiers.is_empty(),
+            "should extract some identifiers"
+        );
+        let names: Vec<&str> = output.identifiers.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"Foo"), "should contain 'Foo'");
+        assert!(names.contains(&"baz"), "should contain 'baz'");
     }
 }

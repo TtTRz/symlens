@@ -87,6 +87,17 @@ impl LanguageParser for GoParser {
         collect_go_imports(tree.root_node(), source, &mut imports);
         Ok(imports)
     }
+
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<crate::parser::traits::IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_go_ids(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
 }
 
 fn extract_go_node(
@@ -366,6 +377,48 @@ fn collect_go_calls(
 
 // ─── Identifier references ──────────────────────────────────────────
 
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_go_ids(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "comment" | "interpreted_string_literal" | "raw_string_literal" | "rune_literal" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier"
+        || node.kind() == "type_identifier"
+        || node.kind() == "field_identifier"
+    {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_go_ref(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_go_ids(child, source, lines, refs);
+    }
+}
+
 fn collect_go_ids(
     node: tree_sitter::Node,
     source: &[u8],
@@ -391,6 +444,7 @@ fn collect_go_ids(
             .to_string();
         let kind = classify_go_ref(node);
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,

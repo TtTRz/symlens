@@ -25,6 +25,7 @@ struct FileResult {
     file_hash: Option<(PathBuf, String)>,
     file_call_edges: Option<(PathBuf, Vec<CallEdge>)>,
     file_imports: Option<(PathBuf, Vec<ImportInfo>)>,
+    file_identifiers: Option<(PathBuf, Vec<crate::parser::traits::IdentifierRef>)>,
     parsed: bool,
     skipped: bool,
 }
@@ -120,6 +121,11 @@ pub fn index_project_incremental(
                         if !output.imports.is_empty() {
                             result.file_imports = Some((rel_path.to_path_buf(), output.imports));
                         }
+
+                        if !output.identifiers.is_empty() {
+                            result.file_identifiers =
+                                Some((rel_path.to_path_buf(), output.identifiers));
+                        }
                     }
                     Err(_) => {
                         // Fallback: try extract_symbols only
@@ -170,6 +176,19 @@ pub fn index_project_incremental(
             }
             index.file_imports.insert(path, imps);
         }
+        if let Some((path, idents)) = r.file_identifiers {
+            let mut seen_names = std::collections::HashSet::new();
+            for ident in &idents {
+                if seen_names.insert(ident.name.as_str()) {
+                    index
+                        .identifier_index
+                        .entry(ident.name.clone())
+                        .or_default()
+                        .push(path.clone());
+                }
+            }
+            index.file_identifiers.insert(path, idents);
+        }
         if r.parsed {
             files_parsed += 1;
         }
@@ -212,6 +231,9 @@ fn copy_prev_data(prev: &ProjectIndex, rel_path: &Path, mtime: u64, result: &mut
     }
     if let Some(prev_imps) = prev.file_imports.get(rel_path) {
         result.file_imports = Some((rel_path.to_path_buf(), prev_imps.clone()));
+    }
+    if let Some(prev_idents) = prev.file_identifiers.get(rel_path) {
+        result.file_identifiers = Some((rel_path.to_path_buf(), prev_idents.clone()));
     }
 }
 

@@ -6,15 +6,16 @@ use std::path::Path;
 pub type CallEdge = (String, String);
 
 /// An identifier reference found in source code.
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IdentifierRef {
+    pub name: String,
     pub line: u32,
     pub context: String,
     pub kind: RefKind,
 }
 
 /// Classification of a reference based on AST context.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RefKind {
     /// Function/method call: foo(), self.foo(), Struct::foo()
     Call,
@@ -38,6 +39,7 @@ pub struct ParsedOutput {
     pub symbols: Vec<Symbol>,
     pub call_edges: Vec<CallEdge>,
     pub imports: Vec<ImportInfo>,
+    pub identifiers: Vec<IdentifierRef>,
 }
 
 /// Each language implements this trait to extract symbols from source code.
@@ -108,7 +110,17 @@ pub trait LanguageParser: Send + Sync {
         self.extract_imports(source, file_path)
     }
 
-    /// Parse once and extract all data (symbols, calls, imports).
+    /// Extract all identifier references from a pre-parsed tree.
+    fn extract_identifiers_from_tree(
+        &self,
+        _tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
+        let _ = source;
+        Ok(vec![])
+    }
+
+    /// Parse once and extract all data (symbols, calls, imports, identifiers).
     /// Uses `language()` to create the tree, then calls `_from_tree` variants.
     fn extract_all(&self, source: &[u8], file_path: &Path) -> anyhow::Result<ParsedOutput> {
         let tree = crate::parser::helpers::parse_source(self.language(), source, file_path)?;
@@ -116,11 +128,13 @@ pub trait LanguageParser: Send + Sync {
         let symbols = self.extract_symbols_from_tree(&tree, source, file_path)?;
         let call_edges = self.extract_calls_from_tree(&tree, source, file_path)?;
         let imports = self.extract_imports_from_tree(&tree, source, file_path)?;
+        let identifiers = self.extract_identifiers_from_tree(&tree, source)?;
 
         Ok(ParsedOutput {
             symbols,
             call_edges,
             imports,
+            identifiers,
         })
     }
 }

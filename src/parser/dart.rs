@@ -102,6 +102,17 @@ impl LanguageParser for DartParser {
         collect_dart_imports(tree.root_node(), source, &mut imports);
         Ok(imports)
     }
+
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<crate::parser::traits::IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_dart_ids(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
 }
 
 // ─── Symbol extraction ──────────────────────────────────────────────
@@ -778,6 +789,55 @@ fn collect_dart_calls(
 
 // ─── Identifier references ──────────────────────────────────────────
 
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_dart_ids(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    // Skip string literals and comments
+    match node.kind() {
+        "comment"
+        | "documentation_block_comment"
+        | "string_literal"
+        | "string_literal_single_quotes"
+        | "string_literal_double_quotes"
+        | "string_literal_single_quotes_multiple"
+        | "string_literal_double_quotes_multiple"
+        | "raw_string_literal_single_quotes"
+        | "raw_string_literal_double_quotes"
+        | "template_substitution" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier" || node.kind() == "type_identifier" {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_dart_ref(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_dart_ids(child, source, lines, refs);
+    }
+}
+
 fn collect_dart_ids(
     node: tree_sitter::Node,
     source: &[u8],
@@ -811,6 +871,7 @@ fn collect_dart_ids(
             .to_string();
         let kind = classify_dart_ref(node);
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,

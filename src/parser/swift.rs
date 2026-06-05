@@ -110,6 +110,17 @@ impl LanguageParser for SwiftParser {
         // Still uses regex — will be migrated to tree-sitter later
         self.extract_imports(source, file_path)
     }
+
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<crate::parser::traits::IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_swift_ids(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
 }
 
 fn extract_swift_node(
@@ -279,6 +290,70 @@ fn extract_swift_doc(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
     extract_doc_comment(node, source, "comment", "///", "comment", "/**")
 }
 
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_swift_ids(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "comment" | "line_string_literal" | "multi_line_string_literal" => return,
+        _ => {}
+    }
+
+    // Swift tree-sitter uses "simple_identifier" for most identifiers
+    if node.kind() == "simple_identifier" || node.kind() == "type_identifier" {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_swift_ref(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_swift_ids(child, source, lines, refs);
+    }
+}
+
+fn classify_swift_ref(node: tree_sitter::Node) -> RefKind {
+    if let Some(p) = node.parent() {
+        match p.kind() {
+            "call_expression" => RefKind::Call,
+            "import_declaration" => RefKind::Import,
+            "type_identifier" | "type_annotation" => RefKind::TypeRef,
+            "function_declaration"
+            | "class_declaration"
+            | "struct_declaration"
+            | "enum_declaration"
+            | "protocol_declaration" => {
+                if p.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                    RefKind::Definition
+                } else {
+                    RefKind::Unknown
+                }
+            }
+            _ => RefKind::Unknown,
+        }
+    } else {
+        RefKind::Unknown
+    }
+}
+
 fn collect_swift_ids(
     node: tree_sitter::Node,
     source: &[u8],
@@ -321,6 +396,7 @@ fn collect_swift_ids(
         };
 
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,

@@ -99,6 +99,17 @@ impl LanguageParser for PythonParser {
         collect_py_imports(tree.root_node(), source, &mut imports);
         Ok(imports)
     }
+
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<crate::parser::traits::IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_py_identifiers(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
 }
 
 fn extract_py_node(
@@ -230,6 +241,66 @@ fn extract_py_docstring(node: tree_sitter::Node, source: &[u8]) -> Option<String
     None
 }
 
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_py_identifiers(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "comment" | "string" | "concatenated_string" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier" {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_py_ref(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_py_identifiers(child, source, lines, refs);
+    }
+}
+
+fn classify_py_ref(node: tree_sitter::Node) -> RefKind {
+    if let Some(parent) = node.parent() {
+        match parent.kind() {
+            "call" => RefKind::Call,
+            "import_from_statement" | "import_statement" => RefKind::Import,
+            "type" | "annotation" => RefKind::TypeRef,
+            "function_definition" | "class_definition" => {
+                if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                    RefKind::Definition
+                } else {
+                    RefKind::Unknown
+                }
+            }
+            "attribute" => RefKind::FieldAccess,
+            _ => RefKind::Unknown,
+        }
+    } else {
+        RefKind::Unknown
+    }
+}
+
 fn collect_py_identifiers(
     node: tree_sitter::Node,
     source: &[u8],
@@ -270,6 +341,7 @@ fn collect_py_identifiers(
         };
 
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,

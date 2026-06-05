@@ -66,13 +66,22 @@ pub fn load(root: &Path) -> anyhow::Result<Option<ProjectIndex>> {
     let (mut index, _): (ProjectIndex, _) =
         bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
 
-    // Rebuild call graph name_to_idx and digraph (skipped by serde)
+    // Rebuild call graph indexes after deserialization.
+    // v2+ indices serialize name_to_idx and short_name_idx, so only the
+    // petgraph DiGraph (which cannot impl serde) needs rebuilding.
+    // v1 indices need the full rebuild including name_to_idx.
     if let Some(ref mut cg) = index.call_graph {
-        cg.rebuild_index();
+        if index.version >= 2 {
+            cg.rebuild_digraph();
+        } else {
+            cg.rebuild_index();
+        }
     }
 
-    // Rebuild pre-computed search cache (skipped by serde)
-    index.rebuild_search_cache();
+    // v2+ indices serialize search_cache; only v1 needs rebuild.
+    if index.version < 2 {
+        index.rebuild_search_cache();
+    }
 
     Ok(Some(index))
 }
@@ -192,13 +201,22 @@ pub fn load_workspace(roots: &[RootInfo]) -> anyhow::Result<Option<WorkspaceInde
     let (mut index, _): (WorkspaceIndex, _) =
         bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
 
-    // Rebuild call graph name_to_idx and digraph (skipped by serde)
+    // Rebuild call graph indexes after deserialization.
+    // v2+ indices serialize name_to_idx and short_name_idx, so only the
+    // petgraph DiGraph (which cannot impl serde) needs rebuilding.
+    // v1 indices need the full rebuild including name_to_idx.
     if let Some(ref mut cg) = index.call_graph {
-        cg.rebuild_index();
+        if index.version >= 2 {
+            cg.rebuild_digraph();
+        } else {
+            cg.rebuild_index();
+        }
     }
 
-    // Rebuild pre-computed search cache (skipped by serde)
-    index.rebuild_search_cache();
+    // v2+ indices serialize search_cache; only v1 needs rebuild.
+    if index.version < 2 {
+        index.rebuild_search_cache();
+    }
 
     Ok(Some(index))
 }

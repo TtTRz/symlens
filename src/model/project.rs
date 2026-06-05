@@ -128,8 +128,11 @@ pub struct ProjectIndex {
     pub file_call_edges: HashMap<PathBuf, Vec<CallEdge>>,
     /// Imports per file (for incremental import rebuilds)
     pub file_imports: HashMap<PathBuf, Vec<ImportInfo>>,
+    /// Pre-computed identifier positions per file.
+    pub file_identifiers: HashMap<PathBuf, Vec<crate::parser::traits::IdentifierRef>>,
+    /// Reverse index: identifier name → files containing it.
+    pub identifier_index: HashMap<String, Vec<PathBuf>>,
     /// Pre-computed lowercase name + qualified_name for fast search
-    #[serde(skip)]
     search_cache: HashMap<SymbolId, (String, String)>,
 }
 
@@ -162,7 +165,7 @@ impl ProjectIndex {
             symbols: HashMap::new(),
             file_symbols: HashMap::new(),
             file_mtimes: HashMap::new(),
-            version: 1,
+            version: 2,
             indexed_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -172,6 +175,8 @@ impl ProjectIndex {
             file_hashes: HashMap::new(),
             file_call_edges: HashMap::new(),
             file_imports: HashMap::new(),
+            file_identifiers: HashMap::new(),
+            identifier_index: HashMap::new(),
             search_cache: HashMap::new(),
         }
     }
@@ -278,6 +283,11 @@ impl ProjectIndex {
                 (sym.name.to_lowercase(), sym.qualified_name.to_lowercase()),
             );
         }
+    }
+
+    /// Returns true if the search cache has been populated.
+    pub fn has_search_cache(&self) -> bool {
+        !self.search_cache.is_empty()
     }
 
     /// Compute index statistics.

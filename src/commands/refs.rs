@@ -1,11 +1,7 @@
 use crate::cli::RefsArgs;
-use crate::model::project::FileKey;
 use crate::output::color;
-use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::RefKind;
-use rayon::prelude::*;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 pub fn run(
@@ -18,68 +14,27 @@ pub fn run(
     let start = std::time::Instant::now();
     let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
-    // Refs v3: narrow search scope using import_names
-    // If we know which files import the target name, only search those + the defining file
-    let candidate_keys: Vec<FileKey> = {
-        let importing = provider.import_names_for(&args.name);
-        if !importing.is_empty() {
-            let mut keys: HashSet<FileKey> = importing.into_iter().collect();
-            // Also include files that define a symbol with this name
-            for sym in provider.symbols() {
-                if sym.name == args.name {
-                    keys.insert(FileKey::new(sym.id.root_id(), sym.file_path.clone()));
-                }
-            }
-            keys.into_iter().collect()
-        } else {
-            // No import info — fall back to scanning all indexed files
-            provider.file_keys()
+    // Use pre-computed identifier_index to find candidate files
+    let candidate_keys = provider.identifier_files_for(&args.name);
+
+    // Collect refs from pre-computed identifier tables
+    let mut all_refs: Vec<(PathBuf, crate::parser::traits::IdentifierRef)> = Vec::new();
+    for file_key in &candidate_keys {
+        let scope_match = args
+            .scope
+            .as_ref()
+            .is_none_or(|s| file_key.path.to_string_lossy().starts_with(s.as_str()));
+        if !scope_match {
+            continue;
         }
-    };
 
-    let scope = args.scope.clone();
-    let name = args.name.clone();
-
-    // Collect (root_id, rel_path) pairs for parallel resolution
-    let scan_entries: Vec<(String, PathBuf)> = candidate_keys
-        .into_iter()
-        .map(|fk| (fk.root_id, fk.path))
-        .collect();
-
-    // Parallel file scanning (same pattern as indexer.rs — one registry per thread)
-    let mut all_refs: Vec<(PathBuf, crate::parser::traits::IdentifierRef)> = scan_entries
-        .par_iter()
-        .filter(|(root_id, file_path)| {
-            let full_path = provider.resolve_absolute(root_id, file_path);
-            if !full_path.exists() {
-                return false;
+        let idents = provider.identifiers_in_file(file_key);
+        for r in idents {
+            if r.name == args.name {
+                all_refs.push((file_key.path.clone(), r.clone()));
             }
-            if let Some(ref s) = scope
-                && !file_path.to_string_lossy().starts_with(s.as_str())
-            {
-                return false;
-            }
-            true
-        })
-        .flat_map_iter(|(root_id, file_path)| {
-            let full_path = provider.resolve_absolute(root_id, file_path);
-            thread_local! {
-                static REGISTRY: LanguageRegistry = LanguageRegistry::new();
-            }
-            let mut results = Vec::new();
-            REGISTRY.with(|registry| {
-                if let Some(parser) = registry.parser_for(&full_path)
-                    && let Ok(source) = std::fs::read(&full_path)
-                    && let Ok(refs) = parser.find_identifiers(&source, &name)
-                {
-                    for r in refs {
-                        results.push((file_path.clone(), r));
-                    }
-                }
-            });
-            results
-        })
-        .collect();
+        }
+    }
 
     // Apply kind filter
     if let Some(ref kind_filter) = args.kind {
@@ -125,7 +80,7 @@ pub fn run(
 
     let total = all_refs.len();
     let all_files = provider.file_count();
-    let scanned = scan_entries.len();
+    let scanned = candidate_keys.len();
     let narrowed = scanned < all_files;
     let breakdown = format_breakdown(call_count, type_count, import_count, other_count);
 
@@ -157,12 +112,11 @@ pub fn run(
 
     if narrowed {
         println!(
-            "{} — {} refs ({}) [scanned {}/{} files via import tracking]",
+            "{} — {} refs ({}) [via identifier index, {} files]",
             color::bold(&args.name, color_on),
             total,
             breakdown,
             scanned,
-            all_files,
         );
     } else {
         println!(
@@ -194,9 +148,9 @@ pub fn run(
 
     if std::env::var("SYMLENS_VERBOSE").is_ok() && !json {
         eprintln!(
-            "[verbose] refs completed in {:?} (scanned {} files)",
+            "[verbose] refs completed in {:?} (scanned {} files via index)",
             start.elapsed(),
-            scan_entries.len()
+            scanned
         );
     }
 

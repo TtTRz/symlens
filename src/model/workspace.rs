@@ -32,6 +32,10 @@ pub struct WorkspaceIndex {
     pub file_call_edges: HashMap<FileKey, Vec<CallEdge>>,
     /// Imports per file (for incremental import rebuilds).
     pub file_imports: HashMap<FileKey, Vec<ImportInfo>>,
+    /// Pre-computed identifier positions per file (keyed by relative path).
+    pub file_identifiers: HashMap<PathBuf, Vec<crate::parser::traits::IdentifierRef>>,
+    /// Reverse index: identifier name → FileKeys containing it.
+    pub identifier_index: HashMap<String, Vec<FileKey>>,
     /// BLAKE3 hash of sorted root hashes, used as workspace cache key.
     pub workspace_hash: String,
     /// Index format version.
@@ -39,7 +43,6 @@ pub struct WorkspaceIndex {
     /// Timestamp when index was created/updated.
     pub indexed_at: u64,
     /// Pre-computed lowercase name + qualified_name for fast search.
-    #[serde(skip)]
     search_cache: HashMap<SymbolId, (String, String)>,
 }
 
@@ -57,6 +60,8 @@ impl WorkspaceIndex {
             import_names: HashMap::new(),
             file_call_edges: HashMap::new(),
             file_imports: HashMap::new(),
+            file_identifiers: HashMap::new(),
+            identifier_index: HashMap::new(),
             workspace_hash,
             version: 2,
             indexed_at: std::time::SystemTime::now()
@@ -125,6 +130,21 @@ impl WorkspaceIndex {
                 entry.push(FileKey::new(root_id, rel_path.clone()));
             }
         }
+
+        // Merge identifier data
+        for (rel_path, idents) in &project_index.file_identifiers {
+            let mut seen_names = std::collections::HashSet::new();
+            for ident in idents {
+                if seen_names.insert(ident.name.as_str()) {
+                    self.identifier_index
+                        .entry(ident.name.clone())
+                        .or_default()
+                        .push(FileKey::new(root_id, rel_path.clone()));
+                }
+            }
+            self.file_identifiers
+                .insert(rel_path.clone(), idents.clone());
+        }
     }
 
     /// Remove all data associated with a specific root.
@@ -150,6 +170,22 @@ impl WorkspaceIndex {
             self.symbols.remove(id);
         }
 
+        // Collect paths for this root from all keyed collections (some files have
+        // identifiers but no symbols, so we must gather from multiple sources).
+        let root_file_paths: std::collections::HashSet<PathBuf> = self
+            .file_symbols
+            .keys()
+            .filter(|k| k.root_id == root_id)
+            .map(|k| k.path.clone())
+            .chain(
+                self.identifier_index
+                    .values()
+                    .flat_map(|v| v.iter())
+                    .filter(|fk| fk.root_id == root_id)
+                    .map(|fk| fk.path.clone()),
+            )
+            .collect();
+
         // Remove file-level data for this root (FileKey uses hash id)
         self.file_symbols.retain(|k, ids| {
             if k.root_id == root_id {
@@ -167,6 +203,14 @@ impl WorkspaceIndex {
         // Clean import_names
         self.import_names.retain(|_, files| {
             files.retain(|f| f.root_id != root_id);
+            !files.is_empty()
+        });
+
+        // Clean identifier data for this root
+        self.file_identifiers
+            .retain(|path, _| !root_file_paths.contains(path));
+        self.identifier_index.retain(|_, files| {
+            files.retain(|fk| fk.root_id != root_id);
             !files.is_empty()
         });
 

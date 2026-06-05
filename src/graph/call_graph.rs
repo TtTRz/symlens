@@ -11,10 +11,8 @@ pub struct CallGraph {
     /// Edges: (from_index, to_index)
     pub edges: Vec<(usize, usize)>,
     /// Name → node index
-    #[serde(skip)]
     name_to_idx: HashMap<String, usize>,
     /// Short name (last segment after `::`) → Vec<node indices>
-    #[serde(skip)]
     short_name_idx: HashMap<String, Vec<usize>>,
     /// Cached petgraph DiGraph (built once, reused for all queries)
     #[serde(skip)]
@@ -116,6 +114,13 @@ impl CallGraph {
             self.name_to_idx.insert(name.clone(), i);
         }
         self.short_name_idx = Self::build_short_name_idx(&self.nodes);
+        self.rebuild_digraph();
+    }
+
+    /// Rebuild only the petgraph DiGraph from nodes and edges.
+    /// Used after deserialization of v2+ indices where name_to_idx and
+    /// short_name_idx are already serialized.
+    pub fn rebuild_digraph(&mut self) {
         let (digraph, node_indices) = Self::build_digraph(&self.nodes, &self.edges);
         self.digraph = Some(digraph);
         self.node_indices = node_indices;
@@ -124,6 +129,11 @@ impl CallGraph {
     /// Look up exact node index by qualified name.
     pub fn exact_index(&self, name: &str) -> Option<usize> {
         self.name_to_idx.get(name).copied()
+    }
+
+    /// Returns true if the name index has been populated.
+    pub fn has_name_index(&self) -> bool {
+        !self.name_to_idx.is_empty()
     }
 
     /// Get all call edges as (from_index, to_index) pairs.

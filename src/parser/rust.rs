@@ -101,6 +101,17 @@ impl LanguageParser for RustParser {
         collect_use_declarations(tree.root_node(), source, &mut imports);
         Ok(imports)
     }
+
+    fn extract_identifiers_from_tree(
+        &self,
+        tree: &tree_sitter::Tree,
+        source: &[u8],
+    ) -> anyhow::Result<Vec<IdentifierRef>> {
+        let mut refs = Vec::new();
+        let lines: Vec<&str> = std::str::from_utf8(source).unwrap_or("").lines().collect();
+        collect_all_identifiers(tree.root_node(), source, &lines, &mut refs);
+        Ok(refs)
+    }
 }
 
 fn extract_from_node(
@@ -590,6 +601,7 @@ fn collect_identifiers(
         let kind = classify_ref_context(node);
 
         refs.push(IdentifierRef {
+            name: node_text(node, source).unwrap_or_default(),
             line,
             context,
             kind,
@@ -599,6 +611,46 @@ fn collect_identifiers(
     let cursor = &mut node.walk();
     for child in node.children(cursor) {
         collect_identifiers(child, source, target_name, lines, refs);
+    }
+}
+
+/// Collect ALL identifier references (no name filter), used by `extract_identifiers_from_tree`.
+fn collect_all_identifiers(
+    node: tree_sitter::Node,
+    source: &[u8],
+    lines: &[&str],
+    refs: &mut Vec<IdentifierRef>,
+) {
+    match node.kind() {
+        "line_comment" | "block_comment" | "string_literal" | "raw_string_literal"
+        | "char_literal" => return,
+        _ => {}
+    }
+
+    if node.kind() == "identifier" || node.kind() == "type_identifier" {
+        let name = node_text(node, source).unwrap_or_default();
+        if !name.is_empty() {
+            let line = node.start_position().row as u32 + 1;
+            let context = lines
+                .get(line as usize - 1)
+                .unwrap_or(&"")
+                .trim()
+                .chars()
+                .take(120)
+                .collect::<String>();
+            let kind = classify_ref_context(node);
+            refs.push(IdentifierRef {
+                name,
+                line,
+                context,
+                kind,
+            });
+        }
+    }
+
+    let cursor = &mut node.walk();
+    for child in node.children(cursor) {
+        collect_all_identifiers(child, source, lines, refs);
     }
 }
 

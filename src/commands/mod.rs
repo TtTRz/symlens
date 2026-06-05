@@ -351,4 +351,39 @@ impl IndexProvider {
                 .collect(),
         }
     }
+
+    /// Get files that contain a given identifier name.
+    pub fn identifier_files_for(&self, name: &str) -> Vec<FileKey> {
+        match self {
+            IndexProvider::Single { index, .. } => index
+                .identifier_index
+                .get(name)
+                .map(|paths| paths.iter().map(|p| FileKey::new("", p.clone())).collect())
+                .unwrap_or_default(),
+            IndexProvider::Workspace { index } => index
+                .identifier_index
+                .get(name)
+                .cloned()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Get all identifiers in a file.
+    pub fn identifiers_in_file(
+        &self,
+        file_key: &FileKey,
+    ) -> Vec<&crate::parser::traits::IdentifierRef> {
+        match self {
+            IndexProvider::Single { index, .. } => index
+                .file_identifiers
+                .get(&file_key.path)
+                .map(|v| v.iter().collect())
+                .unwrap_or_default(),
+            IndexProvider::Workspace { index } => index
+                .file_identifiers
+                .get(&file_key.path)
+                .map(|v| v.iter().collect())
+                .unwrap_or_default(),
+        }
+    }
 }
