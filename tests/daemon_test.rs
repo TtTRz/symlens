@@ -1,7 +1,6 @@
 /// Integration tests for the daemon module.
 /// Tests cover SharedIndex concurrency, socket path resolution, RPC protocol,
 /// and end-to-end daemon lifecycle with real Unix sockets.
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
