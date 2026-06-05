@@ -117,6 +117,8 @@ symlens export --format sqlite
 symlens lines src/main.rs 10 25
 symlens doctor
 symlens watch
+symlens watch --serve            # 守护进程模式：索引常驻内存
+symlens --daemon search "Engine" # 通过守护进程查询 (~6ms)
 symlens completions zsh
 symlens init
 symlens search "handler" --offset 20 --limit 10  # 分页
@@ -188,6 +190,35 @@ Go ················ 82 µs
 bincode 编码 ······ 182 µs
 bincode 解码 ······ 728 µs
 ```
+
+---
+
+## 🚀 守护进程模式
+
+将索引常驻内存，通过 Unix socket 响应查询 — 消除每次查询的索引反序列化开销 (~6ms vs CLI ~10ms)。
+
+```bash
+# 启动守护进程（后台运行）
+symlens watch --serve &
+# 监听 ~/.symlens/daemon/{hash}.sock
+
+# 所有查询命令支持 --daemon 标志
+symlens --daemon search "Engine"
+symlens --daemon refs "CallGraph"
+symlens --daemon callers run
+symlens --daemon graph impact run
+```
+
+**工作原理：** `symlens watch --serve` 加载一次索引，监听文件变更，通过 Unix socket 接收 JSON-RPC 查询。`--daemon` 将 CLI 命令路由到 socket 而非从磁盘加载。
+
+| 查询 | CLI | Daemon | vs rg |
+|:-----|:----|:-------|:------|
+| search | 9.6ms | **6.2ms** (1.6×) | 1.1× faster |
+| refs | 8.6ms | **6.2ms** (1.4×) | 1.0× |
+| callers | 8.8ms | **6.2ms** (1.4×) | — |
+| impact | 10.8ms | **7.0ms** (1.5×) | — |
+
+无额外依赖 — 纯 `std::thread` + `std::os::unix::net`。
 
 ---
 

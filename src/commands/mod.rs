@@ -315,6 +315,24 @@ impl IndexProvider {
         self.as_index().file_count()
     }
 
+    /// Create from a pre-built single-root index.
+    pub fn from_single(root: PathBuf, index: ProjectIndex) -> Self {
+        IndexProvider::Single { root, index }
+    }
+
+    /// Create from a pre-built workspace index.
+    pub fn from_workspace(index: WorkspaceIndex) -> Self {
+        IndexProvider::Workspace { index }
+    }
+
+    /// Get the hash used for socket path naming.
+    pub fn socket_hash(&self) -> String {
+        match self {
+            IndexProvider::Single { index, .. } => index.root_hash.clone(),
+            IndexProvider::Workspace { index } => index.workspace_hash.clone(),
+        }
+    }
+
     /// Whether this is a workspace provider.
     pub fn is_workspace(&self) -> bool {
         matches!(self, IndexProvider::Workspace { .. })

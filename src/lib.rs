@@ -4,6 +4,8 @@ pub mod cli;
 pub mod commands;
 #[cfg(feature = "native")]
 pub mod config;
+#[cfg(all(feature = "native", unix))]
+pub mod daemon;
 pub mod graph;
 #[cfg(feature = "native")]
 pub mod index;

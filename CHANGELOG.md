@@ -5,6 +5,67 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-05
+
+### Added
+
+- **Daemon mode** (`symlens watch --serve`): long-running process that keeps the index in memory and serves queries via Unix socket — eliminates per-query index deserialization overhead
+- **`--daemon` global CLI flag**: routes query commands (search, refs, callers, callees, outline, symbol, impact, status) through the running daemon instead of loading from disk
+- **JSON-RPC protocol**: line-delimited JSON over Unix socket (`~/.symlens/daemon/{hash}.sock`) with 8 methods matching CLI commands
+- **`SharedIndex`** (`Arc<RwLock<IndexProvider>>`): watcher thread takes write lock for incremental reindex, socket threads take read lock for concurrent queries
+- **`IndexProvider::from_single`/`from_workspace` constructors**: create providers from pre-built indexes without disk I/O
+- **`IndexProvider::socket_hash()`**: returns hash for socket path naming
+
+### Changed
+
+- **CLI flags**: added `--daemon` global flag and `--serve` flag on `watch` command
+- **main.rs dispatch**: daemon routing check before normal command dispatch; `--serve` delegates to daemon server
+- **`refs` RPC handler**: supports `kind` parameter filtering (call/type/import/field/constructor), matching CLI `--kind` behavior
+- **`outline` RPC handler**: workspace mode file lookup fixed — resolves correct `FileKey` across all roots instead of using empty `root_id`
+- **Daemon watcher**: passes original `--root` to workspace re-index instead of `None`; uses `Arc<AtomicBool>` shutdown flag instead of global static; extracts `prev_index` from write lock guard (no disk reload)
+- **Daemon client**: computes socket hash directly via blake3 instead of loading full index (~7ms saved)
+- **Daemon connections**: supports multiple requests per connection (keep-alive)
+- **`SUPPORTED_EXTENSIONS` extracted to `parser/traits.rs`**: shared constant + `is_source_file()` helper used by both `watch.rs` and daemon watcher (eliminates duplicated extension list)
+
+### Fixed
+
+- **Large response truncation (>8KB)**: accepted connections inherited nonblocking mode from the listener — `write_all` returned `WouldBlock` instead of writing the full response. Fixed by setting accepted streams back to blocking mode, and using `write_all` + explicit newline instead of `writeln!`
+- **100ms accept latency**: accept loop polled every 100ms, adding up to 100ms fixed overhead to every daemon query. Reduced to 5ms poll interval — daemon queries now ~6ms (was ~100ms, **1.4-1.5× faster than CLI**)
+- **`ProjectIndex` / `CallGraph`**: added `Clone` derive (needed for daemon watcher `prev_index` extraction without disk I/O)
+
+### Architecture
+
+- `src/daemon/mod.rs` — module root, `SharedIndex` type, socket path helpers
+- `src/daemon/rpc.rs` — JSON-RPC protocol, 8 method handlers building JSON from `IndexProvider`
+- `src/daemon/socket.rs` — server lifecycle (load → bind → watch → accept → shutdown), watcher thread
+- `src/daemon/client.rs` — client socket connection, CLI-to-RPC command mapping
+- Pure `std::thread`, no tokio; no new crate dependencies
+- No changes to existing `watch.rs` — daemon has independent watch loop
+
+### Testing
+
+- **228 tests** (was 213): added 15 daemon tests (9 unit in `rpc.rs`, 6 integration in `daemon_test.rs`) covering request parsing, response format, JSON-RPC structure, unknown method error, missing params, no call graph, search/status/refs/outline/callers handlers, SharedIndex concurrent reads, socket path format, malformed input, `is_source_file` all extensions, end-to-end Unix socket query lifecycle
+
+## [0.10.0] - 2026-06-05
+
+### Added
+
+- **Pre-computed identifier positions in index**: all 9 parsers now extract identifier references during the single-parse `extract_all` pass — `file_identifiers` (per-file identifier list) and `identifier_index` (name → files) are serialized into the index
+- **`IdentifierRef` enhanced**: added `name` field, `Clone`, `Serialize`, `Deserialize` derives — each identifier carries its name for index-time name→file mapping
+- **Index v2 format**: caches (`search_cache`, `name_to_idx`, `short_name_idx`) now serialized — v1 indexes auto-upgrade via `rebuild_index()`, v2+ only rebuilds petgraph DiGraph lazily
+
+### Changed
+
+- **`refs` command rewritten to pure index lookup**: eliminated runtime tree-sitter parsing, rayon threads, and `LanguageRegistry` — now uses `identifier_index` → `file_identifiers` HashMap chain. **3.5× faster** (38ms → 11ms measured with hyperfine)
+- **Serialized search cache**: `search_cache` in `ProjectIndex`/`WorkspaceIndex` no longer `#[serde(skip)]` — zero rebuild time on index load
+- **Serialized call graph name index**: `name_to_idx` and `short_name_idx` in `CallGraph` no longer `#[serde(skip)]` — only petgraph DiGraph is rebuilt lazily via `rebuild_digraph()`
+- **Index size trade-off**: index grew ~4× (530KB → 2.2MB on the symlens codebase) due to serialized caches and identifier data; acceptable given refs speedup and single-index design
+- **Deduplication**: `identifier_index` uses `HashSet` to ensure one file path per unique identifier name, preventing N×N result inflation
+
+### Testing
+
+- **213 tests** (was 207): added 6 tests — `parsed_output_includes_identifiers`, `typescript_extract_all_identifiers`, `index_contains_file_identifiers`, `workspace_contains_identifiers`, `index_serde_roundtrip_preserves_caches`, `refs_uses_precomputed_identifiers`
+
 ## [0.9.3] - 2026-06-04
 
 ### Changed

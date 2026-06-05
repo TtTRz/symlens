@@ -16,6 +16,24 @@ fn main() -> anyhow::Result<()> {
 
     let workspace = cli.workspace;
 
+    // Route through daemon if --daemon flag is set
+    if cli.daemon {
+        match symlens::daemon::client::route_command(&cli) {
+            Ok(Some(result)) => {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                return Ok(());
+            }
+            Ok(None) => {
+                eprintln!("Warning: --daemon not supported for this command, running locally.");
+                // Fall through to normal dispatch
+            }
+            Err(e) => {
+                eprintln!("Daemon error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
     match cli.command {
         Commands::Index(args) => symlens::commands::index::run(args, root, workspace),
         Commands::Search(args) => {
@@ -37,7 +55,11 @@ fn main() -> anyhow::Result<()> {
         Commands::Lines(args) => symlens::commands::lines::run(args, root, workspace, color),
         Commands::Graph(args) => symlens::commands::graph::run(args, root, workspace, json),
         Commands::Watch(args) => {
-            symlens::commands::watch::run(args.path.as_deref().or(root), workspace)
+            if args.serve {
+                symlens::daemon::socket::serve_daemon(args.path.as_deref().or(root), workspace)
+            } else {
+                symlens::commands::watch::run(args.path.as_deref().or(root), workspace)
+            }
         }
         Commands::Stats(args) => symlens::commands::stats::run(args, root, workspace, json),
         Commands::Blame(args) => symlens::commands::blame::run(args, root, workspace, json),

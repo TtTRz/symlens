@@ -102,7 +102,7 @@ impl RootInfo {
 }
 
 use std::fmt;
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectIndex {
     /// Project root path
     pub root: PathBuf,

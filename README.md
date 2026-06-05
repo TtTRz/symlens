@@ -117,6 +117,8 @@ symlens export --format sqlite
 symlens lines src/main.rs 10 25
 symlens doctor
 symlens watch
+symlens watch --serve            # daemon mode: keep index in memory
+symlens --daemon search "Engine" # query via daemon (~6ms)
 symlens completions zsh
 symlens init
 symlens search "handler" --offset 20 --limit 10  # pagination
@@ -188,6 +190,35 @@ detect_all_cycles ···· 261 µs
 bincode encode ······· 182 µs
 bincode decode ······· 728 µs
 ```
+
+---
+
+## 🚀 Daemon Mode
+
+Keep the index in memory and serve queries via Unix socket — eliminates per-query index deserialization (~6ms vs ~10ms CLI).
+
+```bash
+# Start daemon (background)
+symlens watch --serve &
+# Listening on ~/.symlens/daemon/{hash}.sock
+
+# All query commands work with --daemon flag
+symlens --daemon search "Engine"
+symlens --daemon refs "CallGraph"
+symlens --daemon callers run
+symlens --daemon graph impact run
+```
+
+**How it works:** `symlens watch --serve` loads the index once, watches for file changes, and accepts JSON-RPC queries over a Unix socket. `--daemon` routes CLI commands through the socket instead of loading from disk.
+
+| Query | CLI | Daemon | vs rg |
+|:------|:----|:-------|:------|
+| search | 9.6ms | **6.2ms** (1.6×) | 1.1× faster |
+| refs | 8.6ms | **6.2ms** (1.4×) | 1.0× |
+| callers | 8.8ms | **6.2ms** (1.4×) | — |
+| impact | 10.8ms | **7.0ms** (1.5×) | — |
+
+No new dependencies — pure `std::thread` + `std::os::unix::net`.
 
 ---
 

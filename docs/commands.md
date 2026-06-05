@@ -9,6 +9,7 @@
 | `--no-color` | Disable colored output |
 | `--verbose / -v` | Show diagnostic output (timing, file counts) |
 | `--workspace` | Enable workspace mode (multi-root indexing) |
+| `--daemon` | Route query through running daemon (requires `watch --serve`) |
 
 ## Commands
 
@@ -19,6 +20,7 @@
 | `symlens index [path]` | Index the project (parallel, incremental) | — |
 | `symlens index --force` | Force re-index, ignore cache | — |
 | `symlens watch` | Auto-update index on file changes | — |
+| `symlens watch --serve` | Start daemon — keep index in memory, serve queries via Unix socket | — |
 | `symlens init` | Generate default `symlens.toml` config | — |
 | `symlens doctor` | Diagnose index health, cache status, languages | — |
 | `symlens stats` | Show index statistics | ~50 |
@@ -126,19 +128,28 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 | Build call graph | 405 µs | petgraph construction |
 | Registry lookup | 16 ns | Extension → parser HashMap |
 
+### Daemon vs CLI (hyperfine, 20 runs)
+
+| Query | CLI | Daemon | Daemon speedup |
+|-------|-----|--------|----------------|
+| search | 9.6 ms | 6.2 ms | 1.6× |
+| refs | 8.6 ms | 6.2 ms | 1.4× |
+| callers | 8.8 ms | 6.2 ms | 1.4× |
+| impact | 10.8 ms | 7.0 ms | 1.5× |
+
 ## Comparison
 
-| | SymLens | LSP (Serena) | pitlane-mcp | Aider repo-map |
-|---|---------|-------------|------------|----------------|
-| Cold start | 50 ms | 3-10 s | Fast | Rebuilds each time |
-| Dependencies | None (single binary) | Python + LSP servers | None | Python |
-| Call graph | Yes | No | Yes | No |
-| Impact analysis | Yes | No | No | No |
-| BM25 search | Yes | No | Yes | No |
-| Git blame/diff | Yes | No | No | No |
-| MCP server | Yes | Yes | Yes | No |
-| Semantic precision | ~90% (syntax) | ~99% (semantic) | ~70% | N/A |
-| Refactoring | No (read-only) | Yes | No | No |
+| | SymLens | SymLens (daemon) | LSP (Serena) | pitlane-mcp | Aider repo-map |
+|---|---------|-------------------|-------------|------------|----------------|
+| Cold start | 50 ms | 6 ms (warm) | 3-10 s | Fast | Rebuilds each time |
+| Dependencies | None (single binary) | None | Python + LSP servers | None | Python |
+| Call graph | Yes | Yes | No | Yes | No |
+| Impact analysis | Yes | Yes | No | No | No |
+| BM25 search | Yes | Yes | No | Yes | No |
+| Git blame/diff | Yes | Yes | No | No | No |
+| MCP server | Yes | — | Yes | Yes | No |
+| Semantic precision | ~90% (syntax) | ~90% (syntax) | ~99% (semantic) | ~70% | N/A |
+| Refactoring | No (read-only) | No (read-only) | Yes | No | No |
 
 **When to use SymLens:** You want fast, zero-dependency code intelligence for AI agents.
 **When to use an LSP:** You need semantic accuracy (rename, go-to-definition) and don't mind the startup cost.
@@ -151,7 +162,7 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 ## Project Stats
 
 - Rust 2024 edition, minimum rustc 1.92
-- 201 tests (6 unit + 195 integration), 0 clippy warnings
+- 228 tests (15 daemon + 213 other), 0 clippy warnings
 - 28 benchmarks across 7 groups
 - 21 commands, 9 languages, 12 MCP tools
 - WASM build support via `--features wasm`
@@ -160,7 +171,7 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `native` | ✅ | CLI, filesystem, BM25 search, watch mode, incremental indexing |
+| `native` | ✅ | CLI, filesystem, BM25 search, watch mode, daemon mode, incremental indexing |
 | `mcp` | — | MCP server via rmcp (includes `native`) |
 | `wasm` | — | WASM API via wasm-bindgen (parsing, call graphs, queries) |
 

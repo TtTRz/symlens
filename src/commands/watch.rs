@@ -1,5 +1,6 @@
 use crate::index::{indexer, storage};
 use crate::model::project::ProjectIndex;
+use crate::parser::traits::is_source_file;
 use notify::{Event, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -60,25 +61,7 @@ fn watch_single_root(root: &std::path::Path) -> anyhow::Result<()> {
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(Ok(event)) => {
                 for p in &event.paths {
-                    if matches!(
-                        p.extension().and_then(|e| e.to_str()),
-                        Some("rs")
-                            | Some("ts")
-                            | Some("tsx")
-                            | Some("py")
-                            | Some("swift")
-                            | Some("go")
-                            | Some("dart")
-                            | Some("c")
-                            | Some("h")
-                            | Some("cpp")
-                            | Some("cc")
-                            | Some("cxx")
-                            | Some("hpp")
-                            | Some("hh")
-                            | Some("kt")
-                            | Some("kts")
-                    ) {
+                    if is_source_file(p) {
                         pending_files.insert(p.clone());
                         last_event = Instant::now();
                     }
@@ -159,25 +142,7 @@ fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)]) -> anyhow::Re
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(Ok(event)) => {
                 for p in &event.paths {
-                    if matches!(
-                        p.extension().and_then(|e| e.to_str()),
-                        Some("rs")
-                            | Some("ts")
-                            | Some("tsx")
-                            | Some("py")
-                            | Some("swift")
-                            | Some("go")
-                            | Some("dart")
-                            | Some("c")
-                            | Some("h")
-                            | Some("cpp")
-                            | Some("cc")
-                            | Some("cxx")
-                            | Some("hpp")
-                            | Some("hh")
-                            | Some("kt")
-                            | Some("kts")
-                    ) {
+                    if is_source_file(p) {
                         pending_files.insert(p.clone());
                         last_event = Instant::now();
                     }

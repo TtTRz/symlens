@@ -2,6 +2,19 @@ use crate::model::symbol::Symbol;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// All file extensions recognized by the 9 language parsers.
+pub const SUPPORTED_EXTENSIONS: &[&str] = &[
+    "rs", "ts", "tsx", "py", "swift", "go", "dart", "c", "h", "cpp", "cc", "cxx", "hpp", "hh",
+    "kt", "kts",
+];
+
+/// Check if a file path has a supported source extension.
+pub fn is_source_file(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| SUPPORTED_EXTENSIONS.contains(&ext))
+}
+
 /// A call edge: (caller_qualified_name, callee_name)
 pub type CallEdge = (String, String);
 

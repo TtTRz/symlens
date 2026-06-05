@@ -32,6 +32,10 @@ pub struct Cli {
     /// Show verbose diagnostic output (index timing, cache info, file counts)
     #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
+
+    /// Route commands through a running daemon for faster queries
+    #[arg(long, global = true)]
+    pub daemon: bool,
 }
 
 #[derive(Subcommand)]
@@ -247,6 +251,10 @@ pub struct GraphPathArgs {
 pub struct WatchCmdArgs {
     /// Path to watch (default: current project)
     pub path: Option<String>,
+
+    /// Start a daemon that serves queries via Unix socket
+    #[arg(long)]
+    pub serve: bool,
 }
 
 #[derive(clap::Args)]
