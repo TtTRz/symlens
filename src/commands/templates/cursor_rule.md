@@ -26,7 +26,9 @@ This project has `symlens` installed for token-efficient code navigation.
 
 5. Run `symlens index` if you get "index not found" errors.
 
-6. **Fall back to `grep`/`cat`** when:
+6. **Daemon mode for faster queries**: start with `symlens watch --serve &`, then prefix any query with `--daemon` (e.g. `symlens --daemon search "query"`). ~6ms per query instead of ~10ms.
+
+7. **Fall back to `grep`/`cat`** when:
    - Searching non-code files (`.md`, `.toml`, `.yml`, `.json`, `.env`, logs)
    - Searching string literals, comments, or magic numbers in code
    - Working with unsupported languages (symlens supports: Rust, TypeScript, Python, Go, Swift, Dart, C, C++, Kotlin)
