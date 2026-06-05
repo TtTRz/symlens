@@ -3963,7 +3963,7 @@ function bar(): void {}
         )
         .expect("Failed to find Vue identifiers");
         assert!(
-            refs.len() >= 1,
+            !refs.is_empty(),
             "Should find at least 1 ref to 'setupIncrement', got {}",
             refs.len()
         );
