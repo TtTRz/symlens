@@ -242,9 +242,29 @@ symlens mcp
 }
 ```
 
-**11 个工具：** `symlens_index` · `symlens_index_workspace` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
+**12 个工具：** `symlens_index` · `symlens_index_workspace` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
 
 </details>
+
+---
+
+## Daemon vs MCP — 怎么选？
+
+两者都把索引常驻内存以加速查询，但适用场景不同：
+
+| | Daemon | MCP |
+|---|--------|-----|
+| **传输方式** | Unix socket (JSON-RPC) | stdio (rmcp 协议) |
+| **调用方** | 终端、脚本、CLI | AI agent（Claude Code、Cursor） |
+| **每次查询开销** | ~6ms（进程启动 + socket） | **<1ms**（进程内调用） |
+| **索引刷新** | **自动**（文件监听） | 手动（调用 `symlens_index`） |
+| **额外依赖** | 无 | rmcp、schemars（`--features mcp`） |
+
+**用 Daemon：** 在终端工作、写脚本、或需要文件改动自动 reindex。
+
+**用 MCP：** AI agent 高频查询，agent 自己控制何时 reindex。
+
+两者可以同时运行，互不干扰。
 
 ---
 
@@ -275,7 +295,63 @@ symlens setup --uninstall codebuddy --global    # 移除全局 skill + 注册
 
 ---
 
-## 🏗️ 架构
+## 🧭 推荐工作流
+
+### Skill 工作流（所有 agent）
+
+适合：Claude Code、Cursor、CodeBuddy、OpenClaw — 通用方案，一条命令即可。
+
+```bash
+# 1. 安装并索引
+symlens setup claude-code --global   # 或 cursor / codebuddy / openclaw / --all
+symlens index
+
+# 2. 在 agent 中使用
+# Agent 读取 skill 后直接调用 symlens CLI：
+#   symlens search "AuthService"
+#   symlens refs "process_request"
+#   symlens callers run
+#   symlens graph impact "Engine::start"
+
+# 3. 编辑文件后，重新索引
+symlens index          # 增量索引，<1s
+
+# 4. 需要更快查询时，后台启动 daemon
+symlens watch --serve &
+symlens --daemon search "Engine"   # ~6ms，替代 ~10ms
+```
+
+### MCP 工作流（Claude Code、Cursor）
+
+适合：支持 MCP 协议的 agent — 最快查询，最紧密集成。
+
+```bash
+# 1. 安装 MCP 版本
+cargo install symlens --features mcp
+
+# 2. 添加到 MCP 配置
+# Claude Code: ~/.claude/claude_desktop_config.json 或项目 .mcp.json
+# Cursor:      Settings → MCP → Add server
+{
+  "mcpServers": {
+    "symlens": { "command": "symlens", "args": ["mcp"] }
+  }
+}
+
+# 3. 在 agent 对话中：
+#   → symlens_index({ path: "/my/project" })     # 建一次索引
+#   → symlens_search({ path: "/my/project", query: "AuthService" })
+#   → symlens_refs({ path: "/my/project", name: "process_request" })
+#   → symlens_callers({ path: "/my/project", name: "run" })
+#   → symlens_impact({ path: "/my/project", name: "Engine::start" })
+#
+#   编辑文件后：
+#   → symlens_index({ path: "/my/project" })     # 增量刷新
+```
+
+**进阶技巧：** 两者结合 — Skill 用于终端快速查询，MCP 用于 agent 深度分析。
+
+---
 
 ```mermaid
 graph LR

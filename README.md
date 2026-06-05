@@ -242,9 +242,29 @@ symlens mcp
 }
 ```
 
-**11 tools:** `symlens_index` · `symlens_index_workspace` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
+**12 tools:** `symlens_index` · `symlens_index_workspace` · `symlens_search` · `symlens_symbol` · `symlens_outline` · `symlens_refs` · `symlens_impact` · `symlens_callers` · `symlens_callees` · `symlens_lines` · `symlens_diff` · `symlens_stats`
 
 </details>
+
+---
+
+## Daemon vs MCP — When to use which?
+
+Both keep the index in memory for fast queries, but serve different use cases:
+
+| | Daemon | MCP |
+|---|--------|-----|
+| **Transport** | Unix socket (JSON-RPC) | stdio (rmcp protocol) |
+| **Call from** | Terminal, scripts, CLI | AI agents (Claude Code, Cursor) |
+| **Per-query overhead** | ~6ms (process + socket) | **<1ms** (in-process) |
+| **Index refresh** | **Auto** (file watcher) | Manual (call `symlens_index`) |
+| **Extra deps** | None | rmcp, schemars (`--features mcp`) |
+
+**Use Daemon when:** you work in the terminal, write scripts, or need auto-reindex on file changes.
+
+**Use MCP when:** an AI agent makes high-frequency queries and controls when to reindex.
+
+Both can run simultaneously without conflict.
 
 ---
 
@@ -275,7 +295,63 @@ symlens setup --uninstall codebuddy --global    # remove global skill + registra
 
 ---
 
-## 🏗️ Architecture
+## 🧭 Recommended Workflows
+
+### Skill workflow (all agents)
+
+Best for: Claude Code, Cursor, CodeBuddy, OpenClaw — works everywhere, zero setup beyond one command.
+
+```bash
+# 1. Install and index
+symlens setup claude-code --global   # or cursor / codebuddy / openclaw / --all
+symlens index
+
+# 2. Use in your agent
+# The agent reads the skill and calls symlens CLI directly:
+#   symlens search "AuthService"
+#   symlens refs "process_request"
+#   symlens callers run
+#   symlens graph impact "Engine::start"
+
+# 3. After editing files, reindex
+symlens index          # incremental, <1s
+
+# 4. For faster queries during a session, start daemon in background
+symlens watch --serve &
+symlens --daemon search "Engine"   # ~6ms instead of ~10ms
+```
+
+### MCP workflow (Claude Code, Cursor)
+
+Best for: agents that support MCP protocol — fastest queries, tightest integration.
+
+```bash
+# 1. Install with MCP support
+cargo install symlens --features mcp
+
+# 2. Add to MCP config
+# Claude Code: ~/.claude/claude_desktop_config.json or project .mcp.json
+# Cursor:      Settings → MCP → Add server
+{
+  "mcpServers": {
+    "symlens": { "command": "symlens", "args": ["mcp"] }
+  }
+}
+
+# 3. In agent conversation:
+#   → symlens_index({ path: "/my/project" })     # index once
+#   → symlens_search({ path: "/my/project", query: "AuthService" })
+#   → symlens_refs({ path: "/my/project", name: "process_request" })
+#   → symlens_callers({ path: "/my/project", name: "run" })
+#   → symlens_impact({ path: "/my/project", name: "Engine::start" })
+#
+#   After editing files:
+#   → symlens_index({ path: "/my/project" })     # incremental refresh
+```
+
+**Pro tip:** Combine both — use Skill for quick terminal queries, MCP for agent deep-dives.
+
+---
 
 ```mermaid
 graph LR

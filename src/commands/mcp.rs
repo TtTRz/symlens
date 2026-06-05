@@ -1,10 +1,10 @@
 #[cfg(feature = "mcp")]
 pub mod server {
+    use crate::commands::IndexProvider;
     use crate::index::{indexer, storage};
     use crate::model::project::RootInfo;
     use crate::model::symbol::SymbolKind;
     use crate::output::json as fmt;
-    use rayon::prelude::*;
     use rmcp::ServiceExt;
     use rmcp::handler::server::ServerHandler;
     use rmcp::handler::server::wrapper::Parameters;
@@ -19,66 +19,32 @@ pub mod server {
     use std::path::PathBuf;
     use std::sync::{Arc, LazyLock, RwLock};
 
-    use crate::model::project::ProjectIndex;
-    use crate::model::workspace::WorkspaceIndex;
-
     // ─── Static index cache ──────────────────────────────────────────
 
-    /// Per-root cache: key is root_hash (blake3[..16]).
-    static SINGLE_CACHE: LazyLock<RwLock<HashMap<String, Arc<ProjectIndex>>>> =
+    static INDEX_CACHE: LazyLock<RwLock<HashMap<String, Arc<IndexProvider>>>> =
         LazyLock::new(|| RwLock::new(HashMap::new()));
 
-    /// Workspace cache: key is workspace_hash (blake3[..16] with "ws_" prefix).
-    static WORKSPACE_CACHE: LazyLock<RwLock<HashMap<String, Arc<WorkspaceIndex>>>> =
-        LazyLock::new(|| RwLock::new(HashMap::new()));
-
-    fn load_or_cache(root: &std::path::Path) -> Option<Arc<ProjectIndex>> {
-        let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
-        if let Some(idx) = SINGLE_CACHE.read().expect("cache lock poisoned").get(&key) {
-            return Some(Arc::clone(idx));
-        }
-        if let Ok(Some(idx)) = storage::load(root) {
-            let arc = Arc::new(idx);
-            SINGLE_CACHE.write().unwrap().insert(key, Arc::clone(&arc));
-            Some(arc)
-        } else {
-            None
-        }
+    fn cache_key(root: &std::path::Path) -> String {
+        blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string()
     }
 
-    fn load_or_cache_workspace(roots: &[RootInfo]) -> Option<Arc<WorkspaceIndex>> {
-        let key = storage::compute_workspace_hash(roots);
-        if let Some(idx) = WORKSPACE_CACHE
-            .read()
-            .expect("cache lock poisoned")
-            .get(&key)
+    fn load_provider(root: &std::path::Path, workspace: bool) -> Option<Arc<IndexProvider>> {
+        let key = cache_key(root);
+        if let Some(idx) = INDEX_CACHE.read().expect("cache lock poisoned").get(&key) {
+            return Some(Arc::clone(idx));
+        }
+        if let Ok(provider) = IndexProvider::load(Some(root.to_string_lossy().as_ref()), workspace)
         {
-            return Some(Arc::clone(idx));
-        }
-        if let Ok(Some(idx)) = storage::load_workspace(roots) {
-            let arc = Arc::new(idx);
-            WORKSPACE_CACHE
-                .write()
-                .unwrap()
-                .insert(key, Arc::clone(&arc));
+            let arc = Arc::new(provider);
+            INDEX_CACHE.write().unwrap().insert(key, Arc::clone(&arc));
             Some(arc)
         } else {
             None
         }
     }
 
-    fn invalidate_single(key: &str) {
-        SINGLE_CACHE
-            .write()
-            .expect("cache lock poisoned")
-            .remove(key);
-    }
-
-    fn invalidate_workspace(key: &str) {
-        WORKSPACE_CACHE
-            .write()
-            .expect("cache lock poisoned")
-            .remove(key);
+    fn invalidate_all() {
+        INDEX_CACHE.write().expect("cache lock poisoned").clear();
     }
 
     fn mcp_error(msg: impl std::fmt::Display) -> McpError {
@@ -145,6 +111,12 @@ pub mod server {
         pub path: String,
         /// Symbol name to find references for
         pub name: String,
+        /// Filter by reference kind (e.g. "call", "type", "import", "field", "constructor")
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// Max results (default 50)
+        #[serde(default)]
+        pub limit: Option<usize>,
     }
 
     #[derive(Debug, Deserialize, JsonSchema)]
@@ -237,9 +209,7 @@ pub mod server {
             match indexer::index_project_incremental(&root, 100_000, prev_index.as_ref()) {
                 Ok(result) => match storage::save(&result.index) {
                     Ok(cache_path) => {
-                        let key = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16]
-                            .to_string();
-                        invalidate_single(&key);
+                        invalidate_all();
                         Ok(serde_json::to_string_pretty(&json!({
                             "files": result.index.file_symbols.len(),
                             "symbols": result.index.symbols.len(),
@@ -277,14 +247,13 @@ pub mod server {
             let prev_workspace = if force {
                 None
             } else {
-                load_or_cache_workspace(&roots)
+                storage::load_workspace(&roots).ok().flatten().map(Arc::new)
             };
 
             match indexer::index_workspace(&roots, 100_000, prev_workspace.as_deref()) {
                 Ok(result) => match storage::save_workspace(&result.index) {
                     Ok(cache_path) => {
-                        let key = storage::compute_workspace_hash(&roots);
-                        invalidate_workspace(&key);
+                        invalidate_all();
                         Ok(serde_json::to_string_pretty(&json!({
                             "roots": roots.iter().map(|r| r.path.to_string_lossy()).collect::<Vec<_>>(),
                             "files": result.index.file_symbols.len(),
@@ -308,7 +277,7 @@ pub mod server {
             let limit = params.limit.unwrap_or(10);
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root)
+            let provider = load_provider(&root, false)
                 .ok_or_else(|| mcp_error("No index found. Run symlens_index first."))?;
 
             let results = if let Ok(Some(engine)) = storage::open_search(&root) {
@@ -318,7 +287,7 @@ pub mod server {
                             .iter()
                             .filter_map(|r| {
                                 let id = crate::model::symbol::SymbolId(r.symbol_id.clone());
-                                index.get(&id).map(|s| (s, r.score))
+                                provider.get(&id).map(|s| (s, r.score))
                             })
                             .collect();
                         if let Some(ref kf) = params.kind
@@ -329,14 +298,14 @@ pub mod server {
                         syms.truncate(limit);
                         syms
                     }
-                    Err(_) => index
+                    Err(_) => provider
                         .search(&params.query, limit)
                         .into_iter()
                         .map(|s| (s, 0.0f32))
                         .collect(),
                 }
             } else {
-                index
+                provider
                     .search(&params.query, limit)
                     .into_iter()
                     .map(|s| (s, 0.0f32))
@@ -359,21 +328,26 @@ pub mod server {
             let include_source = params.source.unwrap_or(false);
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
             let id = crate::model::symbol::SymbolId(params.symbol_id.clone());
-            let symbol = index
+            let symbol = provider
                 .get(&id)
                 .ok_or_else(|| mcp_error(format!("Symbol not found: {}", params.symbol_id)))?;
 
             let source = if include_source {
-                let source_file = root.join(&symbol.file_path);
-                std::fs::read_to_string(&source_file).ok().map(|content| {
-                    let lines: Vec<&str> = content.lines().collect();
-                    let start = (symbol.span.start_line as usize).saturating_sub(1);
-                    let end = (symbol.span.end_line as usize).min(lines.len());
-                    lines[start..end].join("\n")
-                })
+                if let Some(single_root) = provider.single_root() {
+                    let source_file = single_root.join(&symbol.file_path);
+                    std::fs::read_to_string(&source_file).ok().map(|content| {
+                        let lines: Vec<&str> = content.lines().collect();
+                        let start = (symbol.span.start_line as usize).saturating_sub(1);
+                        let end = (symbol.span.end_line as usize).min(lines.len());
+                        lines[start..end].join("\n")
+                    })
+                } else {
+                    None
+                }
             } else {
                 None
             };
@@ -390,11 +364,18 @@ pub mod server {
         ) -> Result<String, McpError> {
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
             let value = if let Some(file_path) = &params.file {
-                let fp = PathBuf::from(file_path);
-                let symbols = index.symbols_in_file(&fp);
+                let path = PathBuf::from(file_path);
+                let file_key = provider
+                    .file_keys()
+                    .into_iter()
+                    .find(|fk| fk.path == path)
+                    .unwrap_or_else(|| crate::model::project::FileKey::new("", path));
+
+                let symbols = provider.symbols_in_file(&file_key);
                 let items: Vec<serde_json::Value> = symbols
                     .iter()
                     .map(|s| {
@@ -406,11 +387,14 @@ pub mod server {
                     .collect();
                 json!({ "file": file_path, "symbols": items, "count": items.len() })
             } else {
-                let stats = index.stats();
-                let files: Vec<serde_json::Value> = index
-                    .file_symbols
+                let stats = provider.stats();
+                let files: Vec<serde_json::Value> = provider
+                    .file_keys()
                     .iter()
-                    .map(|(file, ids)| json!({ "file": file.to_string_lossy(), "symbols": ids.len() }))
+                    .map(|fk| {
+                        let syms = provider.symbols_in_file(fk);
+                        json!({ "file": fk.path.to_string_lossy(), "symbol_count": syms.len() })
+                    })
                     .collect();
                 json!({
                     "files": files, "total_files": stats.total_files,
@@ -421,58 +405,54 @@ pub mod server {
             Ok(serde_json::to_string_pretty(&value).unwrap_or_default())
         }
 
-        #[tool(description = "Find references to a symbol.")]
+        #[tool(description = "Find references to a symbol using pre-computed index.")]
         fn symlens_refs(
             &self,
             Parameters(params): Parameters<RefsParams>,
         ) -> Result<String, McpError> {
+            let limit = params.limit.unwrap_or(50);
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
-            let candidate_files: Vec<PathBuf> =
-                if let Some(importing_files) = index.import_names.get(&params.name) {
-                    let mut files: std::collections::HashSet<PathBuf> =
-                        importing_files.iter().cloned().collect();
-                    for sym in index.symbols.values() {
-                        if sym.name == params.name {
-                            files.insert(sym.file_path.clone());
-                        }
-                    }
-                    files.into_iter().collect()
-                } else {
-                    index.file_symbols.keys().cloned().collect()
-                };
+            let target_kind =
+                params
+                    .kind
+                    .as_deref()
+                    .and_then(|k| match k.to_lowercase().as_str() {
+                        "call" => Some(crate::parser::traits::RefKind::Call),
+                        "type" => Some(crate::parser::traits::RefKind::TypeRef),
+                        "import" | "use" => Some(crate::parser::traits::RefKind::Import),
+                        "field" => Some(crate::parser::traits::RefKind::FieldAccess),
+                        "constructor" | "ctor" => Some(crate::parser::traits::RefKind::Constructor),
+                        _ => None,
+                    });
 
-            let name_owned = params.name.clone();
-            let all_refs: Vec<serde_json::Value> = candidate_files
-                .par_iter()
-                .flat_map_iter(|file_path| {
-                    let full_path = root.join(file_path);
-                    let mut results = Vec::new();
-                    if !full_path.exists() {
-                        return results;
-                    }
-                    let registry = crate::parser::registry::LanguageRegistry::new();
-                    if let Some(parser) = registry.parser_for(&full_path)
-                        && let Ok(source) = std::fs::read(&full_path)
-                        && let Ok(refs) = parser.find_identifiers(&source, &name_owned)
+            let candidate_keys = provider.identifier_files_for(&params.name);
+            let mut refs = Vec::new();
+            for file_key in &candidate_keys {
+                let idents = provider.identifiers_in_file(file_key);
+                for r in idents {
+                    if r.name == params.name
+                        && r.kind != crate::parser::traits::RefKind::Definition
+                        && target_kind.is_none_or(|tk| r.kind == tk)
                     {
-                        for r in refs {
-                            if r.kind != crate::parser::traits::RefKind::Definition {
-                                results.push(json!({
-                                    "file": file_path.to_string_lossy(), "line": r.line,
-                                    "context": r.context, "kind": format!("{:?}", r.kind),
-                                }));
-                            }
-                        }
+                        refs.push(json!({
+                            "file": file_key.path.to_string_lossy(),
+                            "line": r.line,
+                            "context": r.context,
+                            "kind": format!("{:?}", r.kind),
+                        }));
                     }
-                    results
-                })
-                .collect();
+                }
+            }
+
+            let total = refs.len();
+            refs.truncate(limit);
 
             Ok(serde_json::to_string_pretty(
-                &json!({ "name": params.name, "refs": all_refs, "count": all_refs.len() }),
+                &json!({ "name": params.name, "refs": refs, "count": total }),
             )
             .unwrap_or_default())
         }
@@ -485,11 +465,11 @@ pub mod server {
             let depth = params.depth.unwrap_or(3);
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
-            let graph = index
-                .call_graph
-                .as_ref()
+            let graph = provider
+                .call_graph()
                 .ok_or_else(|| mcp_error("No call graph. Re-run symlens_index."))?;
 
             let result = crate::graph::impact::analyze_impact(graph, &params.name, depth);
@@ -520,20 +500,34 @@ pub mod server {
             let limit = params.limit.unwrap_or(20);
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
-            let graph = index
-                .call_graph
-                .as_ref()
+            let graph = provider
+                .call_graph()
                 .ok_or_else(|| mcp_error("No call graph. Re-run symlens_index."))?;
 
-            let callers: Vec<&str> = graph
-                .callers(&params.name)
-                .into_iter()
+            let names = graph.callers(&params.name);
+            let items: Vec<serde_json::Value> = names
+                .iter()
                 .take(limit)
+                .map(|n| {
+                    if let Some(sym) = provider.find_symbol(n) {
+                        json!({
+                            "name": n,
+                            "file": sym.file_path.to_string_lossy(),
+                            "line": sym.span.start_line,
+                            "kind": sym.kind.as_str(),
+                            "signature": sym.signature,
+                        })
+                    } else {
+                        json!({ "name": n })
+                    }
+                })
                 .collect();
+
             Ok(serde_json::to_string_pretty(
-                &json!({ "name": params.name, "callers": callers, "count": callers.len() }),
+                &json!({ "symbol": params.name, "callers": items, "count": names.len() }),
             )
             .unwrap_or_default())
         }
@@ -546,20 +540,34 @@ pub mod server {
             let limit = params.limit.unwrap_or(20);
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
-            let graph = index
-                .call_graph
-                .as_ref()
+            let graph = provider
+                .call_graph()
                 .ok_or_else(|| mcp_error("No call graph. Re-run symlens_index."))?;
 
-            let callees: Vec<&str> = graph
-                .callees(&params.name)
-                .into_iter()
+            let names = graph.callees(&params.name);
+            let items: Vec<serde_json::Value> = names
+                .iter()
                 .take(limit)
+                .map(|n| {
+                    if let Some(sym) = provider.find_symbol(n) {
+                        json!({
+                            "name": n,
+                            "file": sym.file_path.to_string_lossy(),
+                            "line": sym.span.start_line,
+                            "kind": sym.kind.as_str(),
+                            "signature": sym.signature,
+                        })
+                    } else {
+                        json!({ "name": n })
+                    }
+                })
                 .collect();
+
             Ok(serde_json::to_string_pretty(
-                &json!({ "name": params.name, "callees": callees, "count": callees.len() }),
+                &json!({ "symbol": params.name, "callees": items, "count": names.len() }),
             )
             .unwrap_or_default())
         }
@@ -674,13 +682,15 @@ pub mod server {
         ) -> Result<String, McpError> {
             let root = PathBuf::from(&params.path);
 
-            let index = load_or_cache(&root).ok_or_else(|| mcp_error("No index found."))?;
+            let provider =
+                load_provider(&root, false).ok_or_else(|| mcp_error("No index found."))?;
 
-            let stats = index.stats();
+            let stats = provider.stats();
 
             Ok(serde_json::to_string_pretty(&json!({
-                "root": index.root.to_string_lossy(),
-                "version": index.version,
+                "version": provider.version(),
+                "indexed_at": provider.indexed_at(),
+                "is_workspace": provider.is_workspace(),
                 "files": stats.total_files,
                 "symbols": stats.total_symbols,
                 "by_language": stats.by_language,
@@ -700,5 +710,50 @@ pub mod server {
         let service = SymLensMcp.serve(rmcp::transport::stdio()).await?;
         service.waiting().await?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::path::PathBuf;
+
+        fn test_index_provider() -> Arc<IndexProvider> {
+            let root = PathBuf::from("/tmp/symlens_mcp_test");
+            let index = crate::model::project::ProjectIndex::new(root.clone());
+            Arc::new(IndexProvider::from_single(root, index))
+        }
+
+        #[test]
+        fn cache_key_deterministic() {
+            let path = PathBuf::from("/tmp/test_project");
+            let k1 = cache_key(&path);
+            let k2 = cache_key(&path);
+            assert_eq!(k1, k2);
+            assert_eq!(k1.len(), 16);
+        }
+
+        #[test]
+        fn cache_key_different_paths() {
+            let k1 = cache_key(PathBuf::from("/tmp/a").as_path());
+            let k2 = cache_key(PathBuf::from("/tmp/b").as_path());
+            assert_ne!(k1, k2);
+        }
+
+        #[test]
+        fn invalidate_all_clears_cache() {
+            INDEX_CACHE
+                .write()
+                .unwrap()
+                .insert("test_key".to_string(), test_index_provider());
+            assert!(INDEX_CACHE.read().unwrap().contains_key("test_key"));
+            invalidate_all();
+            assert!(INDEX_CACHE.read().unwrap().is_empty());
+        }
+
+        #[test]
+        fn mcp_error_format() {
+            let err: McpError = mcp_error("something went wrong");
+            assert!(format!("{:?}", err).contains("something went wrong"));
+        }
     }
 }

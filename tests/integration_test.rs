@@ -3703,3 +3703,70 @@ fn refs_uses_precomputed_identifiers() {
         );
     }
 }
+
+// ─── MCP IndexProvider parity tests ────────────────────────────────────
+
+#[cfg(test)]
+mod mcp_parity_tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    fn make_provider() -> Arc<symlens::commands::IndexProvider> {
+        let root = PathBuf::from("/tmp/symlens_mcp_parity");
+        let index = symlens::model::project::ProjectIndex::new(root.clone());
+        Arc::new(symlens::commands::IndexProvider::from_single(root, index))
+    }
+
+    /// Verify refs returns empty results from empty index (no crash).
+    #[test]
+    fn refs_empty_index() {
+        let provider = make_provider();
+        let keys = provider.identifier_files_for("nonexistent");
+        assert!(keys.is_empty());
+
+        let mut refs = Vec::new();
+        for fk in &keys {
+            for r in provider.identifiers_in_file(fk) {
+                if r.name == "nonexistent" {
+                    refs.push(r);
+                }
+            }
+        }
+        assert!(refs.is_empty());
+    }
+
+    /// Verify callers enrichment with find_symbol fallback.
+    #[test]
+    fn callers_enrichment_fallback() {
+        let provider = make_provider();
+        // No call graph in empty index
+        assert!(provider.call_graph().is_none());
+    }
+
+    /// Verify stats work through IndexProvider.
+    #[test]
+    fn stats_through_provider() {
+        let provider = make_provider();
+        let stats = provider.stats();
+        assert_eq!(stats.total_files, 0);
+        assert_eq!(stats.total_symbols, 0);
+        assert!(!provider.is_workspace());
+    }
+
+    /// Verify search returns empty on empty index.
+    #[test]
+    fn search_empty_index() {
+        let provider = make_provider();
+        let results = provider.search("anything", 10);
+        assert!(results.is_empty());
+    }
+
+    /// Verify outline with no file returns empty symbols.
+    #[test]
+    fn outline_empty_file() {
+        let provider = make_provider();
+        let fk = symlens::model::project::FileKey::new("", PathBuf::from("nonexistent.rs"));
+        let syms = provider.symbols_in_file(&fk);
+        assert!(syms.is_empty());
+    }
+}

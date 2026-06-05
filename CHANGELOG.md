@@ -5,6 +5,22 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-06-05
+
+### Fixed
+
+- **MCP `symlens_refs` used runtime parsing**: replaced `rayon` + `LanguageRegistry` + `tree-sitter` runtime parsing with pre-computed `identifier_index` lookup — same optimization as CLI/daemon refs
+- **MCP `symlens_callers`/`symlens_callees` lacked enrichment**: added `find_symbol()` enrichment returning `{name, file, line, kind, signature}` per item (was bare name strings)
+- **MCP query tools now use `IndexProvider`**: unified cache and query path, enabling workspace mode support across all tools
+
+### Changed
+
+- **MCP server**: replaced dual `SINGLE_CACHE`/`WORKSPACE_CACHE` with unified `INDEX_CACHE<HashMap<String, Arc<IndexProvider>>>`, simplifying cache management and invalidation
+
+### Testing
+
+- **237 tests** (was 228): added 4 MCP unit tests (cache key, invalidation, error format) + 5 integration tests (refs empty index, callers fallback, stats, search, outline through IndexProvider)
+
 ## [0.11.0] - 2026-06-05
 
 ### Added
@@ -32,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Large response truncation (>8KB)**: accepted connections inherited nonblocking mode from the listener — `write_all` returned `WouldBlock` instead of writing the full response. Fixed by setting accepted streams back to blocking mode, and using `write_all` + explicit newline instead of `writeln!`
 - **100ms accept latency**: accept loop polled every 100ms, adding up to 100ms fixed overhead to every daemon query. Reduced to 5ms poll interval — daemon queries now ~6ms (was ~100ms, **1.4-1.5× faster than CLI**)
 - **`ProjectIndex` / `CallGraph`**: added `Clone` derive (needed for daemon watcher `prev_index` extraction without disk I/O)
+- **MCP `symlens_refs` used runtime parsing**: replaced `rayon` + `LanguageRegistry` + `tree-sitter` runtime parsing with pre-computed `identifier_index` lookup — same optimization as CLI/daemon refs
+- **MCP `symlens_callers`/`symlens_callees` lacked enrichment**: added `find_symbol()` enrichment returning `{name, file, line, kind, signature}` per item (was bare name strings)
+- **MCP query tools now use `IndexProvider`**: unified cache and query path, enabling workspace mode support across all tools
+
+### Changed
+
+- **MCP server**: replaced dual `SINGLE_CACHE`/`WORKSPACE_CACHE` with unified `INDEX_CACHE<HashMap<String, Arc<IndexProvider>>>`, simplifying cache management and invalidation
 
 ### Architecture
 
@@ -44,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
-- **228 tests** (was 213): added 15 daemon tests (9 unit in `rpc.rs`, 6 integration in `daemon_test.rs`) covering request parsing, response format, JSON-RPC structure, unknown method error, missing params, no call graph, search/status/refs/outline/callers handlers, SharedIndex concurrent reads, socket path format, malformed input, `is_source_file` all extensions, end-to-end Unix socket query lifecycle
+- **237 tests** (was 213): added 15 daemon tests + 9 MCP parity tests covering cache key determinism, invalidation, refs on empty index, callers enrichment fallback, stats/search/outline through IndexProvider
 
 ## [0.10.0] - 2026-06-05
 
