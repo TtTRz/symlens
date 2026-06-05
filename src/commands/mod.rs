@@ -24,6 +24,7 @@ use crate::index::storage;
 use crate::model::project::{FileKey, ProjectIndex, RootInfo};
 use crate::model::symbol::{Symbol, SymbolId};
 use crate::model::workspace::WorkspaceIndex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Resolve project root: use explicit --root if provided, otherwise auto-detect via .git.
@@ -370,38 +371,56 @@ impl IndexProvider {
         }
     }
 
-    /// Get files that contain a given identifier name.
-    pub fn identifier_files_for(&self, name: &str) -> Vec<FileKey> {
-        match self {
-            IndexProvider::Single { index, .. } => index
-                .identifier_index
-                .get(name)
-                .map(|paths| paths.iter().map(|p| FileKey::new("", p.clone())).collect())
-                .unwrap_or_default(),
-            IndexProvider::Workspace { index } => index
-                .identifier_index
-                .get(name)
-                .map(|v| v.to_vec())
-                .unwrap_or_default(),
-        }
-    }
-
-    /// Get all identifiers in a file.
-    pub fn identifiers_in_file(
+    /// Load all identifier data from idents.bin at once.
+    /// Returns (file_identifiers, identifier_files_map).
+    /// Callers should use this once and iterate the result directly,
+    /// rather than calling `identifier_files_for` + `identifiers_in_file` separately.
+    pub fn load_all_identifiers(
         &self,
-        file_key: &FileKey,
-    ) -> Vec<&crate::parser::traits::IdentifierRef> {
+    ) -> (
+        HashMap<PathBuf, Vec<crate::parser::traits::IdentifierRef>>,
+        HashMap<String, Vec<FileKey>>,
+    ) {
         match self {
-            IndexProvider::Single { index, .. } => index
-                .file_identifiers
-                .get(&file_key.path)
-                .map(|v| v.iter().collect())
-                .unwrap_or_default(),
-            IndexProvider::Workspace { index } => index
-                .file_identifiers
-                .get(&file_key.path)
-                .map(|v| v.iter().collect())
-                .unwrap_or_default(),
+            IndexProvider::Single { root, .. } => {
+                if let Ok(Some((fi, idx))) = storage::load_identifiers(root) {
+                    let files_map: HashMap<String, Vec<FileKey>> = idx
+                        .into_iter()
+                        .map(|(k, paths)| {
+                            (
+                                k,
+                                paths.iter().map(|p| FileKey::new("", p.clone())).collect(),
+                            )
+                        })
+                        .collect();
+                    return (fi, files_map);
+                }
+                (HashMap::new(), HashMap::new())
+            }
+            IndexProvider::Workspace { index } => {
+                if let Ok(Some((fi, idx))) =
+                    storage::load_workspace_identifiers(&index.workspace_hash)
+                {
+                    return (fi, idx);
+                }
+                (HashMap::new(), HashMap::new())
+            }
         }
     }
+}
+
+/// Get files that contain a given identifier name (from pre-loaded identifier data).
+pub fn identifier_files_from<'a>(
+    idx_map: &'a HashMap<String, Vec<FileKey>>,
+    name: &str,
+) -> &'a [FileKey] {
+    idx_map.get(name).map(|v| v.as_slice()).unwrap_or(&[])
+}
+
+/// Get all identifiers in a file (from pre-loaded identifier data).
+pub fn identifiers_from<'a>(
+    fi: &'a HashMap<PathBuf, Vec<crate::parser::traits::IdentifierRef>>,
+    file_key: &FileKey,
+) -> &'a [crate::parser::traits::IdentifierRef] {
+    fi.get(&file_key.path).map(|v| v.as_slice()).unwrap_or(&[])
 }

@@ -177,7 +177,7 @@ symlens graph impact "UserModel" --workspace
 
 ## ⚡ 性能
 
-使用 [criterion](https://github.com/bheisler/criterion.rs) 在 SymLens 自身代码库上实测（58 文件，828 符号）：
+使用 [criterion](https://github.com/bheisler/criterion.rs) 在 SymLens 自身代码库上实测（71 文件，948 符号）：
 
 ```
 # 索引

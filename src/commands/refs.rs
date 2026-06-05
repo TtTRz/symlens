@@ -14,12 +14,15 @@ pub fn run(
     let start = std::time::Instant::now();
     let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
-    // Use pre-computed identifier_index to find candidate files
-    let candidate_keys = provider.identifier_files_for(&args.name);
+    // Load identifier data once from idents.bin
+    let (file_idents, ident_idx) = provider.load_all_identifiers();
 
-    // Collect refs from pre-computed identifier tables
+    // Use identifier_index to find candidate files
+    let candidate_keys = crate::commands::identifier_files_from(&ident_idx, &args.name);
+
+    // Collect refs from identifier tables
     let mut all_refs: Vec<(PathBuf, crate::parser::traits::IdentifierRef)> = Vec::new();
-    for file_key in &candidate_keys {
+    for file_key in candidate_keys {
         let scope_match = args
             .scope
             .as_ref()
@@ -28,7 +31,7 @@ pub fn run(
             continue;
         }
 
-        let idents = provider.identifiers_in_file(file_key);
+        let idents = crate::commands::identifiers_from(&file_idents, file_key);
         for r in idents {
             if r.name == args.name {
                 all_refs.push((file_key.path.clone(), r.clone()));

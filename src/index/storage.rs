@@ -1,12 +1,15 @@
-use crate::model::project::{ProjectIndex, RootInfo};
+use crate::model::project::{FileKey, ProjectIndex, RootInfo};
 use crate::model::workspace::WorkspaceIndex;
+use crate::parser::traits::IdentifierRef;
 use crate::search::bm25::SearchEngine;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const INDEX_FILE: &str = "index.bin";
 const META_FILE: &str = "meta.json";
 const SEARCH_DIR: &str = "search";
+const IDENT_FILE: &str = "idents.bin";
 
 /// Get the cache directory for a project.
 pub fn cache_dir(root_hash: &str) -> PathBuf {
@@ -19,13 +22,17 @@ pub fn save(index: &ProjectIndex) -> anyhow::Result<PathBuf> {
     let dir = cache_dir(&index.root_hash);
     fs::create_dir_all(&dir)?;
 
-    // Save index as bincode
+    // Save index as bincode (identifier fields are #[serde(skip)])
     let index_path = dir.join(INDEX_FILE);
     let encoded = bincode::serde::encode_to_vec(index, bincode::config::standard())?;
-    // Atomic write: write to temp file then rename to avoid corruption on crash
     let tmp_index = dir.join("index.bin.tmp");
     fs::write(&tmp_index, encoded)?;
     fs::rename(&tmp_index, &index_path)?;
+
+    // Save identifier data to separate file
+    if let Err(e) = save_identifiers(&dir, &index.file_identifiers, &index.identifier_index) {
+        eprintln!("warning: failed to save identifier data: {e}");
+    }
 
     // Reuse existing tantivy index if available (index_symbols clears + re-adds)
     let search_dir = dir.join(SEARCH_DIR);
@@ -99,6 +106,67 @@ pub fn open_search(root: &Path) -> anyhow::Result<Option<SearchEngine>> {
     Ok(Some(engine))
 }
 
+type FileIdentMap = HashMap<PathBuf, Vec<IdentifierRef>>;
+type IdentIndexMap = HashMap<String, Vec<PathBuf>>;
+type WsIdentIndexMap = HashMap<String, Vec<FileKey>>;
+
+/// Identifier data stored separately for lazy loading.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IdentifierData {
+    file_identifiers: FileIdentMap,
+    identifier_index: IdentIndexMap,
+}
+
+/// Workspace identifier data stored separately for lazy loading.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WorkspaceIdentifierData {
+    file_identifiers: FileIdentMap,
+    identifier_index: WsIdentIndexMap,
+}
+
+fn save_identifiers(
+    dir: &Path,
+    file_identifiers: &FileIdentMap,
+    identifier_index: &IdentIndexMap,
+) -> anyhow::Result<()> {
+    let data = IdentifierData {
+        file_identifiers: file_identifiers.clone(),
+        identifier_index: identifier_index.clone(),
+    };
+    let encoded = bincode::serde::encode_to_vec(&data, bincode::config::standard())?;
+    let tmp = dir.join("idents.bin.tmp");
+    fs::write(&tmp, encoded)?;
+    fs::rename(&tmp, dir.join(IDENT_FILE))?;
+    Ok(())
+}
+
+/// Load identifier data for a single-root project.
+pub fn load_identifiers(root: &Path) -> anyhow::Result<Option<(FileIdentMap, IdentIndexMap)>> {
+    let root_hash = blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
+    let ident_path = cache_dir(&root_hash).join(IDENT_FILE);
+    if !ident_path.exists() {
+        return Ok(None);
+    }
+    let data = fs::read(&ident_path)?;
+    let (id, _): (IdentifierData, _) =
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
+    Ok(Some((id.file_identifiers, id.identifier_index)))
+}
+
+/// Load identifier data for a workspace.
+pub fn load_workspace_identifiers(
+    ws_hash: &str,
+) -> anyhow::Result<Option<(FileIdentMap, WsIdentIndexMap)>> {
+    let ident_path = workspace_cache_dir(ws_hash).join(IDENT_FILE);
+    if !ident_path.exists() {
+        return Ok(None);
+    }
+    let data = fs::read(&ident_path)?;
+    let (id, _): (WorkspaceIdentifierData, _) =
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
+    Ok(Some((id.file_identifiers, id.identifier_index)))
+}
+
 /// Find the project root (walk up looking for .git).
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
@@ -149,13 +217,29 @@ pub fn save_workspace(index: &WorkspaceIndex) -> anyhow::Result<PathBuf> {
     let dir = workspace_cache_dir(&index.workspace_hash);
     fs::create_dir_all(&dir)?;
 
-    // Save index as bincode
+    // Save index as bincode (identifier fields are #[serde(skip)])
     let index_path = dir.join(INDEX_FILE);
     let encoded = bincode::serde::encode_to_vec(index, bincode::config::standard())?;
-    // Atomic write
     let tmp_index = dir.join("index.bin.tmp");
     fs::write(&tmp_index, encoded)?;
     fs::rename(&tmp_index, &index_path)?;
+
+    // Save identifier data to separate file
+    let ws_id = WorkspaceIdentifierData {
+        file_identifiers: index.file_identifiers.clone(),
+        identifier_index: index.identifier_index.clone(),
+    };
+    match bincode::serde::encode_to_vec(&ws_id, bincode::config::standard()) {
+        Ok(encoded) => {
+            let tmp = dir.join("idents.bin.tmp");
+            if let Err(e) =
+                fs::write(&tmp, encoded).and_then(|_| fs::rename(&tmp, dir.join(IDENT_FILE)))
+            {
+                eprintln!("warning: failed to save workspace identifier data: {e}");
+            }
+        }
+        Err(e) => eprintln!("warning: failed to encode workspace identifier data: {e}"),
+    }
 
     // Reuse existing tantivy index if available
     let search_dir = dir.join(SEARCH_DIR);

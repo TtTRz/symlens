@@ -5,6 +5,24 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-06-06
+
+### Changed
+
+- **Index format split**: `file_identifiers` and `identifier_index` stored in separate `idents.bin` file, loaded lazily only by `refs` — main `index.bin` shrinks from ~2.4MB to ~680KB (72% reduction)
+- **All query commands faster**: search/callers/outline no longer deserialize identifier data — restored to v0.9.3 performance levels
+
+### Performance
+
+- **search**: 6.6ms (was 14.8ms, v0.9.3 was 7.1ms)
+- **refs**: 9.8ms (was 11.7ms, v0.9.3 was 20.8ms — 2.1× faster than v0.9.3)
+- **callers**: 5.8ms (was 11.5ms, v0.9.3 was 6.2ms)
+- **outline**: 6.4ms (was 11.9ms, v0.9.3 was 6.5ms)
+
+### Breaking
+
+- **Index format incompatible** with v0.11.x — re-run `symlens index` after upgrade
+
 ## [0.11.1] - 2026-06-05
 
 ### Fixed

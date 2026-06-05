@@ -429,10 +429,11 @@ pub mod server {
                         _ => None,
                     });
 
-            let candidate_keys = provider.identifier_files_for(&params.name);
+            let (file_idents, ident_idx) = provider.load_all_identifiers();
+            let candidate_keys = crate::commands::identifier_files_from(&ident_idx, &params.name);
             let mut refs = Vec::new();
-            for file_key in &candidate_keys {
-                let idents = provider.identifiers_in_file(file_key);
+            for file_key in candidate_keys {
+                let idents = crate::commands::identifiers_from(&file_idents, file_key);
                 for r in idents {
                     if r.name == params.name
                         && r.kind != crate::parser::traits::RefKind::Definition

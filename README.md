@@ -177,7 +177,7 @@ symlens graph impact "UserModel" --workspace
 
 ## ⚡ Performance
 
-Benchmarked with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (58 files, 828 symbols):
+Benchmarked with [criterion](https://github.com/bheisler/criterion.rs) on the SymLens codebase (71 files, 948 symbols):
 
 ```
 # Indexing

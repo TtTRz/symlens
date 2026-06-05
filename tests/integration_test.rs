@@ -3722,12 +3722,13 @@ mod mcp_parity_tests {
     #[test]
     fn refs_empty_index() {
         let provider = make_provider();
-        let keys = provider.identifier_files_for("nonexistent");
+        let (fi, idx) = provider.load_all_identifiers();
+        let keys = symlens::commands::identifier_files_from(&idx, "nonexistent");
         assert!(keys.is_empty());
 
         let mut refs = Vec::new();
-        for fk in &keys {
-            for r in provider.identifiers_in_file(fk) {
+        for fk in keys {
+            for r in symlens::commands::identifiers_from(&fi, fk) {
                 if r.name == "nonexistent" {
                     refs.push(r);
                 }

@@ -3,7 +3,7 @@ use crate::model::project::{ProjectIndex, RootInfo};
 use crate::model::symbol::Symbol;
 use crate::model::workspace::WorkspaceIndex;
 use crate::parser::registry::LanguageRegistry;
-use crate::parser::traits::{CallEdge, ImportInfo};
+use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -42,6 +42,12 @@ pub fn index_project_incremental(
     max_files: usize,
     prev_index: Option<&ProjectIndex>,
 ) -> anyhow::Result<IndexResult> {
+    // Load prev identifiers separately (stored in idents.bin, not in main index)
+    let prev_idents: Option<
+        std::sync::Arc<std::collections::HashMap<PathBuf, Vec<IdentifierRef>>>,
+    > = prev_index
+        .and_then(|_| crate::index::storage::load_identifiers(root).ok().flatten())
+        .map(|(fi, _)| std::sync::Arc::new(fi));
     let start = Instant::now();
     let registry = LanguageRegistry::new();
 
@@ -81,7 +87,7 @@ pub fn index_project_incremental(
                 if let Some(&prev_mtime) = prev.file_mtimes.get(rel_path)
                     && prev_mtime == current_mtime
                 {
-                    copy_prev_data(prev, rel_path, prev_mtime, &mut result);
+                    copy_prev_data(prev, &prev_idents, rel_path, prev_mtime, &mut result);
                     result.skipped = true;
                     return result;
                 }
@@ -93,7 +99,7 @@ pub fn index_project_incremental(
                         && hash == *prev_hash
                     {
                         // Content unchanged despite mtime change
-                        copy_prev_data(prev, rel_path, current_mtime, &mut result);
+                        copy_prev_data(prev, &prev_idents, rel_path, current_mtime, &mut result);
                         result.file_hash = Some((rel_path.to_path_buf(), hash));
                         result.skipped = true;
                         return result;
@@ -214,7 +220,13 @@ pub fn index_project_incremental(
 }
 
 /// Copy symbols, edges, and imports from a previous index for an unchanged file.
-fn copy_prev_data(prev: &ProjectIndex, rel_path: &Path, mtime: u64, result: &mut FileResult) {
+fn copy_prev_data(
+    prev: &ProjectIndex,
+    prev_idents: &Option<std::sync::Arc<std::collections::HashMap<PathBuf, Vec<IdentifierRef>>>>,
+    rel_path: &Path,
+    mtime: u64,
+    result: &mut FileResult,
+) {
     if let Some(sym_ids) = prev.file_symbols.get(rel_path) {
         for sym_id in sym_ids {
             if let Some(sym) = prev.symbols.get(sym_id) {
@@ -232,7 +244,9 @@ fn copy_prev_data(prev: &ProjectIndex, rel_path: &Path, mtime: u64, result: &mut
     if let Some(prev_imps) = prev.file_imports.get(rel_path) {
         result.file_imports = Some((rel_path.to_path_buf(), prev_imps.clone()));
     }
-    if let Some(prev_idents) = prev.file_identifiers.get(rel_path) {
+    if let Some(idents_map) = prev_idents
+        && let Some(prev_idents) = idents_map.get(rel_path)
+    {
         result.file_identifiers = Some((rel_path.to_path_buf(), prev_idents.clone()));
     }
 }

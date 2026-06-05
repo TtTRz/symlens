@@ -33,8 +33,11 @@ pub struct WorkspaceIndex {
     /// Imports per file (for incremental import rebuilds).
     pub file_imports: HashMap<FileKey, Vec<ImportInfo>>,
     /// Pre-computed identifier positions per file (keyed by relative path).
+    /// Stored in a separate `idents.bin` file and loaded lazily by refs.
+    #[serde(skip)]
     pub file_identifiers: HashMap<PathBuf, Vec<crate::parser::traits::IdentifierRef>>,
     /// Reverse index: identifier name → FileKeys containing it.
+    #[serde(skip)]
     pub identifier_index: HashMap<String, Vec<FileKey>>,
     /// BLAKE3 hash of sorted root hashes, used as workspace cache key.
     pub workspace_hash: String,
