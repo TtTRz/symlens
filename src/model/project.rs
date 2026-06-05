@@ -285,9 +285,8 @@ impl ProjectIndex {
         }
     }
 
-    /// Returns true if the search cache has been populated.
-    pub fn has_search_cache(&self) -> bool {
-        !self.search_cache.is_empty()
+    pub fn search_cache_is_empty(&self) -> bool {
+        self.search_cache.is_empty()
     }
 
     /// Compute index statistics.

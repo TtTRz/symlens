@@ -131,9 +131,8 @@ impl CallGraph {
         self.name_to_idx.get(name).copied()
     }
 
-    /// Returns true if the name index has been populated.
-    pub fn has_name_index(&self) -> bool {
-        !self.name_to_idx.is_empty()
+    pub fn name_index_is_empty(&self) -> bool {
+        self.name_to_idx.is_empty()
     }
 
     /// Get all call edges as (from_index, to_index) pairs.

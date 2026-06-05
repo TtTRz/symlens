@@ -363,7 +363,7 @@ impl IndexProvider {
             IndexProvider::Workspace { index } => index
                 .identifier_index
                 .get(name)
-                .cloned()
+                .map(|v| v.to_vec())
                 .unwrap_or_default(),
         }
     }

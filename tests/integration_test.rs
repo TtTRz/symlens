@@ -3665,12 +3665,12 @@ fn index_serde_roundtrip_preserves_caches() {
         bincode::serde::decode_from_slice(&encoded, bincode::config::standard()).unwrap();
 
     assert!(
-        decoded.has_search_cache(),
+        !decoded.search_cache_is_empty(),
         "search_cache should survive serde roundtrip"
     );
     if let Some(cg) = &decoded.call_graph {
         assert!(
-            cg.has_name_index(),
+            !cg.name_index_is_empty(),
             "call_graph name_to_idx should survive serde roundtrip"
         );
     }

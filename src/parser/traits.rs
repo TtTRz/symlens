@@ -111,6 +111,8 @@ pub trait LanguageParser: Send + Sync {
     }
 
     /// Extract all identifier references from a pre-parsed tree.
+    /// Returns empty vec by default — parsers that don't override this will
+    /// have no pre-computed refs data (refs queries will return empty results).
     fn extract_identifiers_from_tree(
         &self,
         _tree: &tree_sitter::Tree,
