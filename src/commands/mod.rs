@@ -334,6 +334,20 @@ impl IndexProvider {
         }
     }
 
+    /// Open the tantivy BM25 search engine, if available.
+    pub fn open_search(&self) -> anyhow::Result<Option<crate::search::bm25::SearchEngine>> {
+        match self {
+            IndexProvider::Single { root, .. } => storage::open_search(root),
+            IndexProvider::Workspace { index } => {
+                let search_dir = storage::workspace_cache_dir(&index.workspace_hash).join("search");
+                if !search_dir.exists() {
+                    return Ok(None);
+                }
+                Ok(Some(crate::search::bm25::SearchEngine::open(&search_dir)?))
+            }
+        }
+    }
+
     /// Whether this is a workspace provider.
     pub fn is_workspace(&self) -> bool {
         matches!(self, IndexProvider::Workspace { .. })

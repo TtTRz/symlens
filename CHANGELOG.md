@@ -5,6 +5,17 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-06-07
+
+### Fixed
+
+- **MCP `symlens_search` BM25 fails in workspace mode**: `storage::open_search` used single-root hash path, never finding workspace tantivy index — added `IndexProvider::open_search()` that resolves correct path per mode
+- **MCP `symlens_symbol` source silently ignored in workspace mode**: `single_root()` returns `None` for workspace — now resolves absolute path via `SymbolId` label→hash mapping and `resolve_absolute()`
+- **MCP `symlens_outline` returns wrong root's symbols**: `file_keys().find()` matched only relative path, returning first root's symbols for same-named files — now collects symbols from all matching roots and supports `[label]path` display format
+- **MCP `symlens_index_workspace` left stale cache**: only invalidated workspace hash key — now also clears each root's input key cache entry
+- **MCP `symlens_lines` redundant existence check**: removed dead `exists()` check after `canonicalize()` which already verifies file existence
+- **MCP cache double write lock**: merged two sequential `write()` acquisitions into single scope, eliminating cache inconsistency window
+
 ## [0.12.0] - 2026-06-06
 
 ### Changed
