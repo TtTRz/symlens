@@ -88,3 +88,7 @@ impl LanguageRegistry {
             .unwrap_or(false)
     }
 }
+
+/// Global shared registry — built once, used by all index calls.
+pub static GLOBAL_REGISTRY: std::sync::LazyLock<LanguageRegistry> =
+    std::sync::LazyLock::new(LanguageRegistry::new);

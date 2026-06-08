@@ -1,6 +1,7 @@
 use crate::commands::IndexProvider;
 use crate::daemon::SharedIndex;
 use crate::graph::impact;
+use crate::model::symbol::SymbolKind;
 use crate::output::json as fmt;
 use serde::{Deserialize, Serialize};
 
@@ -97,17 +98,37 @@ fn handle_search(
 ) -> Result<serde_json::Value, RpcError> {
     let query = params["query"].as_str().unwrap_or("");
     let limit = params["limit"].as_u64().unwrap_or(20) as usize;
-    let results = provider.search(query, limit);
 
-    let kind_filter = params["kind"].as_str();
-    let results: Vec<_> = if kind_filter.is_some() {
-        results
+    let results = if let Ok(Some(engine)) = provider.open_search() {
+        match engine.search(query, limit * 2) {
+            Ok(search_results) => {
+                let mut syms: Vec<_> = search_results
+                    .iter()
+                    .filter_map(|r| {
+                        let id = crate::model::symbol::SymbolId(r.symbol_id.clone());
+                        provider.get(&id).map(|s| (s, r.score))
+                    })
+                    .collect();
+                if let Some(kind) = params["kind"].as_str()
+                    && let Some(kind_enum) = SymbolKind::from_str(kind)
+                {
+                    syms.retain(|(s, _)| s.kind == kind_enum);
+                }
+                syms.truncate(limit);
+                syms
+            }
+            Err(_) => provider
+                .search(query, limit)
+                .into_iter()
+                .map(|s| (s, 0.0f32))
+                .collect(),
+        }
+    } else {
+        provider
+            .search(query, limit)
             .into_iter()
-            .filter(|s| kind_filter.is_some_and(|k| s.kind.as_str() == k))
             .map(|s| (s, 0.0f32))
             .collect()
-    } else {
-        results.into_iter().map(|s| (s, 0.0f32)).collect()
     };
 
     let items = fmt::format_search_results(&results);
@@ -127,43 +148,27 @@ fn handle_refs(
         message: "Missing 'name' parameter".into(),
     })?;
     let limit = params["limit"].as_u64().unwrap_or(50) as usize;
-    let kind_filter = params["kind"].as_str();
+    let kind_filter = params["kind"]
+        .as_str()
+        .and_then(crate::parser::traits::RefKind::from_filter_str);
 
-    let target_kind = kind_filter.and_then(|k| match k.to_lowercase().as_str() {
-        "call" => Some(crate::parser::traits::RefKind::Call),
-        "type" => Some(crate::parser::traits::RefKind::TypeRef),
-        "import" | "use" => Some(crate::parser::traits::RefKind::Import),
-        "field" => Some(crate::parser::traits::RefKind::FieldAccess),
-        "constructor" | "ctor" => Some(crate::parser::traits::RefKind::Constructor),
-        _ => None,
-    });
-
-    let (file_idents, ident_idx) = provider.load_all_identifiers();
-    let candidate_keys = crate::commands::identifier_files_from(&ident_idx, name);
-    let mut refs = Vec::new();
-    for file_key in candidate_keys {
-        let idents = crate::commands::identifiers_from(&file_idents, file_key);
-        for r in idents {
-            if r.name == name
-                && r.kind != crate::parser::traits::RefKind::Definition
-                && target_kind.is_none_or(|tk| r.kind == tk)
-            {
-                refs.push(serde_json::json!({
-                    "file": file_key.path.to_string_lossy(),
-                    "line": r.line,
-                    "context": r.context,
-                    "kind": format!("{:?}", r.kind),
-                }));
-            }
-        }
-    }
-
-    let total = refs.len();
-    refs.truncate(limit);
+    let (refs, files, total) = provider.collect_refs(name, kind_filter, limit);
+    let ref_items: Vec<serde_json::Value> = refs
+        .iter()
+        .zip(files.iter())
+        .map(|(r, file)| {
+            serde_json::json!({
+                "file": file.to_string_lossy(),
+                "line": r.line,
+                "context": r.context,
+                "kind": format!("{:?}", r.kind),
+            })
+        })
+        .collect();
 
     Ok(serde_json::json!({
         "name": name,
-        "refs": refs,
+        "refs": ref_items,
         "count": total,
     }))
 }
@@ -184,23 +189,7 @@ fn handle_callers(
     })?;
 
     let names = graph.callers(name);
-    let items: Vec<serde_json::Value> = names
-        .iter()
-        .take(limit)
-        .map(|n| {
-            if let Some(sym) = provider.find_symbol(n) {
-                serde_json::json!({
-                    "name": n,
-                    "file": sym.file_path.to_string_lossy(),
-                    "line": sym.span.start_line,
-                    "kind": sym.kind.as_str(),
-                    "signature": sym.signature,
-                })
-            } else {
-                serde_json::json!({ "name": n })
-            }
-        })
-        .collect();
+    let items = fmt::enrich_callers_json(&names, limit, provider);
 
     Ok(serde_json::json!({
         "symbol": name,
@@ -225,23 +214,7 @@ fn handle_callees(
     })?;
 
     let names = graph.callees(name);
-    let items: Vec<serde_json::Value> = names
-        .iter()
-        .take(limit)
-        .map(|n| {
-            if let Some(sym) = provider.find_symbol(n) {
-                serde_json::json!({
-                    "name": n,
-                    "file": sym.file_path.to_string_lossy(),
-                    "line": sym.span.start_line,
-                    "kind": sym.kind.as_str(),
-                    "signature": sym.signature,
-                })
-            } else {
-                serde_json::json!({ "name": n })
-            }
-        })
-        .collect();
+    let items = fmt::enrich_callers_json(&names, limit, provider);
 
     Ok(serde_json::json!({
         "symbol": name,
@@ -256,31 +229,29 @@ fn handle_outline(
 ) -> Result<serde_json::Value, RpcError> {
     if let Some(file) = params["file"].as_str() {
         let path = std::path::PathBuf::from(file);
-        // Try all file keys to find one matching the path (works for both single and workspace)
-        let file_key = provider
-            .file_keys()
-            .into_iter()
-            .find(|fk| fk.path == path)
-            .unwrap_or_else(|| crate::model::project::FileKey::new("", path));
-
-        let symbols: Vec<serde_json::Value> = provider
-            .symbols_in_file(&file_key)
+        let keys = provider.file_keys();
+        let file_keys: Vec<&crate::model::project::FileKey> = keys
             .iter()
-            .map(|s| {
-                serde_json::json!({
+            .filter(|fk| fk.path == path || fk.display() == file)
+            .collect();
+
+        let mut all_symbols: Vec<serde_json::Value> = Vec::new();
+        for fk in &file_keys {
+            for s in provider.symbols_in_file(fk) {
+                all_symbols.push(serde_json::json!({
                     "id": s.id.0,
                     "name": s.name,
                     "kind": s.kind.as_str(),
                     "lines": [s.span.start_line, s.span.end_line],
                     "signature": s.signature,
-                })
-            })
-            .collect();
+                }));
+            }
+        }
 
         Ok(serde_json::json!({
             "file": file,
-            "symbols": symbols,
-            "count": symbols.len(),
+            "symbols": all_symbols,
+            "count": all_symbols.len(),
         }))
     } else {
         let stats = provider.stats();
@@ -321,9 +292,25 @@ fn handle_symbol(
 
     let source = params["source"].as_bool().unwrap_or(false);
     let source_val = if source {
-        if let Some(root) = provider.single_root() {
-            let full_path = root.join(&sym.file_path);
-            std::fs::read_to_string(&full_path).ok()
+        let label = sym.id.root_id();
+        let resolved_root_id = if label.is_empty() {
+            ""
+        } else {
+            provider
+                .roots()
+                .iter()
+                .find(|(_, _, _, lbl)| *lbl == label)
+                .map(|(id, _, _, _)| *id)
+                .unwrap_or("")
+        };
+        let abs = provider.resolve_absolute(resolved_root_id, &sym.file_path);
+        if abs.exists() {
+            std::fs::read_to_string(&abs).ok().map(|content| {
+                let lines: Vec<&str> = content.lines().collect();
+                let start = (sym.span.start_line as usize).saturating_sub(1);
+                let end = (sym.span.end_line as usize).min(lines.len());
+                lines[start..end].join("\n")
+            })
         } else {
             None
         }

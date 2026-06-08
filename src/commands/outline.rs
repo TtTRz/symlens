@@ -244,19 +244,10 @@ fn print_symbol_line(prefix: &str, sym: &Symbol, color_on: bool) {
     );
 }
 
-/// Resolve a file path to the correct FileKey.
-/// In single-root mode, root_id is empty.
-/// In workspace mode, searches all file keys for a matching path.
+/// Resolve a file path to the correct FileKey using IndexProvider::find_file_keys.
 fn resolve_file_key(
     provider: &crate::commands::IndexProvider,
     file_path: &std::path::Path,
 ) -> Option<FileKey> {
-    if !provider.is_workspace() {
-        Some(FileKey::new("", file_path.to_path_buf()))
-    } else {
-        provider
-            .file_keys()
-            .into_iter()
-            .find(|fk| fk.path == file_path)
-    }
+    provider.find_file_keys(file_path).into_iter().next()
 }

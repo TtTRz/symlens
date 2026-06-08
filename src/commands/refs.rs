@@ -41,15 +41,7 @@ pub fn run(
 
     // Apply kind filter
     if let Some(ref kind_filter) = args.kind {
-        let target_kind = match kind_filter.to_lowercase().as_str() {
-            "call" => Some(RefKind::Call),
-            "type" => Some(RefKind::TypeRef),
-            "import" | "use" => Some(RefKind::Import),
-            "field" => Some(RefKind::FieldAccess),
-            "constructor" | "ctor" => Some(RefKind::Constructor),
-            "def" | "definition" => Some(RefKind::Definition),
-            _ => None,
-        };
+        let target_kind = RefKind::from_filter_str(kind_filter);
 
         if let Some(target) = target_kind {
             all_refs.retain(|(_, r)| r.kind == target);

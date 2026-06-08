@@ -46,6 +46,22 @@ pub enum RefKind {
     Unknown,
 }
 
+impl RefKind {
+    /// Parse a kind filter string to a RefKind.
+    /// Returns None for unrecognized strings (caller should not filter).
+    pub fn from_filter_str(k: &str) -> Option<Self> {
+        match k.to_lowercase().as_str() {
+            "call" => Some(Self::Call),
+            "type" => Some(Self::TypeRef),
+            "import" | "use" => Some(Self::Import),
+            "field" => Some(Self::FieldAccess),
+            "constructor" | "ctor" => Some(Self::Constructor),
+            "def" | "definition" => Some(Self::Definition),
+            _ => None,
+        }
+    }
+}
+
 /// All extractable data from a single parse pass.
 #[derive(Default)]
 pub struct ParsedOutput {

@@ -277,6 +277,24 @@ impl IndexProvider {
         }
     }
 
+    /// Find all file keys matching a given relative path.
+    /// Supports both plain paths ("src/lib.rs") and display format ("[audio]src/lib.rs").
+    /// Returns all matching keys (may be >1 in workspace mode with same-named files).
+    pub fn find_file_keys(&self, path: &Path) -> Vec<FileKey> {
+        let path_str = path.to_string_lossy();
+        match self {
+            IndexProvider::Single { .. } => {
+                vec![FileKey::new("", path.to_path_buf())]
+            }
+            IndexProvider::Workspace { index } => index
+                .file_symbols
+                .keys()
+                .filter(|fk| fk.path == path || fk.display() == path_str)
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// Get files that import a given name (for refs narrowing).
     pub fn import_names_for(&self, name: &str) -> Vec<FileKey> {
         match self {
@@ -420,6 +438,40 @@ impl IndexProvider {
                 (HashMap::new(), HashMap::new())
             }
         }
+    }
+
+    /// Collect references to a symbol using pre-computed identifier index.
+    /// Returns (refs, corresponding_files, total_count_before_limit).
+    pub fn collect_refs(
+        &self,
+        name: &str,
+        kind_filter: Option<crate::parser::traits::RefKind>,
+        limit: usize,
+    ) -> (
+        Vec<crate::parser::traits::IdentifierRef>,
+        Vec<PathBuf>,
+        usize,
+    ) {
+        let (file_idents, ident_idx) = self.load_all_identifiers();
+        let candidate_keys = identifier_files_from(&ident_idx, name);
+        let mut refs = Vec::new();
+        let mut files = Vec::new();
+        for file_key in candidate_keys {
+            let idents = identifiers_from(&file_idents, file_key);
+            for r in idents {
+                if r.name == name
+                    && r.kind != crate::parser::traits::RefKind::Definition
+                    && kind_filter.is_none_or(|tk| r.kind == tk)
+                {
+                    refs.push(r.clone());
+                    files.push(file_key.path.clone());
+                }
+            }
+        }
+        let total = refs.len();
+        refs.truncate(limit);
+        files.truncate(limit);
+        (refs, files, total)
     }
 }
 

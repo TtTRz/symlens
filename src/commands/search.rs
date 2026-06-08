@@ -12,11 +12,9 @@ pub fn run(
     let start = std::time::Instant::now();
     let provider = crate::commands::IndexProvider::load(root_override, workspace_flag)?;
 
-    let results = if !provider.is_workspace() {
-        // Single-root: try BM25 search engine
-        if let Some(root) = provider.single_root() {
-            if let Ok(Some(engine)) = crate::index::storage::open_search(root) {
-                let search_results = engine.search(&args.query, args.limit * 2)?;
+    let results = if let Ok(Some(engine)) = provider.open_search() {
+        match engine.search(&args.query, args.limit * 2) {
+            Ok(search_results) => {
                 let mut syms: Vec<_> = search_results
                     .iter()
                     .filter_map(|r| {
@@ -45,14 +43,10 @@ pub fn run(
                 }
                 syms.truncate(args.limit);
                 syms
-            } else {
-                fallback_search(&provider, &args)
             }
-        } else {
-            fallback_search(&provider, &args)
+            Err(_) => fallback_search(&provider, &args),
         }
     } else {
-        // Workspace mode: fall back to provider.search() (skip BM25 for now)
         fallback_search(&provider, &args)
     };
 

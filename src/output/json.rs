@@ -1,3 +1,4 @@
+use crate::commands::IndexProvider;
 use crate::model::symbol::Symbol;
 use serde_json;
 
@@ -55,4 +56,33 @@ pub fn format_symbol_value(sym: &Symbol, source: Option<&str>) -> serde_json::Va
     }
 
     val
+}
+
+/// Enrich a caller/callee name with symbol metadata from the index.
+/// Returns `{name, file, line, kind, signature}` if symbol found, else `{name}`.
+pub fn enrich_caller_json(name: &str, provider: &IndexProvider) -> serde_json::Value {
+    if let Some(sym) = provider.find_symbol(name) {
+        serde_json::json!({
+            "name": name,
+            "file": sym.file_path.to_string_lossy(),
+            "line": sym.span.start_line,
+            "kind": sym.kind.as_str(),
+            "signature": sym.signature,
+        })
+    } else {
+        serde_json::json!({ "name": name })
+    }
+}
+
+/// Enrich a list of caller/callee names, truncating to limit.
+pub fn enrich_callers_json(
+    names: &[&str],
+    limit: usize,
+    provider: &IndexProvider,
+) -> Vec<serde_json::Value> {
+    names
+        .iter()
+        .take(limit)
+        .map(|n| enrich_caller_json(n, provider))
+        .collect()
 }

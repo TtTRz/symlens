@@ -2,7 +2,6 @@ use crate::graph::call_graph::CallGraph;
 use crate::model::project::{ProjectIndex, RootInfo};
 use crate::model::symbol::Symbol;
 use crate::model::workspace::WorkspaceIndex;
-use crate::parser::registry::LanguageRegistry;
 use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
@@ -49,7 +48,7 @@ pub fn index_project_incremental(
         .and_then(|_| crate::index::storage::load_identifiers(root).ok().flatten())
         .map(|(fi, _)| std::sync::Arc::new(fi));
     let start = Instant::now();
-    let registry = LanguageRegistry::new();
+    let registry = &*crate::parser::registry::GLOBAL_REGISTRY;
 
     // Walk files, respecting .gitignore
     let files: Vec<PathBuf> = WalkBuilder::new(root)

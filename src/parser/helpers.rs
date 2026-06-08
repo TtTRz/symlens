@@ -1,19 +1,25 @@
 use crate::model::symbol::Span;
+use std::cell::RefCell;
 use std::path::Path;
 
+thread_local! {
+    static PARSER: RefCell<tree_sitter::Parser> = RefCell::new(tree_sitter::Parser::new());
+}
+
 /// Parse source code with a tree-sitter language grammar.
-/// Consolidates the repeated Parser::new() + set_language() + parse()
-/// boilerplate across all language parsers into a single call site.
+/// Reuses a thread-local Parser to avoid per-file allocation.
 pub fn parse_source(
     language: tree_sitter::Language,
     source: &[u8],
     file_path: &Path,
 ) -> anyhow::Result<tree_sitter::Tree> {
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&language)?;
-    parser
-        .parse(source, None)
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))
+    PARSER.with(|p| {
+        let mut parser = p.borrow_mut();
+        parser.set_language(&language)?;
+        parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse {}", file_path.display()))
+    })
 }
 
 /// Extract UTF-8 text content from a tree-sitter AST node.

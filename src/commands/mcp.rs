@@ -447,44 +447,27 @@ pub mod server {
 
             let provider = load_provider(&root).ok_or_else(|| mcp_error("No index found."))?;
 
-            let target_kind =
-                params
-                    .kind
-                    .as_deref()
-                    .and_then(|k| match k.to_lowercase().as_str() {
-                        "call" => Some(crate::parser::traits::RefKind::Call),
-                        "type" => Some(crate::parser::traits::RefKind::TypeRef),
-                        "import" | "use" => Some(crate::parser::traits::RefKind::Import),
-                        "field" => Some(crate::parser::traits::RefKind::FieldAccess),
-                        "constructor" | "ctor" => Some(crate::parser::traits::RefKind::Constructor),
-                        _ => None,
-                    });
+            let target_kind = params
+                .kind
+                .as_deref()
+                .and_then(crate::parser::traits::RefKind::from_filter_str);
 
-            let (file_idents, ident_idx) = provider.load_all_identifiers();
-            let candidate_keys = crate::commands::identifier_files_from(&ident_idx, &params.name);
-            let mut refs = Vec::new();
-            for file_key in candidate_keys {
-                let idents = crate::commands::identifiers_from(&file_idents, file_key);
-                for r in idents {
-                    if r.name == params.name
-                        && r.kind != crate::parser::traits::RefKind::Definition
-                        && target_kind.is_none_or(|tk| r.kind == tk)
-                    {
-                        refs.push(json!({
-                            "file": file_key.path.to_string_lossy(),
-                            "line": r.line,
-                            "context": r.context,
-                            "kind": format!("{:?}", r.kind),
-                        }));
-                    }
-                }
-            }
-
-            let total = refs.len();
-            refs.truncate(limit);
+            let (refs, files, total) = provider.collect_refs(&params.name, target_kind, limit);
+            let ref_items: Vec<serde_json::Value> = refs
+                .iter()
+                .zip(files.iter())
+                .map(|(r, file)| {
+                    json!({
+                        "file": file.to_string_lossy(),
+                        "line": r.line,
+                        "context": r.context,
+                        "kind": format!("{:?}", r.kind),
+                    })
+                })
+                .collect();
 
             Ok(serde_json::to_string_pretty(
-                &json!({ "name": params.name, "refs": refs, "count": total }),
+                &json!({ "name": params.name, "refs": ref_items, "count": total }),
             )
             .unwrap_or_default())
         }
@@ -538,23 +521,7 @@ pub mod server {
                 .ok_or_else(|| mcp_error("No call graph. Re-run symlens_index."))?;
 
             let names = graph.callers(&params.name);
-            let items: Vec<serde_json::Value> = names
-                .iter()
-                .take(limit)
-                .map(|n| {
-                    if let Some(sym) = provider.find_symbol(n) {
-                        json!({
-                            "name": n,
-                            "file": sym.file_path.to_string_lossy(),
-                            "line": sym.span.start_line,
-                            "kind": sym.kind.as_str(),
-                            "signature": sym.signature,
-                        })
-                    } else {
-                        json!({ "name": n })
-                    }
-                })
-                .collect();
+            let items = fmt::enrich_callers_json(&names, limit, &provider);
 
             Ok(serde_json::to_string_pretty(
                 &json!({ "symbol": params.name, "callers": items, "count": names.len() }),
@@ -577,23 +544,7 @@ pub mod server {
                 .ok_or_else(|| mcp_error("No call graph. Re-run symlens_index."))?;
 
             let names = graph.callees(&params.name);
-            let items: Vec<serde_json::Value> = names
-                .iter()
-                .take(limit)
-                .map(|n| {
-                    if let Some(sym) = provider.find_symbol(n) {
-                        json!({
-                            "name": n,
-                            "file": sym.file_path.to_string_lossy(),
-                            "line": sym.span.start_line,
-                            "kind": sym.kind.as_str(),
-                            "signature": sym.signature,
-                        })
-                    } else {
-                        json!({ "name": n })
-                    }
-                })
-                .collect();
+            let items = fmt::enrich_callers_json(&names, limit, &provider);
 
             Ok(serde_json::to_string_pretty(
                 &json!({ "symbol": params.name, "callees": items, "count": names.len() }),

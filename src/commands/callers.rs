@@ -16,23 +16,11 @@ pub fn run_callers(
     let names = graph.callers(&args.name);
 
     if json {
-        let items: Vec<serde_json::Value> = names
-            .iter()
-            .take(args.limit)
-            .map(|name| {
-                if let Some(sym) = provider.find_symbol(name) {
-                    serde_json::json!({
-                        "name": name,
-                        "file": sym.file_path.to_string_lossy(),
-                        "line": sym.span.start_line,
-                        "kind": sym.kind.as_str(),
-                        "signature": sym.signature,
-                    })
-                } else {
-                    serde_json::json!({ "name": name })
-                }
-            })
-            .collect();
+        let items = crate::output::json::enrich_callers_json(
+            &names.to_vec(),
+            args.limit,
+            &provider,
+        );
         println!(
             "{}",
             serde_json::json!({ "symbol": args.name, "callers": items, "count": names.len() })
@@ -89,23 +77,11 @@ pub fn run_callees(
     let names = graph.callees(&args.name);
 
     if json {
-        let items: Vec<serde_json::Value> = names
-            .iter()
-            .take(args.limit)
-            .map(|name| {
-                if let Some(sym) = provider.find_symbol(name) {
-                    serde_json::json!({
-                        "name": name,
-                        "file": sym.file_path.to_string_lossy(),
-                        "line": sym.span.start_line,
-                        "kind": sym.kind.as_str(),
-                        "signature": sym.signature,
-                    })
-                } else {
-                    serde_json::json!({ "name": name })
-                }
-            })
-            .collect();
+        let items = crate::output::json::enrich_callers_json(
+            &names.to_vec(),
+            args.limit,
+            &provider,
+        );
         println!(
             "{}",
             serde_json::json!({ "symbol": args.name, "callees": items, "count": names.len() })
