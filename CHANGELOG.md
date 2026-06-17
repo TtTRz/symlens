@@ -5,6 +5,16 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-06-17
+
+### Fixed
+
+- **Daemon/watch paths silently ignore `.js/.jsx/.mts/.cts/.vue` files**: `is_source_file()` used a stale `SUPPORTED_EXTENSIONS` const missing these extensions while the registry fast path accepted them — unified by deleting the const and delegating to `GLOBAL_REGISTRY.is_supported()`. Editing a `.js` file under `symlens watch` / daemon mode now correctly triggers incremental re-indexing.
+
+### Changed
+
+- `is_source_file()` no longer references `SUPPORTED_EXTENSIONS` const; the const is removed. The registry is now the single source of truth for supported extensions.
+
 ## [0.12.1] - 2026-06-07
 
 ### Fixed

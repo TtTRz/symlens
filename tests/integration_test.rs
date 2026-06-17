@@ -3976,3 +3976,27 @@ function bar(): void {}
         );
     }
 }
+
+mod js_extension_tests {
+    #[test]
+    fn js_files_are_indexed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(
+            root.join("app.js"),
+            "function greet(name) { return 'hello ' + name; }\n",
+        )
+        .unwrap();
+
+        let result = symlens::index::indexer::index_project(root, 100_000).unwrap();
+
+        assert!(
+            result.files_parsed >= 1,
+            "expected app.js to be parsed, got files_parsed={}",
+            result.files_parsed,
+        );
+
+        let has_greet = result.index.symbols.values().any(|s| s.name == "greet");
+        assert!(has_greet, "expected symbol 'greet' in index");
+    }
+}

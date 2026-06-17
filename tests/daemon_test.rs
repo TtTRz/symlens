@@ -170,45 +170,37 @@ mod tests {
         handle.join().unwrap();
     }
 
-    /// Verify is_source_file recognizes all supported extensions.
+    /// Verify is_source_file recognizes all extensions registered in GLOBAL_REGISTRY.
     #[test]
     fn is_source_file_all_extensions() {
-        let extensions = &[
-            "test.rs",
-            "test.ts",
-            "test.tsx",
-            "test.py",
-            "test.swift",
-            "test.go",
-            "test.dart",
-            "test.c",
-            "test.h",
-            "test.cpp",
-            "test.cc",
-            "test.cxx",
-            "test.hpp",
-            "test.hh",
-            "test.kt",
-            "test.kts",
+        let source_exts = &[
+            "rs",
+            "ts", "tsx", "js", "jsx", "mts", "cts",
+            "py",
+            "swift",
+            "go",
+            "dart",
+            "c", "h",
+            "cpp", "cc", "cxx", "hpp", "hh",
+            "kt", "kts",
+            "vue",
         ];
-        for ext in extensions {
-            let p = std::path::Path::new(ext);
+        for ext in source_exts {
+            let fname = format!("test.{ext}");
+            let p = std::path::Path::new(&fname);
             assert!(
                 symlens::parser::traits::is_source_file(p),
-                "Expected {} to be recognized as source file",
-                ext
+                "Expected .{ext} to be recognized as source file",
             );
         }
 
-        // Non-source files
-        assert!(!symlens::parser::traits::is_source_file(
-            std::path::Path::new("test.md")
-        ));
-        assert!(!symlens::parser::traits::is_source_file(
-            std::path::Path::new("test.toml")
-        ));
-        assert!(!symlens::parser::traits::is_source_file(
-            std::path::Path::new("test.json")
-        ));
+        // Non-source files must be rejected.
+        for non in &["md", "toml", "json", "lock"] {
+            let fname = format!("test.{non}");
+            assert!(
+                !symlens::parser::traits::is_source_file(std::path::Path::new(&fname)),
+                "Expected .{non} to be rejected",
+            );
+        }
     }
 }
