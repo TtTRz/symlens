@@ -2055,6 +2055,7 @@ fn main() {
             &root,
             100_000,
             Some(&result1.index),
+            &symlens::index::indexer::WalkOptions::default(),
         )
         .expect("Incremental index failed");
 
@@ -2093,6 +2094,7 @@ fn main() {
             &root,
             100_000,
             Some(&result1.index),
+            &symlens::index::indexer::WalkOptions::default(),
         )
         .expect("Incremental index failed");
 
@@ -4054,5 +4056,57 @@ mod index_observability_tests {
             "expected 'bad.rs' in failed_paths, got {:?}",
             result.failed_paths,
         );
+    }
+}
+
+mod no_ignore_tests {
+    fn index_with_options(
+        root: &std::path::Path,
+        respect_gitignore: bool,
+    ) -> symlens::index::indexer::IndexResult {
+        let opts = symlens::index::indexer::WalkOptions { respect_gitignore };
+        symlens::index::indexer::index_project_incremental(root, 100_000, None, &opts)
+            .expect("index_project_incremental failed")
+    }
+
+    fn git_init(root: &std::path::Path) {
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(root)
+            .output()
+            .expect("git init failed");
+    }
+
+    #[test]
+    fn gitignored_file_skipped_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join(".gitignore"), "generated.rs\n").unwrap();
+        std::fs::write(root.join("generated.rs"), "fn gen() {}\n").unwrap();
+        std::fs::write(root.join("regular.rs"), "fn regular() {}\n").unwrap();
+
+        git_init(root);
+
+        let result = index_with_options(root, true);
+
+        let has_gen = result.index.symbols.values().any(|s| s.name == "gen");
+        let has_regular = result.index.symbols.values().any(|s| s.name == "regular");
+        assert!(!has_gen, "generated.rs should be skipped by default");
+        assert!(has_regular, "regular.rs should be indexed");
+    }
+
+    #[test]
+    fn gitignored_file_indexed_with_no_ignore() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join(".gitignore"), "generated.rs\n").unwrap();
+        std::fs::write(root.join("generated.rs"), "fn gen() {}\n").unwrap();
+
+        git_init(root);
+
+        let result = index_with_options(root, false);
+
+        let has_gen = result.index.symbols.values().any(|s| s.name == "gen");
+        assert!(has_gen, "generated.rs should be indexed with no_ignore");
     }
 }

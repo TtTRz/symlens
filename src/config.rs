@@ -12,6 +12,8 @@ pub struct Config {
     /// Restrict indexing to specific languages (e.g. ["rust", "typescript"])
     /// If empty/not set, all supported languages are indexed.
     pub languages: Vec<String>,
+    /// Don't respect .gitignore / .git/info/exclude / global gitignore (default: false)
+    pub no_ignore: bool,
 }
 
 impl Default for Config {
@@ -20,6 +22,7 @@ impl Default for Config {
             max_files: 100_000,
             ignore: Vec::new(),
             languages: Vec::new(),
+            no_ignore: false,
         }
     }
 }
@@ -59,6 +62,10 @@ pub fn default_toml() -> &'static str {
 # Restrict indexing to specific languages (default: all supported)
 # Supported: rust, typescript, python, swift, go, dart, c, cpp, kotlin, vue
 # languages = ["rust", "typescript"]
+
+# Don't respect .gitignore (default: false)
+# Use this to index generated or vendored files that are gitignored.
+# no_ignore = false
 "#
 }
 
@@ -140,5 +147,6 @@ roots = []
 # [workspace.defaults]
 # max_files = 50000
 # ignore = ["vendor/**"]
+# no_ignore = false
 "#
 }

@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock, mpsc};
 use std::time::{Duration, Instant};
 
-pub fn serve_daemon(root_override: Option<&str>, workspace_flag: bool) -> anyhow::Result<()> {
+pub fn serve_daemon(root_override: Option<&str>, workspace_flag: bool, no_ignore: bool) -> anyhow::Result<()> {
     let root_owned = root_override.map(String::from);
 
     // Load initial index
@@ -76,6 +76,7 @@ pub fn serve_daemon(root_override: Option<&str>, workspace_flag: bool) -> anyhow
             is_workspace,
             root_owned.as_deref(),
             &shutdown_watcher,
+            no_ignore,
         );
     });
 
@@ -137,7 +138,9 @@ fn run_watcher(
     is_workspace: bool,
     root_override: Option<&str>,
     shutdown: &AtomicBool,
+    no_ignore: bool,
 ) {
+    let walk_opts = crate::index::indexer::WalkOptions { respect_gitignore: !no_ignore };
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher = match notify::recommended_watcher(tx) {
@@ -186,7 +189,7 @@ fn run_watcher(
                 }
 
                 let start = Instant::now();
-                match indexer::index_project_incremental(root, 100_000, prev_index.as_ref()) {
+                match indexer::index_project_incremental(root, 100_000, prev_index.as_ref(), &walk_opts) {
                     Ok(result) => {
                         let sym_count = result.index.symbols.len();
                         // Save to disk first

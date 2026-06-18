@@ -5,6 +5,19 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.4] - 2026-06-18
+
+### Added
+
+- **`--no-ignore` flag** on `index` and `watch` subcommands (and `symlens.toml` `no_ignore` config key). When set, `.gitignore`, `.git/info/exclude`, and global gitignore are not respected, allowing generated or vendored files to be indexed. Default behavior is unchanged (gitignore honored).
+- Daemon mode (`watch --serve`) accepts `--no-ignore`; the flag is pinned at daemon startup, restart to change.
+- Workspace defaults in `symlens.workspace.toml` accept `no_ignore` (applies to all roots).
+
+### Changed
+
+- `index_project_incremental` and `index_workspace` now take a `&WalkOptions` argument. Existing call sites (`commands/index.rs`, `commands/watch.rs`, `commands/mcp.rs`, `daemon/socket.rs`) are updated to forward CLI flag or default.
+- `watch::run` and `daemon::socket::serve_daemon` accept `no_ignore: bool` parameter.
+
 ## [0.12.3] - 2026-06-17
 
 ### Added

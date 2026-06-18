@@ -7,15 +7,16 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-pub fn run(path: Option<&str>, workspace_flag: bool) -> anyhow::Result<()> {
+pub fn run(path: Option<&str>, workspace_flag: bool, no_ignore: bool) -> anyhow::Result<()> {
     let provider = crate::commands::IndexProvider::load(path, workspace_flag)?;
 
     let roots = provider.roots();
+    let walk_opts = indexer::WalkOptions { respect_gitignore: !no_ignore };
 
     if roots.len() == 1 {
         // Single root mode — same as before
         let root = roots[0].1.to_path_buf();
-        watch_single_root(&root)?;
+        watch_single_root(&root, &walk_opts)?;
     } else {
         // Workspace mode — watch each root independently
         eprintln!("👁  Watching {} roots for changes...", roots.len());
@@ -27,18 +28,18 @@ pub fn run(path: Option<&str>, workspace_flag: bool) -> anyhow::Result<()> {
         // For workspace mode, watch all roots in sequence.
         // This is a simplified implementation: we watch roots one by one
         // and rebuild the full workspace index on any change.
-        watch_workspace(&roots)?;
+        watch_workspace(&roots, &walk_opts)?;
     }
 
     Ok(())
 }
 
-fn watch_single_root(root: &std::path::Path) -> anyhow::Result<()> {
+fn watch_single_root(root: &std::path::Path, walk_opts: &indexer::WalkOptions) -> anyhow::Result<()> {
     eprintln!("👁  Watching {} for changes...", root.display());
     eprintln!("   Press Ctrl+C to stop.");
 
     // Initial index
-    let result = indexer::index_project(root, 100_000)?;
+    let result = indexer::index_project_incremental(root, 100_000, None, walk_opts)?;
     storage::save(&result.index)?;
     eprintln!(
         "   Indexed {} symbols in {}ms",
@@ -75,7 +76,7 @@ fn watch_single_root(root: &std::path::Path) -> anyhow::Result<()> {
         // Adaptive debounce: wait at least min_debounce since last event
         if !pending_files.is_empty() && last_event.elapsed() > min_debounce {
             let start = Instant::now();
-            match indexer::index_project_incremental(root, 100_000, prev_index.as_ref()) {
+            match indexer::index_project_incremental(root, 100_000, prev_index.as_ref(), walk_opts) {
                 Ok(result) => {
                     if let Err(e) = storage::save(&result.index) {
                         eprintln!("   ⚠ Save failed: {}", e);
@@ -99,11 +100,11 @@ fn watch_single_root(root: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)]) -> anyhow::Result<()> {
+fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)], walk_opts: &indexer::WalkOptions) -> anyhow::Result<()> {
     // Initial index for each root
     let mut prev_indices: Vec<(String, PathBuf, Option<ProjectIndex>)> = Vec::new();
     for (_root_id, root_path, _root_hash, root_label) in roots {
-        match indexer::index_project(root_path, 100_000) {
+        match indexer::index_project_incremental(root_path, 100_000, None, walk_opts) {
             Ok(result) => {
                 eprintln!(
                     "   [{}] Indexed {} symbols in {}ms",
@@ -164,7 +165,7 @@ fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)]) -> anyhow::Re
                     continue;
                 }
 
-                match indexer::index_project_incremental(root_path, 100_000, prev_index.as_ref()) {
+                match indexer::index_project_incremental(root_path, 100_000, prev_index.as_ref(), walk_opts) {
                     Ok(result) => {
                         if let Err(e) = storage::save(&result.index) {
                             eprintln!("   [{}] ⚠ Save failed: {}", root_id, e);

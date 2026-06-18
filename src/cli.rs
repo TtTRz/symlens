@@ -94,6 +94,11 @@ pub struct IndexArgs {
     #[arg(long, default_value = "100000")]
     pub max_files: usize,
 
+    /// Don't respect .gitignore / .git/info/exclude / global gitignore.
+    /// Use this to index generated or vendored files that are gitignored.
+    #[arg(long)]
+    pub no_ignore: bool,
+
     /// Quiet mode (minimal output)
     #[arg(short, long)]
     pub quiet: bool,
@@ -255,6 +260,10 @@ pub struct WatchCmdArgs {
     /// Start a daemon that serves queries via Unix socket
     #[arg(long)]
     pub serve: bool,
+
+    /// Don't respect .gitignore. Pinned at daemon startup; restart to change.
+    #[arg(long)]
+    pub no_ignore: bool,
 }
 
 #[derive(clap::Args)]

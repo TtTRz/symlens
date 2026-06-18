@@ -225,7 +225,7 @@ pub mod server {
                 storage::load(&root).ok().flatten()
             };
 
-            match indexer::index_project_incremental(&root, 100_000, prev_index.as_ref()) {
+            match indexer::index_project_incremental(&root, 100_000, prev_index.as_ref(), &indexer::WalkOptions::default()) {
                 Ok(result) => match storage::save(&result.index) {
                     Ok(cache_path) => {
                         let key = cache_key(&root);
@@ -265,7 +265,7 @@ pub mod server {
 
             let _force = params.force.unwrap_or(false);
 
-            match indexer::index_workspace(&roots, 100_000, None) {
+            match indexer::index_workspace(&roots, 100_000, None, &indexer::WalkOptions::default()) {
                 Ok(result) => match storage::save_workspace(&result.index) {
                     Ok(cache_path) => {
                         invalidate_key(&result.index.workspace_hash);

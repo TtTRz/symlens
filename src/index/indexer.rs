@@ -35,10 +35,23 @@ struct FileResult {
     degraded: bool,
 }
 
+/// Controls `WalkBuilder` behavior for index operations.
+#[derive(Clone, Debug)]
+pub struct WalkOptions {
+    /// When `true` (default), respect `.gitignore`, `.git/info/exclude`, and global gitignore.
+    pub respect_gitignore: bool,
+}
+
+impl Default for WalkOptions {
+    fn default() -> Self {
+        Self { respect_gitignore: true }
+    }
+}
+
 /// Index a project directory using tree-sitter.
 /// If `prev_index` is provided, only re-parse files whose mtime has changed.
 pub fn index_project(root: &Path, max_files: usize) -> anyhow::Result<IndexResult> {
-    index_project_incremental(root, max_files, None)
+    index_project_incremental(root, max_files, None, &WalkOptions::default())
 }
 
 /// Incremental index: reuse symbols from prev_index for unchanged files.
@@ -46,6 +59,7 @@ pub fn index_project_incremental(
     root: &Path,
     max_files: usize,
     prev_index: Option<&ProjectIndex>,
+    walk_opts: &WalkOptions,
 ) -> anyhow::Result<IndexResult> {
     // Load prev identifiers separately (stored in idents.bin, not in main index)
     let prev_idents: Option<
@@ -59,9 +73,9 @@ pub fn index_project_incremental(
     // Walk files, respecting .gitignore
     let all_files: Vec<PathBuf> = WalkBuilder::new(root)
         .hidden(true)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
+        .git_ignore(walk_opts.respect_gitignore)
+        .git_global(walk_opts.respect_gitignore)
+        .git_exclude(walk_opts.respect_gitignore)
         .build()
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
@@ -304,6 +318,7 @@ pub fn index_workspace(
     roots: &[RootInfo],
     max_files_per_root: usize,
     _prev_workspace: Option<&WorkspaceIndex>,
+    walk_opts: &WalkOptions,
 ) -> anyhow::Result<WorkspaceIndexResult> {
     let start = Instant::now();
     let mut ws = WorkspaceIndex::new(roots);
@@ -325,6 +340,7 @@ pub fn index_workspace(
             &root_info.path,
             max_files_per_root,
             prev_root_index.as_ref(),
+            walk_opts,
         )?;
 
         // Save per-root cache (enables single-root load + incremental for next workspace run)

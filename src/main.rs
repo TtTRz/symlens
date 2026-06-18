@@ -56,9 +56,9 @@ fn main() -> anyhow::Result<()> {
         Commands::Graph(args) => symlens::commands::graph::run(args, root, workspace, json),
         Commands::Watch(args) => {
             if args.serve {
-                symlens::daemon::socket::serve_daemon(args.path.as_deref().or(root), workspace)
+                symlens::daemon::socket::serve_daemon(args.path.as_deref().or(root), workspace, args.no_ignore)
             } else {
-                symlens::commands::watch::run(args.path.as_deref().or(root), workspace)
+                symlens::commands::watch::run(args.path.as_deref().or(root), workspace, args.no_ignore)
             }
         }
         Commands::Stats(args) => symlens::commands::stats::run(args, root, workspace, json),
