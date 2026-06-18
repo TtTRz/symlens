@@ -135,6 +135,12 @@ pub struct ProjectIndex {
     /// Reverse index: identifier name → files containing it.
     #[serde(skip)]
     pub identifier_index: HashMap<String, Vec<PathBuf>>,
+    /// Number of files dropped due to `max_files` cap during the last index run.
+    pub files_truncated: usize,
+    /// Number of files that failed to read or parse during the last index run.
+    pub files_failed: usize,
+    /// Up to 50 paths (relative to root) of failed files from the last index run.
+    pub failed_paths: Vec<PathBuf>,
     /// Pre-computed lowercase name + qualified_name for fast search
     search_cache: HashMap<SymbolId, (String, String)>,
 }
@@ -146,6 +152,9 @@ pub struct IndexStats {
     pub total_symbols: usize,
     pub by_language: HashMap<String, usize>,
     pub by_kind: HashMap<String, usize>,
+    pub files_truncated: usize,
+    pub files_failed: usize,
+    pub failed_paths: Vec<PathBuf>,
 }
 
 impl ProjectIndex {
@@ -168,7 +177,7 @@ impl ProjectIndex {
             symbols: HashMap::new(),
             file_symbols: HashMap::new(),
             file_mtimes: HashMap::new(),
-            version: 2,
+            version: 3,
             indexed_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -180,6 +189,9 @@ impl ProjectIndex {
             file_imports: HashMap::new(),
             file_identifiers: HashMap::new(),
             identifier_index: HashMap::new(),
+            files_truncated: 0,
+            files_failed: 0,
+            failed_paths: Vec::new(),
             search_cache: HashMap::new(),
         }
     }
@@ -297,6 +309,9 @@ impl ProjectIndex {
         let mut stats = IndexStats {
             total_files: self.file_symbols.len(),
             total_symbols: self.symbols.len(),
+            files_truncated: self.files_truncated,
+            files_failed: self.files_failed,
+            failed_paths: self.failed_paths.clone(),
             ..Default::default()
         };
 

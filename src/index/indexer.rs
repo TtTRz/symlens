@@ -14,11 +14,15 @@ pub struct IndexResult {
     pub files_scanned: usize,
     pub files_parsed: usize,
     pub files_skipped: usize,
+    pub files_truncated: usize,
+    pub files_failed: usize,
+    pub failed_paths: Vec<PathBuf>,
 }
 
 /// Per-file parsing result collected in parallel, merged sequentially.
 #[derive(Default)]
 struct FileResult {
+    rel_path: Option<PathBuf>,
     symbols: Vec<Symbol>,
     file_mtime: Option<(PathBuf, u64)>,
     file_hash: Option<(PathBuf, String)>,
@@ -27,6 +31,8 @@ struct FileResult {
     file_identifiers: Option<(PathBuf, Vec<crate::parser::traits::IdentifierRef>)>,
     parsed: bool,
     skipped: bool,
+    failed: bool,
+    degraded: bool,
 }
 
 /// Index a project directory using tree-sitter.
@@ -51,7 +57,7 @@ pub fn index_project_incremental(
     let registry = &*crate::parser::registry::GLOBAL_REGISTRY;
 
     // Walk files, respecting .gitignore
-    let files: Vec<PathBuf> = WalkBuilder::new(root)
+    let all_files: Vec<PathBuf> = WalkBuilder::new(root)
         .hidden(true)
         .git_ignore(true)
         .git_global(true)
@@ -60,9 +66,11 @@ pub fn index_project_incremental(
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
         .filter(|entry| registry.is_supported(entry.path()))
-        .take(max_files)
         .map(|entry| entry.into_path())
         .collect();
+
+    let files_truncated = all_files.len().saturating_sub(max_files);
+    let files: Vec<PathBuf> = all_files.into_iter().take(max_files).collect();
 
     let files_scanned = files.len();
 
@@ -72,6 +80,7 @@ pub fn index_project_incremental(
         .map(|file_path| {
             let rel_path = file_path.strip_prefix(root).unwrap_or(file_path);
             let mut result = FileResult::default();
+            result.rel_path = Some(rel_path.to_path_buf());
 
             // Incremental: check if file is unchanged
             let current_mtime = std::fs::metadata(file_path)
@@ -107,9 +116,14 @@ pub fn index_project_incremental(
             }
 
             // Full parse path: single parse, extract all data at once
-            if let Some(parser) = registry.parser_for(file_path)
-                && let Ok(source) = std::fs::read(file_path)
-            {
+            if let Some(parser) = registry.parser_for(file_path) {
+                let source = match std::fs::read(file_path) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        result.failed = true;
+                        return result;
+                    }
+                };
                 match parser.extract_all(&source, rel_path) {
                     Ok(output) => {
                         result.symbols = output.symbols;
@@ -122,26 +136,27 @@ pub fn index_project_incremental(
                             result.file_call_edges =
                                 Some((rel_path.to_path_buf(), output.call_edges));
                         }
-
                         if !output.imports.is_empty() {
                             result.file_imports = Some((rel_path.to_path_buf(), output.imports));
                         }
-
                         if !output.identifiers.is_empty() {
                             result.file_identifiers =
                                 Some((rel_path.to_path_buf(), output.identifiers));
                         }
                     }
-                    Err(_) => {
-                        // Fallback: try extract_symbols only
-                        if let Ok(symbols) = parser.extract_symbols(&source, rel_path) {
+                    Err(_) => match parser.extract_symbols(&source, rel_path) {
+                        Ok(symbols) => {
                             result.symbols = symbols;
                             result.file_mtime = Some((rel_path.to_path_buf(), current_mtime));
                             let hash = blake3::hash(&source).to_hex()[..16].to_string();
                             result.file_hash = Some((rel_path.to_path_buf(), hash));
                             result.parsed = true;
+                            result.degraded = true;
                         }
-                    }
+                        Err(_) => {
+                            result.failed = true;
+                        }
+                    },
                 }
             }
 
@@ -154,6 +169,8 @@ pub fn index_project_incremental(
     let mut all_call_edges: Vec<CallEdge> = Vec::new();
     let mut files_parsed: usize = 0;
     let mut files_skipped: usize = 0;
+    let mut files_failed: usize = 0;
+    let mut failed_paths: Vec<PathBuf> = Vec::new();
 
     for r in results {
         for sym in r.symbols {
@@ -200,6 +217,14 @@ pub fn index_project_incremental(
         if r.skipped {
             files_skipped += 1;
         }
+        if r.failed {
+            files_failed += 1;
+            if failed_paths.len() < 50 {
+                if let Some(p) = r.rel_path.as_ref() {
+                    failed_paths.push(p.clone());
+                }
+            }
+        }
     }
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -209,12 +234,19 @@ pub fn index_project_incremental(
         index.call_graph = Some(CallGraph::build(&all_call_edges));
     }
 
+    index.files_truncated = files_truncated;
+    index.files_failed = files_failed;
+    index.failed_paths = failed_paths.clone();
+
     Ok(IndexResult {
         index,
         duration_ms,
         files_scanned,
         files_parsed,
         files_skipped,
+        files_truncated,
+        files_failed,
+        failed_paths,
     })
 }
 
@@ -260,6 +292,9 @@ pub struct WorkspaceIndexResult {
     pub files_scanned: usize,
     pub files_parsed: usize,
     pub files_skipped: usize,
+    pub files_truncated: usize,
+    pub files_failed: usize,
+    pub failed_paths: Vec<PathBuf>,
 }
 
 /// Index a workspace with multiple project roots.
@@ -276,6 +311,9 @@ pub fn index_workspace(
     let mut total_scanned = 0usize;
     let mut total_parsed = 0usize;
     let mut total_skipped = 0usize;
+    let mut total_truncated = 0usize;
+    let mut total_failed = 0usize;
+    let mut all_failed_paths: Vec<PathBuf> = Vec::new();
 
     for root_info in roots {
         // Per-root incremental: try loading per-root cache from disk.
@@ -303,6 +341,12 @@ pub fn index_workspace(
         total_scanned += result.files_scanned;
         total_parsed += result.files_parsed;
         total_skipped += result.files_skipped;
+        total_truncated += result.files_truncated;
+        total_failed += result.files_failed;
+        if all_failed_paths.len() < 50 {
+            let remaining = 50 - all_failed_paths.len();
+            all_failed_paths.extend(result.failed_paths.into_iter().take(remaining));
+        }
     }
 
     // Build unified call graph from all merged call edges
@@ -320,5 +364,8 @@ pub fn index_workspace(
         files_scanned: total_scanned,
         files_parsed: total_parsed,
         files_skipped: total_skipped,
+        files_truncated: total_truncated,
+        files_failed: total_failed,
+        failed_paths: all_failed_paths,
     })
 }

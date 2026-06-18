@@ -10,6 +10,7 @@ const INDEX_FILE: &str = "index.bin";
 const META_FILE: &str = "meta.json";
 const SEARCH_DIR: &str = "search";
 const IDENT_FILE: &str = "idents.bin";
+const CURRENT_INDEX_VERSION: u32 = 3;
 
 /// Get the cache directory for a project.
 pub fn cache_dir(root_hash: &str) -> PathBuf {
@@ -72,6 +73,10 @@ pub fn load(root: &Path) -> anyhow::Result<Option<ProjectIndex>> {
     let data = fs::read(&index_path)?;
     let (mut index, _): (ProjectIndex, _) =
         bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
+
+    if index.version < CURRENT_INDEX_VERSION {
+        return Ok(None);
+    }
 
     // Rebuild call graph indexes after deserialization.
     // v2+ indices serialize name_to_idx and short_name_idx, so only the
@@ -284,6 +289,10 @@ pub fn load_workspace(roots: &[RootInfo]) -> anyhow::Result<Option<WorkspaceInde
     let data = fs::read(&index_path)?;
     let (mut index, _): (WorkspaceIndex, _) =
         bincode::serde::decode_from_slice(&data, bincode::config::standard())?;
+
+    if index.version < CURRENT_INDEX_VERSION {
+        return Ok(None);
+    }
 
     // Rebuild call graph indexes after deserialization.
     // v2+ indices serialize name_to_idx and short_name_idx, so only the

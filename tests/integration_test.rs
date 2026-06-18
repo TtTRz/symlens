@@ -4000,3 +4000,59 @@ mod js_extension_tests {
         assert!(has_greet, "expected symbol 'greet' in index");
     }
 }
+
+mod index_observability_tests {
+    #[test]
+    fn files_truncated_counter_reports_excess() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        for i in 0..5 {
+            std::fs::write(root.join(format!("f{i}.rs")), "").unwrap();
+        }
+
+        let result = symlens::index::indexer::index_project(root, 3).unwrap();
+
+        assert_eq!(
+            result.files_truncated, 2,
+            "expected 2 truncated (5 found, 3 cap), got {}",
+            result.files_truncated,
+        );
+    }
+
+    #[test]
+    fn files_failed_counter_reports_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("ok.rs"), "fn ok() {}\n").unwrap();
+
+        let bad = root.join("bad.rs");
+        std::fs::write(&bad, "fn bad() {}\n").unwrap();
+        let mut perms = std::fs::metadata(&bad).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&bad, perms).unwrap();
+
+        let result = symlens::index::indexer::index_project(root, 100_000).unwrap();
+
+        let mut perms = std::fs::metadata(&bad).unwrap().permissions();
+        perms.set_mode(0o644);
+        let _ = std::fs::set_permissions(&bad, perms);
+
+        assert_eq!(
+            result.files_failed, 1,
+            "expected 1 failed file, got {}",
+            result.files_failed,
+        );
+        assert!(
+            result
+                .failed_paths
+                .iter()
+                .any(|p| p == std::path::Path::new("bad.rs")),
+            "expected 'bad.rs' in failed_paths, got {:?}",
+            result.failed_paths,
+        );
+    }
+}

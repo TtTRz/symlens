@@ -5,6 +5,24 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-06-17
+
+### Added
+
+- `IndexResult` and `WorkspaceIndexResult` expose `files_truncated`, `files_failed`, and `failed_paths` fields.
+- `stats` command reports `Files truncated` and `Files failed`; when `files_failed > 0`, lists up to 50 failing paths.
+- `index` command prints failure count and a truncation warning when applicable (both human and JSON output).
+
+### Changed
+
+- **Index format bump (v2 → v3).** Older `index.bin` caches are ignored on load, triggering a one-time full re-index. Adds `files_truncated`, `files_failed`, `failed_paths` to persisted `ProjectIndex`.
+- Walk stage now fully collects supported files before applying `max_files` cap, so truncation count is known. Peak memory increases by ~8MB at 100K files.
+
+### Fixed
+
+- `extract_all` failures no longer silently fall back to symbols-only without surfacing the data loss; the affected file is flagged via internal `degraded` marker and counted in `files_failed`.
+- File read errors (permission denied, broken symlink) are now counted and surfaced via `files_failed`/`failed_paths` instead of silently skipped.
+
 ## [0.12.2] - 2026-06-17
 
 ### Fixed

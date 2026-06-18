@@ -23,6 +23,9 @@ pub fn run(
                 "version": provider.version(),
                 "files": stats.total_files,
                 "symbols": stats.total_symbols,
+                "files_truncated": stats.files_truncated,
+                "files_failed": stats.files_failed,
+                "failed_paths": stats.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
                 "by_language": stats.by_language,
                 "by_kind": stats.by_kind,
             })
@@ -34,6 +37,8 @@ pub fn run(
     println!("Index version: {}", provider.version());
     println!("Files: {}", stats.total_files);
     println!("Symbols: {}", stats.total_symbols);
+    println!("Files truncated: {}", stats.files_truncated);
+    println!("Files failed: {}", stats.files_failed);
     println!();
 
     println!("By language:");
@@ -49,6 +54,18 @@ pub fn run(
     kinds.sort_by(|a, b| b.1.cmp(a.1));
     for (kind, count) in kinds {
         println!("  {}: {}", kind, count);
+    }
+
+    if !stats.failed_paths.is_empty() {
+        println!();
+        println!(
+            "⚠ {} files failed (showing first {}):",
+            stats.files_failed,
+            stats.failed_paths.len()
+        );
+        for p in &stats.failed_paths {
+            println!("  - {}", p.display());
+        }
     }
 
     Ok(())

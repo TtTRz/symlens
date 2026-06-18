@@ -66,7 +66,7 @@ impl WorkspaceIndex {
             file_identifiers: HashMap::new(),
             identifier_index: HashMap::new(),
             workspace_hash,
-            version: 2,
+            version: 3,
             indexed_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()

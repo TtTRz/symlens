@@ -77,6 +77,9 @@ pub fn run(
                     "files_scanned": result.files_scanned,
                     "files_parsed": result.files_parsed,
                     "files_skipped": result.files_skipped,
+                    "files_truncated": result.files_truncated,
+                    "files_failed": result.files_failed,
+                    "failed_paths": result.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
                     "symbols": stats.total_symbols,
                     "duration_ms": result.duration_ms,
                     "cache": cache_path.to_string_lossy(),
@@ -117,6 +120,22 @@ pub fn run(
             );
             println!("  Time: {}ms", result.duration_ms);
             println!("  Cache: {}", cache_path.display());
+            if result.files_truncated > 0 {
+                println!(
+                    "  \x1b[33m⚠ {} files truncated by max_files={}\x1b[0m",
+                    result.files_truncated, args.max_files,
+                );
+            }
+            if result.files_failed > 0 {
+                println!(
+                    "  \x1b[33m⚠ {} files failed (showing first {}):\x1b[0m",
+                    result.files_failed,
+                    result.failed_paths.len(),
+                );
+                for p in &result.failed_paths {
+                    println!("    - {}", p.display());
+                }
+            }
         }
     } else {
         // Single-root mode (existing behavior)
@@ -143,6 +162,9 @@ pub fn run(
                     "files_scanned": result.files_scanned,
                     "files_parsed": result.files_parsed,
                     "files_skipped": result.files_skipped,
+                    "files_truncated": result.files_truncated,
+                    "files_failed": result.files_failed,
+                    "failed_paths": result.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
                     "symbols": stats.total_symbols,
                     "duration_ms": result.duration_ms,
                     "cache": cache_path.to_string_lossy(),
@@ -179,6 +201,22 @@ pub fn run(
             );
             println!("  Time: {}ms", result.duration_ms);
             println!("  Cache: {}", cache_path.display());
+            if result.files_truncated > 0 {
+                println!(
+                    "  \x1b[33m⚠ {} files truncated by max_files={}\x1b[0m",
+                    result.files_truncated, args.max_files,
+                );
+            }
+            if result.files_failed > 0 {
+                println!(
+                    "  \x1b[33m⚠ {} files failed (showing first {}):\x1b[0m",
+                    result.files_failed,
+                    result.failed_paths.len(),
+                );
+                for p in &result.failed_paths {
+                    println!("    - {}", p.display());
+                }
+            }
         }
     }
 
