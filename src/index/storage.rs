@@ -10,7 +10,7 @@ const INDEX_FILE: &str = "index.bin";
 const META_FILE: &str = "meta.json";
 const SEARCH_DIR: &str = "search";
 const IDENT_FILE: &str = "idents.bin";
-const CURRENT_INDEX_VERSION: u32 = 3;
+const CURRENT_INDEX_VERSION: u32 = 4;
 
 /// Get the cache directory for a project.
 pub fn cache_dir(root_hash: &str) -> PathBuf {

@@ -24,7 +24,7 @@ pub struct IndexResult {
 struct FileResult {
     rel_path: Option<PathBuf>,
     symbols: Vec<Symbol>,
-    file_mtime: Option<(PathBuf, u64)>,
+    file_mtime: Option<(PathBuf, u128)>,
     file_hash: Option<(PathBuf, String)>,
     file_call_edges: Option<(PathBuf, Vec<CallEdge>)>,
     file_imports: Option<(PathBuf, Vec<ImportInfo>)>,
@@ -101,7 +101,7 @@ pub fn index_project_incremental(
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
+                .map(|d| d.as_nanos())
                 .unwrap_or(0);
 
             if let Some(prev) = prev_index {
@@ -269,7 +269,7 @@ fn copy_prev_data(
     prev: &ProjectIndex,
     prev_idents: &Option<std::sync::Arc<std::collections::HashMap<PathBuf, Vec<IdentifierRef>>>>,
     rel_path: &Path,
-    mtime: u64,
+    mtime: u128,
     result: &mut FileResult,
 ) {
     if let Some(sym_ids) = prev.file_symbols.get(rel_path) {

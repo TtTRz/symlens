@@ -19,8 +19,8 @@ pub struct WorkspaceIndex {
     pub symbols: HashMap<SymbolId, Symbol>,
     /// FileKey → symbol IDs in that file.
     pub file_symbols: HashMap<FileKey, Vec<SymbolId>>,
-    /// File mtime cache (for incremental updates).
-    pub file_mtimes: HashMap<FileKey, u64>,
+    /// File mtime cache (for incremental updates) — nanosecond precision since UNIX_EPOCH.
+    pub file_mtimes: HashMap<FileKey, u128>,
     /// File content hashes for reliable incremental indexing.
     pub file_hashes: HashMap<FileKey, String>,
     /// Call graph (caller → callee relationships).
@@ -66,7 +66,7 @@ impl WorkspaceIndex {
             file_identifiers: HashMap::new(),
             identifier_index: HashMap::new(),
             workspace_hash,
-            version: 3,
+            version: 4,
             indexed_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()

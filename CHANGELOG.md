@@ -5,6 +5,17 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.5] - 2026-06-18
+
+### Changed
+
+- **Index format bump (v3 → v4).** Older caches are ignored on load, triggering a one-time full re-index.
+- `file_mtimes` now stores nanosecond precision (`u128`) instead of seconds (`u64`). `index.bin` grows by ~8 bytes per indexed file.
+
+### Fixed
+
+- Same-second repeated saves (e.g. IDE auto-save jitter) are now correctly detected as file changes by the incremental index fast path. Previously, second-level truncation could cause stale symbols to be reused when a file was saved multiple times within the same second.
+
 ## [0.12.4] - 2026-06-18
 
 ### Added

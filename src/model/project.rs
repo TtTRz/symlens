@@ -112,8 +112,8 @@ pub struct ProjectIndex {
     pub symbols: HashMap<SymbolId, Symbol>,
     /// File → symbol IDs in that file
     pub file_symbols: HashMap<PathBuf, Vec<SymbolId>>,
-    /// File mtime cache (for incremental updates)
-    pub file_mtimes: HashMap<PathBuf, u64>,
+    /// File mtime cache (for incremental updates) — nanosecond precision since UNIX_EPOCH
+    pub file_mtimes: HashMap<PathBuf, u128>,
     /// Index format version
     pub version: u32,
     /// Timestamp when index was created/updated
@@ -177,7 +177,7 @@ impl ProjectIndex {
             symbols: HashMap::new(),
             file_symbols: HashMap::new(),
             file_mtimes: HashMap::new(),
-            version: 3,
+            version: 4,
             indexed_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()

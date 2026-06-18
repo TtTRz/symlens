@@ -4110,3 +4110,28 @@ mod no_ignore_tests {
         assert!(has_gen, "generated.rs should be indexed with no_ignore");
     }
 }
+
+mod mtime_precision_tests {
+    #[test]
+    fn file_mtimes_stored_at_nanosecond_precision() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = root.join("a.rs");
+        std::fs::write(&path, "fn a() {}\n").unwrap();
+
+        let result = symlens::index::indexer::index_project(root, 100_000).unwrap();
+        let stored = result
+            .index
+            .file_mtimes
+            .get(std::path::Path::new("a.rs"))
+            .copied()
+            .expect("a.rs mtime missing");
+
+        // u64 second precision would be < 2_000_000_000 (current epoch seconds).
+        // u128 nanosecond precision is ~1.7e18, vastly larger.
+        assert!(
+            stored > 1_000_000_000_000,
+            "expected nanosecond-scale mtime, got {stored}; file_mtimes appears to still be seconds",
+        );
+    }
+}
