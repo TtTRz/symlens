@@ -5,6 +5,12 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.9] - 2026-07-06
+
+### Changed
+
+- **`strip_prefix(root)` failure now emits a one-shot warning.** When a file path cannot be expressed relative to the project root (typically a symlink pointing outside the root), the indexer previously fell back to the absolute path silently — causing the file to miss incremental-index reuse on every run. The fallback behavior is preserved, but users now see a stderr warning (deduplicated within a single process via `OnceLock`) so they can investigate and `canonicalize` their project layout.
+
 ## [0.12.8] - 2026-07-06
 
 ### Performance

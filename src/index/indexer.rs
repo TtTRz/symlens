@@ -6,7 +6,12 @@ use crate::parser::traits::{CallEdge, IdentifierRef, ImportInfo};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Instant;
+
+/// One-shot warning guard for strip_prefix failures (symlink outside root).
+/// First failure prints a stderr warning; subsequent failures within the same process are silent.
+static STRIP_PREFIX_WARNED: OnceLock<PathBuf> = OnceLock::new();
 
 pub struct IndexResult {
     pub index: ProjectIndex,
@@ -94,7 +99,19 @@ pub fn index_project_incremental(
     let results: Vec<FileResult> = files
         .par_iter()
         .map(|file_path| {
-            let rel_path = file_path.strip_prefix(root).unwrap_or(file_path);
+            let rel_path = file_path.strip_prefix(root).unwrap_or_else(|_| {
+                STRIP_PREFIX_WARNED.get_or_init(|| {
+                    eprintln!(
+                        "warning: file {} is not under root {} (symlink outside root?). \
+                         Using absolute path as key — incremental index may re-parse this file each run. \
+                         This warning prints once per process.",
+                        file_path.display(),
+                        root.display(),
+                    );
+                    file_path.to_path_buf()
+                });
+                file_path.as_path()
+            });
             let mut result = FileResult {
                 rel_path: Some(rel_path.to_path_buf()),
                 ..Default::default()
