@@ -5,6 +5,12 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.7] - 2026-07-06
+
+### Changed
+
+- **Tantivy writer heap cap raised from 100MB to 500MB** in `SearchEngine::index_symbols`. Projects with 200K+ symbols (large monorepos) no longer fail to commit the search index due to insufficient heap. Floor remains 15MB (tantivy minimum); projects under ~30K symbols are unaffected.
+
 ## [0.12.6] - 2026-07-06
 
 ### Changed

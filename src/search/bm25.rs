@@ -123,9 +123,9 @@ impl SearchEngine {
 
     /// Index all symbols.
     pub fn index_symbols(&self, symbols: &[&Symbol]) -> anyhow::Result<()> {
-        // Dynamic heap: ~500 bytes per symbol, clamped to [15MB, 100MB]
-        // (tantivy requires at least 15MB per thread)
-        let heap_size = (symbols.len() * 500).clamp(15_000_000, 100_000_000);
+        // Dynamic heap: ~500 bytes per symbol, clamped to [15MB, 500MB]
+        // (tantivy requires at least 15MB per thread; 500MB cap supports ~1M symbols)
+        let heap_size = (symbols.len() * 500).clamp(15_000_000, 500_000_000);
         let mut writer: IndexWriter = self.index.writer(heap_size)?;
 
         // Clear existing index
