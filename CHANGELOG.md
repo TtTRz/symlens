@@ -5,6 +5,16 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.8] - 2026-07-06
+
+### Performance
+
+- **`index_project_incremental` reads each file at most once.** Previously, when a file's mtime changed AND its content changed (actual edit), `std::fs::read` was called twice: once for the hash check (slow path) and again for parsing (full path). Now the source is read once and reused by both paths. Large-file indexing speeds up; small-file behavior unchanged.
+
+### Changed
+
+- Read-failure semantics tightened: if `fs::read` fails on a file with a previous index, the file is immediately marked failed (previously, the slow path silently skipped and the full path retried, with ms-level TOCTOU race potential).
+
 ## [0.12.7] - 2026-07-06
 
 ### Changed

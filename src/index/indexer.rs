@@ -108,40 +108,40 @@ pub fn index_project_incremental(
                 .map(|d| d.as_nanos())
                 .unwrap_or(0);
 
-            if let Some(prev) = prev_index {
-                // Fast path: mtime unchanged → reuse previous results
-                if let Some(&prev_mtime) = prev.file_mtimes.get(rel_path)
-                    && prev_mtime == current_mtime
-                {
-                    copy_prev_data(prev, &prev_idents, rel_path, prev_mtime, &mut result);
-                    result.skipped = true;
+            // Fast path: mtime unchanged → reuse previous results (no read)
+            if let Some(prev) = prev_index
+                && let Some(&prev_mtime) = prev.file_mtimes.get(rel_path)
+                && prev_mtime == current_mtime
+            {
+                copy_prev_data(prev, &prev_idents, rel_path, prev_mtime, &mut result);
+                result.skipped = true;
+                return result;
+            }
+
+            // Read source ONCE — used by both hash check and full parse
+            let source = match std::fs::read(file_path) {
+                Ok(s) => s,
+                Err(_) => {
+                    result.failed = true;
                     return result;
                 }
+            };
 
-                // Slow path: mtime changed, check content hash to catch git checkout/rebase
-                if let Ok(ref source) = std::fs::read(file_path) {
-                    let hash = blake3::hash(source).to_hex()[..16].to_string();
-                    if let Some(prev_hash) = prev.file_hashes.get(rel_path)
-                        && hash == *prev_hash
-                    {
-                        // Content unchanged despite mtime change
-                        copy_prev_data(prev, &prev_idents, rel_path, current_mtime, &mut result);
-                        result.file_hash = Some((rel_path.to_path_buf(), hash));
-                        result.skipped = true;
-                        return result;
-                    }
+            // Slow path: mtime changed but content might be same (git checkout/rebase)
+            if let Some(prev) = prev_index {
+                let hash = blake3::hash(&source).to_hex()[..16].to_string();
+                if let Some(prev_hash) = prev.file_hashes.get(rel_path)
+                    && hash == *prev_hash
+                {
+                    copy_prev_data(prev, &prev_idents, rel_path, current_mtime, &mut result);
+                    result.file_hash = Some((rel_path.to_path_buf(), hash));
+                    result.skipped = true;
+                    return result;
                 }
             }
 
             // Full parse path: single parse, extract all data at once
             if let Some(parser) = registry.parser_for(file_path) {
-                let source = match std::fs::read(file_path) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        result.failed = true;
-                        return result;
-                    }
-                };
                 match parser.extract_all(&source, rel_path) {
                     Ok(output) => {
                         result.symbols = output.symbols;
