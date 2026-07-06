@@ -84,6 +84,7 @@ pub fn run(
                     "files_truncated": result.files_truncated,
                     "files_failed": result.files_failed,
                     "failed_paths": result.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
+                    "failed_reasons": result.failed_reasons.clone(),
                     "symbols": stats.total_symbols,
                     "duration_ms": result.duration_ms,
                     "cache": cache_path.to_string_lossy(),
@@ -136,8 +137,8 @@ pub fn run(
                     result.files_failed,
                     result.failed_paths.len(),
                 );
-                for p in &result.failed_paths {
-                    println!("    - {}", p.display());
+                for (p, reason) in result.failed_paths.iter().zip(result.failed_reasons.iter()) {
+                    println!("    - {} ({})", p.display(), reason);
                 }
             }
         }
@@ -176,6 +177,7 @@ pub fn run(
                     "files_truncated": result.files_truncated,
                     "files_failed": result.files_failed,
                     "failed_paths": result.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
+                    "failed_reasons": result.failed_reasons.clone(),
                     "symbols": stats.total_symbols,
                     "duration_ms": result.duration_ms,
                     "cache": cache_path.to_string_lossy(),
@@ -224,8 +226,8 @@ pub fn run(
                     result.files_failed,
                     result.failed_paths.len(),
                 );
-                for p in &result.failed_paths {
-                    println!("    - {}", p.display());
+                for (p, reason) in result.failed_paths.iter().zip(result.failed_reasons.iter()) {
+                    println!("    - {} ({})", p.display(), reason);
                 }
             }
         }

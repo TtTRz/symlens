@@ -5,6 +5,16 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.10] - 2026-07-06
+
+### Added
+
+- **`IndexResult.failed_reasons: Vec<String>`** parallel to `failed_paths`. Each failure now records its cause: `read: <io error>` for unreadable files, `degraded (extract_all failed, symbols only): <err>` for partial-success fallback, `extract_all: <err>; extract_symbols fallback: <err>` for total parse failure. The `index` command prints `<path> (<reason>)` per failed file in both human and JSON output. Not persisted to `ProjectIndex` (point-in-time data, low persistence value; avoids index format bump).
+
+### Fixed
+
+- **`extract_all` failures no longer silently fall back without trace.** Previously a file that failed `extract_all` and fell back to `extract_symbols` was flagged only as "degraded" internally; users saw `files_failed: N` without knowing why. Now the original `extract_all` error reason is captured and surfaced in `index` output.
+
 ## [0.12.9] - 2026-07-06
 
 ### Changed

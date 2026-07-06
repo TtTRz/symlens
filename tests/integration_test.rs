@@ -4057,6 +4057,32 @@ mod index_observability_tests {
             result.failed_paths,
         );
     }
+
+    #[test]
+    fn failed_files_record_reason() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let bad = root.join("bad.rs");
+        std::fs::write(&bad, "fn bad() {}\n").unwrap();
+        let mut perms = std::fs::metadata(&bad).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&bad, perms).unwrap();
+
+        let result = symlens::index::indexer::index_project(root, 100_000).unwrap();
+
+        let mut perms = std::fs::metadata(&bad).unwrap().permissions();
+        perms.set_mode(0o644);
+        let _ = std::fs::set_permissions(&bad, perms);
+
+        assert!(!result.failed_reasons.is_empty());
+        let reason = &result.failed_reasons[0];
+        assert!(
+            reason.contains("read:") || reason.contains("Permission"),
+            "expected reason to mention read failure, got: {reason}"
+        );
+    }
 }
 
 mod no_ignore_tests {

@@ -22,6 +22,7 @@ pub struct IndexResult {
     pub files_truncated: usize,
     pub files_failed: usize,
     pub failed_paths: Vec<PathBuf>,
+    pub failed_reasons: Vec<String>,
 }
 
 /// Per-file parsing result collected in parallel, merged sequentially.
@@ -37,6 +38,7 @@ struct FileResult {
     parsed: bool,
     skipped: bool,
     failed: bool,
+    failed_reason: Option<String>,
     degraded: bool,
 }
 
@@ -138,8 +140,9 @@ pub fn index_project_incremental(
             // Read source ONCE — used by both hash check and full parse
             let source = match std::fs::read(file_path) {
                 Ok(s) => s,
-                Err(_) => {
+                Err(e) => {
                     result.failed = true;
+                    result.failed_reason = Some(format!("read: {e}"));
                     return result;
                 }
             };
@@ -179,7 +182,7 @@ pub fn index_project_incremental(
                                 Some((rel_path.to_path_buf(), output.identifiers));
                         }
                     }
-                    Err(_) => match parser.extract_symbols(&source, rel_path) {
+                    Err(e) => match parser.extract_symbols(&source, rel_path) {
                         Ok(symbols) => {
                             result.symbols = symbols;
                             result.file_mtime = Some((rel_path.to_path_buf(), current_mtime));
@@ -187,9 +190,14 @@ pub fn index_project_incremental(
                             result.file_hash = Some((rel_path.to_path_buf(), hash));
                             result.parsed = true;
                             result.degraded = true;
+                            result.failed_reason =
+                                Some(format!("degraded (extract_all failed, symbols only): {e}"));
                         }
-                        Err(_) => {
+                        Err(e2) => {
                             result.failed = true;
+                            result.failed_reason = Some(format!(
+                                "extract_all: {e}; extract_symbols fallback: {e2}"
+                            ));
                         }
                     },
                 }
@@ -206,6 +214,7 @@ pub fn index_project_incremental(
     let mut files_skipped: usize = 0;
     let mut files_failed: usize = 0;
     let mut failed_paths: Vec<PathBuf> = Vec::new();
+    let mut failed_reasons: Vec<String> = Vec::new();
 
     for r in results {
         for sym in r.symbols {
@@ -258,6 +267,11 @@ pub fn index_project_incremental(
                 && let Some(p) = r.rel_path.as_ref()
             {
                 failed_paths.push(p.clone());
+                failed_reasons.push(
+                    r.failed_reason
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
+                );
             }
         }
     }
@@ -282,6 +296,7 @@ pub fn index_project_incremental(
         files_truncated,
         files_failed,
         failed_paths,
+        failed_reasons,
     })
 }
 
@@ -330,6 +345,7 @@ pub struct WorkspaceIndexResult {
     pub files_truncated: usize,
     pub files_failed: usize,
     pub failed_paths: Vec<PathBuf>,
+    pub failed_reasons: Vec<String>,
 }
 
 /// Index a workspace with multiple project roots.
@@ -350,6 +366,7 @@ pub fn index_workspace(
     let mut total_truncated = 0usize;
     let mut total_failed = 0usize;
     let mut all_failed_paths: Vec<PathBuf> = Vec::new();
+    let mut all_failed_reasons: Vec<String> = Vec::new();
 
     for root_info in roots {
         // Per-root incremental: try loading per-root cache from disk.
@@ -382,7 +399,15 @@ pub fn index_workspace(
         total_failed += result.files_failed;
         if all_failed_paths.len() < 50 {
             let remaining = 50 - all_failed_paths.len();
-            all_failed_paths.extend(result.failed_paths.into_iter().take(remaining));
+            let paths_taken: Vec<PathBuf> =
+                result.failed_paths.into_iter().take(remaining).collect();
+            let reasons_taken: Vec<String> = result
+                .failed_reasons
+                .into_iter()
+                .take(paths_taken.len())
+                .collect();
+            all_failed_paths.extend(paths_taken);
+            all_failed_reasons.extend(reasons_taken);
         }
     }
 
@@ -404,5 +429,6 @@ pub fn index_workspace(
         files_truncated: total_truncated,
         files_failed: total_failed,
         failed_paths: all_failed_paths,
+        failed_reasons: all_failed_reasons,
     })
 }
