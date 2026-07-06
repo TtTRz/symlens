@@ -11,7 +11,9 @@ pub fn run(path: Option<&str>, workspace_flag: bool, no_ignore: bool) -> anyhow:
     let provider = crate::commands::IndexProvider::load(path, workspace_flag)?;
 
     let roots = provider.roots();
-    let walk_opts = indexer::WalkOptions { respect_gitignore: !no_ignore };
+    let walk_opts = indexer::WalkOptions {
+        respect_gitignore: !no_ignore,
+    };
 
     if roots.len() == 1 {
         // Single root mode — same as before
@@ -34,7 +36,10 @@ pub fn run(path: Option<&str>, workspace_flag: bool, no_ignore: bool) -> anyhow:
     Ok(())
 }
 
-fn watch_single_root(root: &std::path::Path, walk_opts: &indexer::WalkOptions) -> anyhow::Result<()> {
+fn watch_single_root(
+    root: &std::path::Path,
+    walk_opts: &indexer::WalkOptions,
+) -> anyhow::Result<()> {
     eprintln!("👁  Watching {} for changes...", root.display());
     eprintln!("   Press Ctrl+C to stop.");
 
@@ -76,7 +81,8 @@ fn watch_single_root(root: &std::path::Path, walk_opts: &indexer::WalkOptions) -
         // Adaptive debounce: wait at least min_debounce since last event
         if !pending_files.is_empty() && last_event.elapsed() > min_debounce {
             let start = Instant::now();
-            match indexer::index_project_incremental(root, 100_000, prev_index.as_ref(), walk_opts) {
+            match indexer::index_project_incremental(root, 100_000, prev_index.as_ref(), walk_opts)
+            {
                 Ok(result) => {
                     if let Err(e) = storage::save(&result.index) {
                         eprintln!("   ⚠ Save failed: {}", e);
@@ -100,7 +106,10 @@ fn watch_single_root(root: &std::path::Path, walk_opts: &indexer::WalkOptions) -
     Ok(())
 }
 
-fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)], walk_opts: &indexer::WalkOptions) -> anyhow::Result<()> {
+fn watch_workspace(
+    roots: &[(&str, &std::path::Path, &str, &str)],
+    walk_opts: &indexer::WalkOptions,
+) -> anyhow::Result<()> {
     // Initial index for each root
     let mut prev_indices: Vec<(String, PathBuf, Option<ProjectIndex>)> = Vec::new();
     for (_root_id, root_path, _root_hash, root_label) in roots {
@@ -165,7 +174,12 @@ fn watch_workspace(roots: &[(&str, &std::path::Path, &str, &str)], walk_opts: &i
                     continue;
                 }
 
-                match indexer::index_project_incremental(root_path, 100_000, prev_index.as_ref(), walk_opts) {
+                match indexer::index_project_incremental(
+                    root_path,
+                    100_000,
+                    prev_index.as_ref(),
+                    walk_opts,
+                ) {
                     Ok(result) => {
                         if let Err(e) = storage::save(&result.index) {
                             eprintln!("   [{}] ⚠ Save failed: {}", root_id, e);

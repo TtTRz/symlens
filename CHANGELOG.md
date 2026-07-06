@@ -5,6 +5,19 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.6] - 2026-07-06
+
+### Changed
+
+- **`std::sync::RwLock` replaced with `parking_lot::RwLock`** in `INDEX_CACHE` (MCP server), `SearchEngine::query_parser`, and daemon `SharedIndex`. Eliminates poison cascade: a thread panic no longer kills the daemon/MCP service for all subsequent requests. Adds `parking_lot = "0.12"` dependency.
+- Removed `.read().unwrap()` / `.write().unwrap()` / `.read().expect("...")` from all production lock sites (`parking_lot::RwLock` returns guards directly, no `Result`).
+- `daemon::rpc::handle_request` simplified: the `match index.read() { Ok/Err(_) }` poison-error arm is gone (no longer reachable).
+
+### Fixed
+
+- Pre-existing `clippy::field_reassign_with_default` and `clippy::collapsible_if` warnings in `src/index/indexer.rs` resolved.
+- Pre-existing `cargo fmt` drift in `src/commands/{callers,index,watch}.rs`, `src/main.rs`, `src/index/indexer.rs` resolved.
+
 ## [0.12.5] - 2026-06-18
 
 ### Changed

@@ -47,21 +47,7 @@ pub fn handle_request(line: &str, index: &SharedIndex) -> String {
         }
     };
 
-    let provider = match index.read() {
-        Ok(guard) => guard,
-        Err(e) => {
-            return serde_json::to_string(&RpcResponse {
-                jsonrpc: "2.0",
-                id: req.id,
-                result: None,
-                error: Some(RpcError {
-                    code: -32603,
-                    message: format!("Index lock poisoned: {}", e),
-                }),
-            })
-            .unwrap_or_default();
-        }
-    };
+    let provider = index.read();
 
     let result = match req.method.as_str() {
         "search" => handle_search(&provider, &req.params),
@@ -367,7 +353,8 @@ fn handle_status(provider: &IndexProvider) -> Result<serde_json::Value, RpcError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, RwLock};
+    use parking_lot::RwLock;
+    use std::sync::Arc;
 
     #[test]
     fn test_parse_rpc_request() {

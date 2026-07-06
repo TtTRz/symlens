@@ -44,7 +44,9 @@ pub struct WalkOptions {
 
 impl Default for WalkOptions {
     fn default() -> Self {
-        Self { respect_gitignore: true }
+        Self {
+            respect_gitignore: true,
+        }
     }
 }
 
@@ -93,8 +95,10 @@ pub fn index_project_incremental(
         .par_iter()
         .map(|file_path| {
             let rel_path = file_path.strip_prefix(root).unwrap_or(file_path);
-            let mut result = FileResult::default();
-            result.rel_path = Some(rel_path.to_path_buf());
+            let mut result = FileResult {
+                rel_path: Some(rel_path.to_path_buf()),
+                ..Default::default()
+            };
 
             // Incremental: check if file is unchanged
             let current_mtime = std::fs::metadata(file_path)
@@ -233,10 +237,10 @@ pub fn index_project_incremental(
         }
         if r.failed {
             files_failed += 1;
-            if failed_paths.len() < 50 {
-                if let Some(p) = r.rel_path.as_ref() {
-                    failed_paths.push(p.clone());
-                }
+            if failed_paths.len() < 50
+                && let Some(p) = r.rel_path.as_ref()
+            {
+                failed_paths.push(p.clone());
             }
         }
     }

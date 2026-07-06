@@ -65,8 +65,11 @@ pub fn run(
             storage::load_workspace(&roots).ok().flatten()
         };
 
-        let walk_opts = indexer::WalkOptions { respect_gitignore: !args.no_ignore };
-        let result = indexer::index_workspace(&roots, args.max_files, prev_ws.as_ref(), &walk_opts)?;
+        let walk_opts = indexer::WalkOptions {
+            respect_gitignore: !args.no_ignore,
+        };
+        let result =
+            indexer::index_workspace(&roots, args.max_files, prev_ws.as_ref(), &walk_opts)?;
         let cache_path = storage::save_workspace(&result.index)?;
 
         if args.json {
@@ -150,9 +153,15 @@ pub fn run(
             storage::load(&root).ok().flatten()
         };
 
-        let walk_opts = indexer::WalkOptions { respect_gitignore: !args.no_ignore };
-        let result =
-            indexer::index_project_incremental(&root, args.max_files, prev_index.as_ref(), &walk_opts)?;
+        let walk_opts = indexer::WalkOptions {
+            respect_gitignore: !args.no_ignore,
+        };
+        let result = indexer::index_project_incremental(
+            &root,
+            args.max_files,
+            prev_index.as_ref(),
+            &walk_opts,
+        )?;
         let cache_path = storage::save(&result.index)?;
 
         if args.json {

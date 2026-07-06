@@ -16,11 +16,8 @@ pub fn run_callers(
     let names = graph.callers(&args.name);
 
     if json {
-        let items = crate::output::json::enrich_callers_json(
-            &names.to_vec(),
-            args.limit,
-            &provider,
-        );
+        let items =
+            crate::output::json::enrich_callers_json(&names.to_vec(), args.limit, &provider);
         println!(
             "{}",
             serde_json::json!({ "symbol": args.name, "callers": items, "count": names.len() })
@@ -77,11 +74,8 @@ pub fn run_callees(
     let names = graph.callees(&args.name);
 
     if json {
-        let items = crate::output::json::enrich_callers_json(
-            &names.to_vec(),
-            args.limit,
-            &provider,
-        );
+        let items =
+            crate::output::json::enrich_callers_json(&names.to_vec(), args.limit, &provider);
         println!(
             "{}",
             serde_json::json!({ "symbol": args.name, "callees": items, "count": names.len() })

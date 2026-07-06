@@ -5,15 +5,20 @@ use crate::index::{indexer, storage};
 use crate::model::project::ProjectIndex;
 use crate::parser::traits::is_source_file;
 use notify::{Event, RecursiveMode, Watcher};
+use parking_lot::RwLock;
 use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock, mpsc};
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-pub fn serve_daemon(root_override: Option<&str>, workspace_flag: bool, no_ignore: bool) -> anyhow::Result<()> {
+pub fn serve_daemon(
+    root_override: Option<&str>,
+    workspace_flag: bool,
+    no_ignore: bool,
+) -> anyhow::Result<()> {
     let root_owned = root_override.map(String::from);
 
     // Load initial index
@@ -140,7 +145,9 @@ fn run_watcher(
     shutdown: &AtomicBool,
     no_ignore: bool,
 ) {
-    let walk_opts = crate::index::indexer::WalkOptions { respect_gitignore: !no_ignore };
+    let walk_opts = crate::index::indexer::WalkOptions {
+        respect_gitignore: !no_ignore,
+    };
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher = match notify::recommended_watcher(tx) {
@@ -189,7 +196,12 @@ fn run_watcher(
                 }
 
                 let start = Instant::now();
-                match indexer::index_project_incremental(root, 100_000, prev_index.as_ref(), &walk_opts) {
+                match indexer::index_project_incremental(
+                    root,
+                    100_000,
+                    prev_index.as_ref(),
+                    &walk_opts,
+                ) {
                     Ok(result) => {
                         let sym_count = result.index.symbols.len();
                         // Save to disk first
@@ -206,15 +218,15 @@ fn run_watcher(
 
                         // Swap the in-memory shared index
                         if is_workspace {
-                            if let Ok(mut guard) = shared.write()
-                                && let Ok(new_provider) = IndexProvider::load(root_override, true)
-                            {
+                            let mut guard = shared.write();
+                            if let Ok(new_provider) = IndexProvider::load(root_override, true) {
                                 *guard = new_provider;
                             }
                         } else {
                             let new_provider =
                                 IndexProvider::from_single(root.clone(), result.index);
-                            if let Ok(mut guard) = shared.write() {
+                            {
+                                let mut guard = shared.write();
                                 *guard = new_provider;
                                 // Extract prev_index from the new provider to avoid disk reload
                                 prev_index = match &*guard {

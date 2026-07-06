@@ -3,8 +3,9 @@ pub mod rpc;
 pub mod socket;
 
 use crate::commands::IndexProvider;
+use parking_lot::RwLock;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Thread-safe shared index: watcher takes write lock, socket threads take read lock.
 pub type SharedIndex = Arc<RwLock<IndexProvider>>;

@@ -3,8 +3,9 @@
 /// and end-to-end daemon lifecycle with real Unix sockets.
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use std::path::PathBuf;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     /// Verify that a minimal IndexProvider can be created and wrapped in SharedIndex.
     #[test]
@@ -17,7 +18,7 @@ mod tests {
         let shared: Arc<RwLock<symlens::commands::IndexProvider>> = Arc::new(RwLock::new(provider));
 
         // Read lock works
-        let guard = shared.read().unwrap();
+        let guard = shared.read();
         assert!(!guard.is_workspace());
         assert_eq!(guard.file_count(), 0);
         drop(guard);
@@ -28,11 +29,11 @@ mod tests {
             symlens::model::project::ProjectIndex::new(PathBuf::from("/tmp/test2")),
         );
         {
-            let mut guard = shared.write().unwrap();
+            let mut guard = shared.write();
             *guard = new_provider;
         }
 
-        let guard = shared.read().unwrap();
+        let guard = shared.read();
         assert_eq!(guard.file_count(), 0);
     }
 
@@ -86,8 +87,8 @@ mod tests {
         );
         let shared = Arc::new(RwLock::new(provider));
 
-        let r1 = shared.read().unwrap();
-        let r2 = shared.read().unwrap(); // Should not deadlock
+        let r1 = shared.read();
+        let r2 = shared.read(); // Should not deadlock
         assert_eq!(r1.file_count(), r2.file_count());
     }
 
@@ -174,16 +175,8 @@ mod tests {
     #[test]
     fn is_source_file_all_extensions() {
         let source_exts = &[
-            "rs",
-            "ts", "tsx", "js", "jsx", "mts", "cts",
-            "py",
-            "swift",
-            "go",
-            "dart",
-            "c", "h",
-            "cpp", "cc", "cxx", "hpp", "hh",
-            "kt", "kts",
-            "vue",
+            "rs", "ts", "tsx", "js", "jsx", "mts", "cts", "py", "swift", "go", "dart", "c", "h",
+            "cpp", "cc", "cxx", "hpp", "hh", "kt", "kts", "vue",
         ];
         for ext in source_exts {
             let fname = format!("test.{ext}");

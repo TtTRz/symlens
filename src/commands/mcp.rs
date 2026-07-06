@@ -5,6 +5,7 @@ pub mod server {
     use crate::model::project::RootInfo;
     use crate::model::symbol::SymbolKind;
     use crate::output::json as fmt;
+    use parking_lot::RwLock;
     use rmcp::ServiceExt;
     use rmcp::handler::server::ServerHandler;
     use rmcp::handler::server::wrapper::Parameters;
@@ -17,7 +18,7 @@ pub mod server {
     use serde_json::json;
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use std::sync::{Arc, LazyLock, RwLock};
+    use std::sync::{Arc, LazyLock};
 
     // ─── Static index cache ──────────────────────────────────────────
 
@@ -28,11 +29,7 @@ pub mod server {
     fn load_provider(root: &std::path::Path) -> Option<Arc<IndexProvider>> {
         // Try single-root cache key first
         let input_key = cache_key(root);
-        if let Some(idx) = INDEX_CACHE
-            .read()
-            .expect("cache lock poisoned")
-            .get(&input_key)
-        {
+        if let Some(idx) = INDEX_CACHE.read().get(&input_key) {
             return Some(Arc::clone(idx));
         }
 
@@ -45,7 +42,7 @@ pub mod server {
             // Use provider's own hash as cache key (stable across path variants)
             let stable_key = arc.socket_hash();
             {
-                let mut cache = INDEX_CACHE.write().unwrap();
+                let mut cache = INDEX_CACHE.write();
                 cache.insert(stable_key, Arc::clone(&arc));
                 cache.insert(input_key, Arc::clone(&arc));
             }
@@ -56,10 +53,7 @@ pub mod server {
     }
 
     fn invalidate_key(key: &str) {
-        INDEX_CACHE
-            .write()
-            .expect("cache lock poisoned")
-            .remove(key);
+        INDEX_CACHE.write().remove(key);
     }
 
     fn cache_key(root: &std::path::Path) -> String {
@@ -225,7 +219,12 @@ pub mod server {
                 storage::load(&root).ok().flatten()
             };
 
-            match indexer::index_project_incremental(&root, 100_000, prev_index.as_ref(), &indexer::WalkOptions::default()) {
+            match indexer::index_project_incremental(
+                &root,
+                100_000,
+                prev_index.as_ref(),
+                &indexer::WalkOptions::default(),
+            ) {
                 Ok(result) => match storage::save(&result.index) {
                     Ok(cache_path) => {
                         let key = cache_key(&root);
@@ -265,7 +264,8 @@ pub mod server {
 
             let _force = params.force.unwrap_or(false);
 
-            match indexer::index_workspace(&roots, 100_000, None, &indexer::WalkOptions::default()) {
+            match indexer::index_workspace(&roots, 100_000, None, &indexer::WalkOptions::default())
+            {
                 Ok(result) => match storage::save_workspace(&result.index) {
                     Ok(cache_path) => {
                         invalidate_key(&result.index.workspace_hash);
@@ -729,17 +729,15 @@ pub mod server {
         fn invalidate_key_removes_specific() {
             INDEX_CACHE
                 .write()
-                .unwrap()
                 .insert("test_key".to_string(), test_index_provider());
             INDEX_CACHE
                 .write()
-                .unwrap()
                 .insert("other_key".to_string(), test_index_provider());
-            assert!(INDEX_CACHE.read().unwrap().contains_key("test_key"));
-            assert!(INDEX_CACHE.read().unwrap().contains_key("other_key"));
+            assert!(INDEX_CACHE.read().contains_key("test_key"));
+            assert!(INDEX_CACHE.read().contains_key("other_key"));
             invalidate_key("test_key");
-            assert!(!INDEX_CACHE.read().unwrap().contains_key("test_key"));
-            assert!(INDEX_CACHE.read().unwrap().contains_key("other_key"));
+            assert!(!INDEX_CACHE.read().contains_key("test_key"));
+            assert!(INDEX_CACHE.read().contains_key("other_key"));
             invalidate_key("other_key");
         }
 

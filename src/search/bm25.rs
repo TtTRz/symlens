@@ -1,7 +1,7 @@
 use crate::model::symbol::Symbol;
 use crate::search::tokenizer::CodeTokenizer;
+use parking_lot::RwLock;
 use std::path::Path;
-use std::sync::RwLock;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
@@ -150,7 +150,7 @@ impl SearchEngine {
 
         // Rebuild QueryParser after commit (index state changed)
         {
-            let mut qp = self.query_parser.write().unwrap();
+            let mut qp = self.query_parser.write();
             *qp = QueryParser::for_index(
                 &self.index,
                 vec![
@@ -173,7 +173,7 @@ impl SearchEngine {
 
         // Fast path: exact query (no Levenshtein automata overhead)
         let results = {
-            let qp = self.query_parser.read().unwrap();
+            let qp = self.query_parser.read();
             let query = qp.parse_query(query_str)?;
             let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
             self.collect_results(&searcher, top_docs)?
