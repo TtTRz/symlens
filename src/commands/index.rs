@@ -85,6 +85,9 @@ pub fn run(
                     "files_failed": result.files_failed,
                     "failed_paths": result.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
                     "failed_reasons": result.failed_reasons.clone(),
+                    "files_degraded": result.files_degraded,
+                    "degraded_paths": result.degraded_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
+                    "degraded_reasons": result.degraded_reasons.clone(),
                     "symbols": stats.total_symbols,
                     "duration_ms": result.duration_ms,
                     "cache": cache_path.to_string_lossy(),
@@ -141,6 +144,19 @@ pub fn run(
                     println!("    - {} ({})", p.display(), reason);
                 }
             }
+            if result.files_degraded > 0 {
+                println!(
+                    "  \x1b[33m⚠ {} files degraded (extract_all failed, symbols only):\x1b[0m",
+                    result.files_degraded,
+                );
+                for (p, reason) in result
+                    .degraded_paths
+                    .iter()
+                    .zip(result.degraded_reasons.iter())
+                {
+                    println!("    - {} ({})", p.display(), reason);
+                }
+            }
         }
     } else {
         // Single-root mode (existing behavior)
@@ -178,6 +194,9 @@ pub fn run(
                     "files_failed": result.files_failed,
                     "failed_paths": result.failed_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
                     "failed_reasons": result.failed_reasons.clone(),
+                    "files_degraded": result.files_degraded,
+                    "degraded_paths": result.degraded_paths.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>(),
+                    "degraded_reasons": result.degraded_reasons.clone(),
                     "symbols": stats.total_symbols,
                     "duration_ms": result.duration_ms,
                     "cache": cache_path.to_string_lossy(),
@@ -227,6 +246,19 @@ pub fn run(
                     result.failed_paths.len(),
                 );
                 for (p, reason) in result.failed_paths.iter().zip(result.failed_reasons.iter()) {
+                    println!("    - {} ({})", p.display(), reason);
+                }
+            }
+            if result.files_degraded > 0 {
+                println!(
+                    "  \x1b[33m⚠ {} files degraded (extract_all failed, symbols only):\x1b[0m",
+                    result.files_degraded,
+                );
+                for (p, reason) in result
+                    .degraded_paths
+                    .iter()
+                    .zip(result.degraded_reasons.iter())
+                {
                     println!("    - {} ({})", p.display(), reason);
                 }
             }

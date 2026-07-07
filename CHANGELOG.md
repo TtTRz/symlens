@@ -5,6 +5,16 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.12] - 2026-07-07
+
+### Added
+
+- **Degraded file observability.** When `extract_all` fails but the `extract_symbols` fallback succeeds (file indexed with symbols only, missing call edges / imports / identifiers), the file is now surfaced in `index` output alongside the original `extract_all` error reason. `IndexResult` / `WorkspaceIndexResult` gain `files_degraded: usize`, `degraded_paths: Vec<PathBuf>`, `degraded_reasons: Vec<String>` (50-cap, parallel arrays). The `index` command prints a `⚠ N files degraded` block in both human and JSON output. Not persisted to `ProjectIndex` (point-in-time data; no index format bump).
+
+### Fixed
+
+- **Degraded files no longer invisible.** Previously a degraded file was flagged only via an internal `degraded: bool` marker; users had no way to discover which files lost call-graph / refs data. The original `extract_all` error reason is now captured and displayed.
+
 ## [0.12.11] - 2026-07-07
 
 ### Performance

@@ -23,6 +23,9 @@ pub struct IndexResult {
     pub files_failed: usize,
     pub failed_paths: Vec<PathBuf>,
     pub failed_reasons: Vec<String>,
+    pub files_degraded: usize,
+    pub degraded_paths: Vec<PathBuf>,
+    pub degraded_reasons: Vec<String>,
 }
 
 /// Per-file parsing result collected in parallel, merged sequentially.
@@ -215,6 +218,9 @@ pub fn index_project_incremental(
     let mut files_failed: usize = 0;
     let mut failed_paths: Vec<PathBuf> = Vec::new();
     let mut failed_reasons: Vec<String> = Vec::new();
+    let mut files_degraded: usize = 0;
+    let mut degraded_paths: Vec<PathBuf> = Vec::new();
+    let mut degraded_reasons: Vec<String> = Vec::new();
 
     for r in results {
         for sym in r.symbols {
@@ -274,6 +280,19 @@ pub fn index_project_incremental(
                 );
             }
         }
+        if r.degraded {
+            files_degraded += 1;
+            if degraded_paths.len() < 50
+                && let Some(p) = r.rel_path.as_ref()
+            {
+                degraded_paths.push(p.clone());
+                degraded_reasons.push(
+                    r.failed_reason
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
+                );
+            }
+        }
     }
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -297,6 +316,9 @@ pub fn index_project_incremental(
         files_failed,
         failed_paths,
         failed_reasons,
+        files_degraded,
+        degraded_paths,
+        degraded_reasons,
     })
 }
 
@@ -346,6 +368,9 @@ pub struct WorkspaceIndexResult {
     pub files_failed: usize,
     pub failed_paths: Vec<PathBuf>,
     pub failed_reasons: Vec<String>,
+    pub files_degraded: usize,
+    pub degraded_paths: Vec<PathBuf>,
+    pub degraded_reasons: Vec<String>,
 }
 
 /// Index a workspace with multiple project roots.
@@ -367,6 +392,9 @@ pub fn index_workspace(
     let mut total_failed = 0usize;
     let mut all_failed_paths: Vec<PathBuf> = Vec::new();
     let mut all_failed_reasons: Vec<String> = Vec::new();
+    let mut total_degraded = 0usize;
+    let mut all_degraded_paths: Vec<PathBuf> = Vec::new();
+    let mut all_degraded_reasons: Vec<String> = Vec::new();
 
     for root_info in roots {
         // Per-root incremental: try loading per-root cache from disk.
@@ -409,6 +437,19 @@ pub fn index_workspace(
             all_failed_paths.extend(paths_taken);
             all_failed_reasons.extend(reasons_taken);
         }
+        total_degraded += result.files_degraded;
+        if all_degraded_paths.len() < 50 {
+            let remaining = 50 - all_degraded_paths.len();
+            let paths_taken: Vec<PathBuf> =
+                result.degraded_paths.into_iter().take(remaining).collect();
+            let reasons_taken: Vec<String> = result
+                .degraded_reasons
+                .into_iter()
+                .take(paths_taken.len())
+                .collect();
+            all_degraded_paths.extend(paths_taken);
+            all_degraded_reasons.extend(reasons_taken);
+        }
     }
 
     // Build unified call graph from all merged call edges
@@ -430,5 +471,8 @@ pub fn index_workspace(
         files_failed: total_failed,
         failed_paths: all_failed_paths,
         failed_reasons: all_failed_reasons,
+        files_degraded: total_degraded,
+        degraded_paths: all_degraded_paths,
+        degraded_reasons: all_degraded_reasons,
     })
 }
