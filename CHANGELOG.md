@@ -5,6 +5,16 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.14] - 2026-07-07
+
+### Fixed
+
+- **Daemon workspace re-index reload failure now emits a warning.** Previously, if `IndexProvider::load` failed after a successful disk re-index, the in-memory `shared` index kept stale data silently — queries returned outdated symbols until the next successful reload. Now a stderr warning is printed so users can investigate (e.g., corrupted cache, permission issue).
+
+### Changed
+
+- **Degraded-file output clarifies it is counted in the parsed total.** The `index` command's degraded warning now reads `N files degraded (included in parsed count above; ...)` instead of just `N files degraded (...)`, removing ambiguity about whether degraded files are additional to or part of the reported `parsed` count.
+
 ## [0.12.13] - 2026-07-07
 
 ### Changed

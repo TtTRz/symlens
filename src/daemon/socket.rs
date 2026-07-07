@@ -219,9 +219,18 @@ fn run_watcher(
                         // Swap the in-memory shared index
                         if is_workspace {
                             // Load outside the write lock to avoid blocking queries during disk IO
-                            if let Ok(new_provider) = IndexProvider::load(root_override, true) {
-                                let mut guard = shared.write();
-                                *guard = new_provider;
+                            match IndexProvider::load(root_override, true) {
+                                Ok(new_provider) => {
+                                    let mut guard = shared.write();
+                                    *guard = new_provider;
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "warning: failed to reload workspace index after re-index: {}. \
+                                         In-memory index is stale until next successful reload.",
+                                        e
+                                    );
+                                }
                             }
                         } else {
                             let new_provider =

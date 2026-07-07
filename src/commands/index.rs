@@ -146,7 +146,7 @@ pub fn run(
             }
             if result.files_degraded > 0 {
                 println!(
-                    "  \x1b[33m⚠ {} files degraded (extract_all failed, symbols only):\x1b[0m",
+                    "  \x1b[33m⚠ {} files degraded (included in parsed count above; extract_all failed, symbols only):\x1b[0m",
                     result.files_degraded,
                 );
                 for (p, reason) in result
@@ -251,7 +251,7 @@ pub fn run(
             }
             if result.files_degraded > 0 {
                 println!(
-                    "  \x1b[33m⚠ {} files degraded (extract_all failed, symbols only):\x1b[0m",
+                    "  \x1b[33m⚠ {} files degraded (included in parsed count above; extract_all failed, symbols only):\x1b[0m",
                     result.files_degraded,
                 );
                 for (p, reason) in result
