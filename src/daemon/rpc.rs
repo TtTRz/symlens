@@ -47,21 +47,24 @@ pub fn handle_request(line: &str, index: &SharedIndex) -> String {
         }
     };
 
-    let provider = index.read();
-
-    let result = match req.method.as_str() {
-        "search" => handle_search(&provider, &req.params),
-        "refs" => handle_refs(&provider, &req.params),
-        "callers" => handle_callers(&provider, &req.params),
-        "callees" => handle_callees(&provider, &req.params),
-        "outline" => handle_outline(&provider, &req.params),
-        "symbol" => handle_symbol(&provider, &req.params),
-        "impact" => handle_impact(&provider, &req.params),
-        "status" => handle_status(&provider),
-        _ => Err(RpcError {
-            code: -32601,
-            message: format!("Method not found: {}", req.method),
-        }),
+    // Scope the read lock to just the handler dispatch. handle_* return owned
+    // serde_json::Value, so the lock can be released before JSON serialization.
+    let result = {
+        let provider = index.read();
+        match req.method.as_str() {
+            "search" => handle_search(&provider, &req.params),
+            "refs" => handle_refs(&provider, &req.params),
+            "callers" => handle_callers(&provider, &req.params),
+            "callees" => handle_callees(&provider, &req.params),
+            "outline" => handle_outline(&provider, &req.params),
+            "symbol" => handle_symbol(&provider, &req.params),
+            "impact" => handle_impact(&provider, &req.params),
+            "status" => handle_status(&provider),
+            _ => Err(RpcError {
+                code: -32601,
+                message: format!("Method not found: {}", req.method),
+            }),
+        }
     };
 
     let (result_val, error_val) = match result {

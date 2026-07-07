@@ -218,8 +218,9 @@ fn run_watcher(
 
                         // Swap the in-memory shared index
                         if is_workspace {
-                            let mut guard = shared.write();
+                            // Load outside the write lock to avoid blocking queries during disk IO
                             if let Ok(new_provider) = IndexProvider::load(root_override, true) {
+                                let mut guard = shared.write();
                                 *guard = new_provider;
                             }
                         } else {

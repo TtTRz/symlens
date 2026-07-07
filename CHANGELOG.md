@@ -5,6 +5,13 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.11] - 2026-07-07
+
+### Performance
+
+- **Daemon workspace re-index no longer blocks queries during disk IO.** `socket.rs` previously acquired the `shared.write()` lock before calling `IndexProvider::load` (which reads `index.bin` from disk). Now the load happens outside the lock; only the in-memory swap is locked. Workspace-mode daemon users see shorter query stalls during file-watch re-index.
+- **Daemon RPC releases the read lock before JSON serialization.** `rpc.rs::handle_request` previously held the `IndexProvider` read lock through `serde_json::to_string`. Now the lock is scoped to just the `handle_*` dispatch (which returns owned `serde_json::Value`), released before serialization. Re-index write lock acquisition is no longer blocked by response serialization.
+
 ## [0.12.10] - 2026-07-06
 
 ### Added
