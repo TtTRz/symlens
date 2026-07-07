@@ -23,6 +23,7 @@ symlens index                   # index your project
 symlens search "AudioEngine"    # find symbols (fuzzy BM25)
 symlens symbol "Engine::run"    # get just the signature → 60 tokens instead of 4000
 symlens index --workspace       # index multiple projects as a workspace
+symlens index --no-ignore       # include gitignored files (generated/vendored)
 symlens search "AudioEngien"    # fuzzy search — handles typos
 ```
 
@@ -223,6 +224,9 @@ Keep the index in memory and serve queries via Unix socket — eliminates per-qu
 symlens watch --serve &
 # Listening on ~/.symlens/daemon/{hash}.sock
 
+# Start daemon with --no-ignore (pinned at startup, restart to change)
+symlens watch --serve --no-ignore &
+
 # All query commands work with --daemon flag
 symlens --daemon search "Engine"
 symlens --daemon refs "CallGraph"
@@ -230,7 +234,7 @@ symlens --daemon callers run
 symlens --daemon graph impact run
 ```
 
-**How it works:** `symlens watch --serve` loads the index once, watches for file changes, and accepts JSON-RPC queries over a Unix socket. `--daemon` routes CLI commands through the socket instead of loading from disk.
+**How it works:** `symlens watch --serve` loads the index once, watches for file changes, and accepts JSON-RPC queries over a Unix socket. `--daemon` routes CLI commands through the socket instead of loading from disk. The daemon uses non-poisoning `parking_lot::RwLock`, so a thread panic no longer kills the service.
 
 | Query | CLI | Daemon | vs rg |
 |:------|:----|:-------|:------|

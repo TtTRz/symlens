@@ -5,6 +5,18 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.15] - 2026-07-07
+
+### Documentation
+
+- **README.md**: added `--no-ignore` to CLI examples; documented daemon `--no-ignore` support (pinned at startup); noted `parking_lot::RwLock` for daemon resilience.
+- **docs/commands.md**: 
+  - Added `--no-ignore` and `--max-files` flags to the Indexing command table.
+  - New **Index Observability** section documenting `files_parsed` / `files_skipped` / `files_truncated` / `files_failed` / `files_degraded` fields with example output and JSON field names.
+  - Fixed stale language count: "9 languages" → "10 languages" (Vue added in 0.12.0 but docs not updated).
+  - Added Vue row to the Language Support table.
+  - Updated Project Stats: 228 → 252 tests, 9 → 10 languages, noted `parking_lot::RwLock`.
+
 ## [0.12.14] - 2026-07-07
 
 ### Fixed

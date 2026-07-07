@@ -19,11 +19,42 @@
 |---------|-------------|------------|
 | `symlens index [path]` | Index the project (parallel, incremental) | — |
 | `symlens index --force` | Force re-index, ignore cache | — |
+| `symlens index --no-ignore` | Index gitignored files (generated/vendored code) | — |
+| `symlens index --max-files 50000` | Cap file count (default 100000) | — |
 | `symlens watch` | Auto-update index on file changes | — |
 | `symlens watch --serve` | Start daemon — keep index in memory, serve queries via Unix socket | — |
+| `symlens watch --serve --no-ignore` | Daemon pinned with gitignore disabled (restart to change) | — |
 | `symlens init` | Generate default `symlens.toml` config | — |
 | `symlens doctor` | Diagnose index health, cache status, languages | — |
-| `symlens stats` | Show index statistics | ~50 |
+| `symlens stats` | Show index statistics (file counts, failed/degraded/truncated) | ~50 |
+
+#### Index Observability
+
+The `index` and `stats` commands report files that were dropped or partially indexed:
+
+| Field | Meaning |
+|-------|---------|
+| `files_parsed` | Fully indexed (includes degraded files) |
+| `files_skipped` | Unchanged since last index (incremental fast path) |
+| `files_truncated` | Dropped because `--max-files` cap was hit |
+| `files_failed` | Could not read or parse (path + reason shown) |
+| `files_degraded` | `extract_all` failed but `extract_symbols` succeeded (symbols only, no call edges/imports/identifiers) |
+
+Example output when files fail or degrade:
+
+```
+✓ Indexed /path/to/project
+  Files: 73 scanned, 70 parsed (rust: 914, ...)
+  Symbols: 998 (function: 321, ...)
+  Time: 198ms
+  ⚠ 2 files failed (showing first 2):
+    - src/legacy/old.rs (read: Permission denied (os error 13))
+    - src/gen/broken.pb.rs (extract_all: parse error at line 42)
+  ⚠ 1 files degraded (included in parsed count above; extract_all failed, symbols only):
+    - src/proto/schema.rs (degraded (extract_all failed, symbols only): unexpected token at line 12)
+```
+
+JSON output mirrors these fields under `files_truncated`, `files_failed`, `failed_paths`, `failed_reasons`, `files_degraded`, `degraded_paths`, `degraded_reasons`.
 
 ### Symbol Lookup
 
@@ -70,7 +101,7 @@
 
 ## Language Support
 
-9 languages with full symbol extraction, call graph, reference finding, and import tracking:
+10 languages with full symbol extraction, call graph, reference finding, and import tracking:
 
 | Language | Extensions | Symbol Types |
 |----------|-----------|-------------|
@@ -83,6 +114,7 @@
 | **C** | `.c` `.h` | function, struct, enum, typedef, macro |
 | **C++** | `.cpp` `.cc` `.hpp` | function, class, struct, enum, namespace, method |
 | **Kotlin** | `.kt` `.kts` | function, class, interface, enum, object, property |
+| **Vue** | `.vue` | component, setup function, script exports |
 
 ## MCP Tools
 
@@ -162,10 +194,11 @@ Measured with [criterion](https://github.com/bheisler/criterion.rs) on the SymLe
 ## Project Stats
 
 - Rust 2024 edition, minimum rustc 1.92
-- 228 tests (15 daemon + 213 other), 0 clippy warnings
+- 252 tests (15 daemon + 237 other), 0 clippy warnings
 - 28 benchmarks across 7 groups
-- 21 commands, 9 languages, 12 MCP tools
+- 21 commands, 10 languages, 12 MCP tools
 - WASM build support via `--features wasm`
+- Non-poisoning `parking_lot::RwLock` for daemon/MCP resilience
 
 ## Feature Flags
 
