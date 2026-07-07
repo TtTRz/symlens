@@ -5,6 +5,12 @@ All notable changes to SymLens will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.13] - 2026-07-07
+
+### Changed
+
+- **`FileResult.failed_reason` split into `failure_reason` + `degrade_reason`.** Previously a single `failed_reason: Option<String>` field carried the error message for both fully-failed files (read error, or `extract_all` + `extract_symbols` both failed) and degraded files (`extract_all` failed but `extract_symbols` succeeded). The shared field name was semantically imprecise for degraded files. Now each state has its own field; the merge stage reads the appropriate one per branch. No behavior change (pure refactor); persisted `IndexResult.failed_reasons` / `degraded_reasons` Vec names unchanged.
+
 ## [0.12.12] - 2026-07-07
 
 ### Added

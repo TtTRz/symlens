@@ -41,8 +41,9 @@ struct FileResult {
     parsed: bool,
     skipped: bool,
     failed: bool,
-    failed_reason: Option<String>,
+    failure_reason: Option<String>,
     degraded: bool,
+    degrade_reason: Option<String>,
 }
 
 /// Controls `WalkBuilder` behavior for index operations.
@@ -145,7 +146,7 @@ pub fn index_project_incremental(
                 Ok(s) => s,
                 Err(e) => {
                     result.failed = true;
-                    result.failed_reason = Some(format!("read: {e}"));
+                    result.failure_reason = Some(format!("read: {e}"));
                     return result;
                 }
             };
@@ -193,12 +194,12 @@ pub fn index_project_incremental(
                             result.file_hash = Some((rel_path.to_path_buf(), hash));
                             result.parsed = true;
                             result.degraded = true;
-                            result.failed_reason =
+                            result.degrade_reason =
                                 Some(format!("degraded (extract_all failed, symbols only): {e}"));
                         }
                         Err(e2) => {
                             result.failed = true;
-                            result.failed_reason = Some(format!(
+                            result.failure_reason = Some(format!(
                                 "extract_all: {e}; extract_symbols fallback: {e2}"
                             ));
                         }
@@ -274,7 +275,7 @@ pub fn index_project_incremental(
             {
                 failed_paths.push(p.clone());
                 failed_reasons.push(
-                    r.failed_reason
+                    r.failure_reason
                         .clone()
                         .unwrap_or_else(|| "unknown".to_string()),
                 );
@@ -287,7 +288,7 @@ pub fn index_project_incremental(
             {
                 degraded_paths.push(p.clone());
                 degraded_reasons.push(
-                    r.failed_reason
+                    r.degrade_reason
                         .clone()
                         .unwrap_or_else(|| "unknown".to_string()),
                 );
