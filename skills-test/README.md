@@ -1,6 +1,8 @@
 # SymLens Skill Evaluation Suite
 
-Evaluation test suite for the [SymLens](https://github.com/TtTRz/symlens) skill, targeting [TDesign Vue Next](https://github.com/tencent/tdesign-vue-next) as the benchmark codebase.
+Evaluation test suite for the [SymLens](https://github.com/TtTRz/symlens) skill, targeting [TDesign Vue Next](https://github.com/tencent/tdesign-vue-next) **v1.20.3** as the benchmark codebase.
+
+> All line numbers and code references in `evals.json` are pinned to TDesign Vue Next **v1.20.3**. Use this exact version when running evals to ensure assertions match.
 
 ## How to Run
 
