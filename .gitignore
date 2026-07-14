@@ -24,3 +24,12 @@ Thumbs.db
 
 /graphify-out
 docs/superpowers/
+
+
+# skills-test
+skills-test/**/*
+!skills-test/*/
+!skills-test/*/evals/
+!skills-test/*/evals/evals.json
+!skills-test/*/report.md
+!skills-test/README.md

@@ -1,0 +1,116 @@
+{
+  "skill_name": "symlens",
+  "baseline": "without_skill",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "Table Module Overview",
+      "category": "Structural Understanding",
+      "prompt": "What properties does the Table component have?",
+      "expected_output": "List the Table, PrimaryTable, EnhancedTable constants and TableProps, TableCol types",
+      "assertions": [
+        "Includes PrimaryTable (index.ts:20, withInstall(_PrimaryTable)) and EnhancedTable (index.ts:21, withInstall(_EnhancedTable))",
+        "Includes TableProps (types.ts:36, type alias pointing to PrimaryTableProps<T>) and TableCol (types.ts:37, type alias pointing to PrimaryTableCol<T>)"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "useDefaultValue Definition",
+      "category": "Code Location",
+      "prompt": "How to use useDefaultValue?",
+      "expected_output": "packages/shared/hooks/useDefaultValue/index.ts, signature includes value, defaultValue, onChange, propsName",
+      "assertions": [
+        "Points to definition at packages/shared/hooks/useDefaultValue/index.ts:L5-37",
+        "Includes params value:Ref<T>, defaultValue:T, onChange:ChangeHandler<T,P>, propsName:string (L6-9)",
+        "Return type [Ref<T>, ChangeHandler<T, P>]"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "useDefaultValue Callers",
+      "category": "Call Relationships",
+      "prompt": "What does the Table component depend on?",
+      "expected_output": "11 callers: useRowSelect, useFilter, useSorter, useColumnController, etc.",
+      "assertions": [
+        "Includes useRowSelect (useRowSelect.tsx:L7 import, L34 calls useDefaultValue(selectedRowKeys, props.defaultSelectedRowKeys||[], props.onSelectChange, 'selectedRowKeys'))",
+        "Includes useFilter (useFilter.tsx:L5 import, uses useDefaultValue for filterValue inside the function)",
+        "Includes useSorter (useSorter.tsx:L5 import, L12 useDefaultValue(sort, props.defaultSort, props.onSortChange, 'sort'), L13 useDefaultValue(data, [], props.onDataChange, 'data'))",
+        "Includes useColumnController (useColumnController.tsx:L11 import), useTreeDataExpand (useTreeDataExpand.ts:L3 import), useRowHighlight (useRowHighlight.ts:L3 import), useRowExpand (useRowExpand.tsx:L15 import), useTreeSelect (useTreeSelect.tsx:L6 import, L107 call), useMultiple (useMultiple.tsx:L7 import, L29 call), useSingle (useSingle.tsx via useSingleValue indirect call), at least 8 listed"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "Table to useDefaultValue",
+      "category": "Cross-module Tracing",
+      "prompt": "How does useRowSelect call useDefaultValue?",
+      "expected_output": "useRowSelect directly calls useDefaultValue, no intermediate functions",
+      "assertions": [
+        "useRowSelect directly calls useDefaultValue (useRowSelect.tsx:L7 import, L34 [tSelectedRowKeys, setTSelectedRowKeys] = useDefaultValue(selectedRowKeys, ..., 'selectedRowKeys'))",
+        "Call path is direct, no intermediate functions"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "useVModel Call Tracking",
+      "category": "Cross-module Tracing",
+      "prompt": "Which components use useVModel?",
+      "expected_output": "useUpload, useInput, useTagList, useInputNumber, useSingleValue, useRangeValue, useTreeState",
+      "assertions": [
+        "Includes useUpload (useUpload.ts:L13 import, L26 [uploadValue, setUploadValue] = useVModel(files, modelValue, defaultFiles.value, props.onChange, 'files')) → upload module",
+        "Includes useInput (useInput.ts:L4 import, L29 [innerValue, setInnerValue] = useVModel(value, modelValue, props.defaultValue, props.onChange)) → input module",
+        "Includes useTagList (useTagList.tsx:L7 import, L23 [_tagValue, setTagValue] = useVModel(value, modelValue, props.defaultValue||[], props.onChange)) → tag-input module",
+        "Includes useInputNumber (useInputNumber.tsx:L2 import, L28 [tValue, setTValue] = useVModel(value, modelValue, props.defaultValue, props.onChange)) → input-number module, useSingleValue (useSingleValue.tsx:L10 import, L15 [value, onChange] = useVModel(valueFromProps, modelValue, props.defaultValue, props.onChange)) → date-picker module, useRangeValue (useRangeValue.ts:L2 import, L18 [value, onChange] = useVModel(valueFromProps, modelValue, props.defaultValue, props.onChange)) → date-picker module, useTreeState (useTreeState.ts:L1 import, L12 vmValue = useVModel(props, refProps, 'value', 'defaultValue', 'onChange', 'change')) → tree module, at least 6 listed"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "popup Component",
+      "category": "References & Refactoring",
+      "prompt": "How many components use the popup component?",
+      "expected_output": "12 components depend on popup",
+      "assertions": [
+        "Mentions ~12 components depend on popup (e.g. tooltip, dropdown, popconfirm, select-input, menu/submenu, guide, auto-complete, anchor, range-input, sticky-tool, table/filter, color-picker)",
+        "Mentions import { Popup } or import Popup from '../popup' style references",
+        "Lists all component files that use popup: tooltip.tsx, dropdown.tsx, popconfirm.tsx, select-input.tsx, submenu.tsx, guide.tsx, auto-complete.tsx, anchor-target.tsx, range-input-popup.tsx, sticky-item.tsx, filter-controller.tsx, color-picker.tsx"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "useVModel Impact Assessment",
+      "category": "References & Refactoring",
+      "prompt": "What components would be affected if useVModel's input params are changed?",
+      "expected_output": "Affects upload, tag-input, date-picker, input, input-number, tree and other components",
+      "assertions": [
+        "Lists at least 6 affected hooks: useUpload(L21, upload module), useInput(L20, input module), useTagList(L18, tag-input module), useInputNumber(L24, input-number module), useSingleValue(L13, date-picker module), useRangeValue(L15, date-picker module), useTreeState(L5, tree module)",
+        "Mentions involved component modules: upload, input, tag-input, input-number, date-picker, tree",
+        "Provides impact scope assessment: 7 hooks, 6 component modules, 8 direct callers, medium-to-high impact"
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "useDragSort Multiple Implementations",
+      "category": "Call Relationships",
+      "prompt": "How many definitions does useDragSort have, and how do their signatures differ?",
+      "expected_output": "3 definitions: shared/hooks (props:any), table/hooks (TdPrimaryTableProps,context,params), transfer/hooks (currentValue,curPageData,handleDataChange)",
+      "assertions": [
+        "Mentions shared/hooks/useDragSort/index.ts:L21, function useDragSort(props: any), used for tabs drag sort",
+        "Mentions table/hooks/useDragSort.ts:L24-30, function useDragSort(props: TdPrimaryTableProps, context: SetupContext, params: ComputedRef<{showElement:boolean}>), used for table row/column drag sort",
+        "Mentions transfer/hooks/useDragSort.ts:L4-8, function useDragSort(currentValue: Ref<Array<TransferValue>>, curPageData: ComputedRef<TransferItemOption[]>, handleDataChange: (data, movedValue) => void), used for transfer drag sort",
+        "Compares signature differences: shared version accepts only props:any, table version accepts TdPrimaryTableProps+context+params, transfer version accepts currentValue+curPageData+handleDataChange"
+      ]
+    },
+    {
+      "id": 9,
+      "eval_name": "Virtual Scroll Hook",
+      "category": "Shared Pattern Discovery",
+      "prompt": "What are the differences between useVirtualScroll and useVirtualScrollNew?",
+      "expected_output": "Both are under shared/hooks; old version params data/container/config options, new version params container Ref + UseVirtualScrollParams",
+      "assertions": [
+        "Mentions useVirtualScroll at packages/shared/hooks/useVirtualScroll/index.ts:L11, signature useVirtualScroll({data, container, fixedHeight=false, lineHeight=30, bufferSize=20, threshold=100})",
+        "Mentions useVirtualScrollNew at packages/shared/hooks/useVirtualScrollNew/index.ts:L34, signature useVirtualScrollNew(container: Ref<HTMLElement|null>, params: UseVirtualScrollParams)",
+        "Compares param differences: old version destructured params {data,container,fixedHeight,lineHeight,bufferSize,threshold}, new version receives container Ref + UseVirtualScrollParams(L14-22, contains data/scroll/fixedRows/preventResizeRefresh)",
+        "Mentions UseVirtualScrollParams and VirtualScrollConfig TS types"
+      ]
+    }
+  ]
+}
